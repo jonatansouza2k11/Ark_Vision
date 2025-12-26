@@ -1,0 +1,267 @@
+yolo detect train model=yolov8s.pt data="D:\Archivos\Downloads\Edx\IA\CV\OpenCV\pallet_dataset\data.yaml" epochs=50 imgsz=640 batch=16
+
+repositorio
+https://github.com/EmaroLab/PDT/tree/master/Pallet_Detection
+
+"""
+people_zones.py
+
+Detecção e rastreamento de pessoas com YOLOv8 + BoT-SORT, usando a webcam
+ou uma câmera IP, e classificação por zonas poligonais (entrada, elevadores, etc.).
+
+Funcionalidades:
+- Detecta apenas pessoas (classe 0 do COCO) usando yolov8s.pt.
+- Usa BoT-SORT como tracker (Kalman Filter interno) para IDs persistentes.
+- Redimensiona o frame para largura fixa (TARGET_WIDTH) mantendo proporção.
+- Desenha múltiplas zonas poligonais definidas em zones.py.
+- Para cada ID, calcula há quanto tempo está em uma zona específica.
+- Dispara alerta se o tempo em certas zonas (ex.: elevadores) ultrapassar MAX_OUT_TIME.
+"""
+
+import time
+from collections import defaultdict
+
+import cv2
+from ultralytics import YOLO
+
+from zones import ZoneManager
+
+
+# ================= CONFIGURAÇÕES GERAIS =================
+
+# Fonte de vídeo:
+#   0 -> webcam do notebook
+#   "http://IP:PORTA/video" -> câmera IP do celular, por exemplo
+SOURCE = 0
+
+# Modelo YOLO pré-treinado no COCO (pessoas, carros, etc.)
+MODEL_PATH = "yolov8s.pt"
+
+# ID da classe 'person' no COCO (0..79)
+PERSON_CLASS_ID = 0
+
+# Limiar de confiança das detecções (0.0 a 1.0):
+#   - valores maiores reduzem falsos positivos
+#   - valores menores detectam mais objetos, mas com mais ruído
+CONF_THRESH = 0.5
+
+# Largura alvo para exibir o frame (altura é ajustada automaticamente)
+TARGET_WIDTH = 1200
+
+# Tempo máximo (segundos) que a pessoa pode ficar em uma zona de risco
+MAX_OUT_TIME = 5.0
+
+# ================= ESTADO DE TRACKING =================
+# track_state[id] = {
+#     "last_seen": timestamp da última vez que esse ID foi visto,
+#     "zone": nome da zona atual (str) ou None,
+#     "zone_time": tempo acumulado (segundos) dentro da zona atual
+# }
+track_state = defaultdict(lambda: {"last_seen": 0.0, "zone": None, "zone_time": 0.0})
+
+# Instancia o gerenciador de zonas (definido em zones.py)
+zone_manager = ZoneManager(target_width=TARGET_WIDTH)
+
+
+# ================= FUNÇÕES AUXILIARES =================
+def resize_keep_width(frame, target_width: int):
+    """
+    Redimensiona o frame mantendo a proporção e fixando a largura.
+
+    Args:
+        frame: imagem BGR original (np.ndarray).
+        target_width: largura desejada em pixels.
+
+    Returns:
+        frame_resized: imagem redimensionada.
+        scale: fator de escala aplicado (target_width / width_original).
+               Deve ser usado para escalar as coordenadas das caixas.
+    """
+    h, w = frame.shape[:2]
+    scale = target_width / float(w)
+    target_height = int(h * scale)
+    frame_resized = cv2.resize(frame, (target_width, target_height))
+    return frame_resized, scale
+
+
+# ================= CARREGA MODELO YOLO =================
+model = YOLO(MODEL_PATH)
+
+# Configura modo de tracking com BoT-SORT
+results_gen = model.track(
+    source=SOURCE,
+    conf=CONF_THRESH,
+    stream=True,               # gera frames em streaming (for results in ...)
+    classes=[PERSON_CLASS_ID], # detecta apenas pessoas
+    persist=True,              # mantém IDs entre frames
+    tracker="botsort.yaml",    # usa BoT-SORT (Kalman + associação)
+)
+
+
+# ================= LOOP PRINCIPAL ======================
+for results in results_gen:
+    # Frame original retornado pelo Ultralytics (BGR)
+    frame = results.orig_img
+
+    # Corrige orientação (espelhamento da webcam), se necessário:
+    #   cv2.flip(frame, 1) espelha horizontalmente (esquerda/direita)
+    frame = cv2.flip(frame, 1)
+
+    # Redimensiona mantendo proporção para TARGET_WIDTH
+    frame, scale = resize_keep_width(frame, TARGET_WIDTH)
+    now = time.time()
+
+    # Desenha todas as zonas no frame (retângulos/polígonos com nome)
+    zone_manager.draw_zones(frame)
+
+    # Se houver detecções no frame
+    if results.boxes is not None:
+        for box in results.boxes:
+            # Se o tracker ainda não associou um ID, pula
+            if box.id is None:
+                continue
+
+            # ID do objeto rastreado
+            tid = int(box.id[0])
+
+            # Classe prevista pelo modelo (ex.: 0 = person)
+            cls = int(box.cls[0])
+            if cls != PERSON_CLASS_ID:
+                # Garantia extra: só considera pessoas
+                continue
+
+            # Coordenadas da bbox em xyxy (no tamanho original do frame)
+            x1b, y1b, x2b, y2b = map(float, box.xyxy[0])
+
+            # Reescala coordenadas para o frame redimensionado
+            x1b *= scale
+            y1b *= scale
+            x2b *= scale
+            y2b *= scale
+            x1b, y1b, x2b, y2b = map(int, (x1b, y1b, x2b, y2b))
+
+            # Centro da caixa (usado para testar se está dentro de alguma zona)
+            xc = int((x1b + x2b) / 2)
+            yc = int((y1b + y2b) / 2)
+
+            # Determina em qual zona (se alguma) o centro está neste frame
+            current_zone = zone_manager.point_zone(xc, yc)
+
+            # Atualiza estado de tempo por ID
+            state = track_state[tid]
+            dt = now - state["last_seen"] if state["last_seen"] > 0 else 0.0
+            state["last_seen"] = now
+
+            if current_zone is None:
+                # Pessoa fora de todas as zonas definidas
+                if state["zone"] is not None:
+                    # Saiu da zona anterior -> reseta contador
+                    state["zone"] = None
+                    state["zone_time"] = 0.0
+                color = (0, 0, 255)  # vermelho = fora
+            else:
+                # Pessoa dentro de alguma zona
+                if state["zone"] == current_zone:
+                    # Continua na mesma zona -> acumula tempo
+                    state["zone_time"] += dt
+                else:
+                    # Entrou em nova zona -> troca e zera tempo
+                    state["zone"] = current_zone
+                    state["zone_time"] = 0.0
+                color = (0, 255, 0)  # verde = dentro
+
+            # Desenha a caixa delimitadora da pessoa
+            cv2.rectangle(frame, (x1b, y1b), (x2b, y2b), color, 2)
+
+            # Monta rótulo com ID, zona e tempo na zona
+            label = f"ID {tid}"
+            if state["zone"]:
+                label += f" {state['zone']} {state['zone_time']:.1f}s"
+            else:
+                label += " FORA"
+
+            cv2.putText(
+                frame,
+                label,
+                (x1b, max(y1b - 10, 10)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                color,
+                2,
+            )
+
+            # Exemplo de regra de alerta:
+            # se ficar mais que MAX_OUT_TIME em zonas que começam com "elevador"
+            if (
+                state["zone"]
+                and state["zone"].startswith("elevador")
+                and state["zone_time"] > MAX_OUT_TIME
+            ):
+                cv2.putText(
+                    frame,
+                    f"ALERTA {state['zone']} ID {tid}",
+                    (50, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.0,
+                    (0, 0, 255),
+                    3,
+                )
+                # Aqui você pode adicionar:
+                # - log em arquivo
+                # - envio de mensagem para supervisório
+                # - integração com PLC, etc.
+
+    # Exibe o resultado
+    cv2.imshow("Pessoas + Zonas (BoT-SORT)", frame)
+
+    # Tecla 'q' para sair
+    if cv2.waitKey(1) & 0xFF == ord("q"):
+        break
+
+cv2.destroyAllWindows()
+
+
+Dá para deixar o projeto bem mais rápido e também mais “esperto” com alguns ajustes práticos em cima do que você já tem.
+​
+
+1. Performance de inferência e tracking
+Usar um modelo menor (ex.: yolov8n.pt ou yolo11n.pt) aumenta muito o FPS, principalmente em CPU; só mude para s ou m se realmente precisar de mais precisão.​
+
+Reduzir o TARGET_WIDTH (ex.: 960 em vez de 1200) corta pixels e acelera tanto YOLO quanto o rastreador, sem perder tanta informação para sua aplicação industrial.​
+
+Se tiver GPU disponível, definir model.to('cuda') ou device=0 e manter tudo em float32 já dá um salto de desempenho em relação a CPU.​
+
+2. Otimizar o loop de vídeo
+Processar só 1 em cada N frames (ex.: pular de 2 em 2 ou 3 em 3) ainda é suficiente para monitorar pessoas, mas reduz chamadas ao YOLO.​
+
+Evitar trabalho pesado desnecessário dentro do for box in results.boxes (logs, prints, operações caras de string) ajuda o FPS a ficar mais estável.​
+
+Garantir que qualquer tarefa de I/O (e-mail, gravação em disco pesado, chamadas HTTP) rode em background como você já fez com o send_email_background.
+​
+
+3. Deixar o tracking mais robusto
+Ajustar parâmetros do BoT-SORT no botsort.yaml (ex.: track_buffer, track_high_thresh, match_thresh) melhora a estabilidade dos IDs, evitando “troca de ID” quando a pessoa entra/sai da cena.
+​
+
+Testar tracker_type: bytetrack no YAML pode dar comportamento diferente; em alguns cenários industriais ele é mais estável que BoT-SORT.
+​
+
+Aumentar levemente o CONF_THRESH reduz falsos positivos, o que também ajuda o rastreador a não criar trilhas “fantasma”.​
+
+4. Regras mais inteligentes na zona
+Em vez de só tempo fora da zona, você pode criar estados por ID: “entrou na zona”, “saiu pela esquerda”, “saiu pela direita”, e usar isso para inferir fluxo de pessoas ou violações específicas.​
+
+Implementar uma zona de tolerância: por exemplo, pessoa só é considerada fora se o centro ficar X pixels fora da SAFE_ZONE, reduzindo alarmes por ruído na borda.​
+
+Guardar no dicionário do ID se aquela pessoa já foi “alertada” nessa sessão, para evitar repetição excessiva, mesmo com cooldown de e-mail.​
+
+5. Evolução para modelo mais “inteligente”
+Treinar um YOLO próprio com classes do seu chão de fábrica (palete, AGV, operador, empilhadeira) e depois usar model = YOLO('meu_modelo.pt') deixa os alertas bem mais específicos.
+​
+
+Afinar hyperparameters e thresholds (confidence, IoU, NMS) com base em gravações reais do seu ambiente melhora o equilíbrio entre sensibilidade e falsos alarmes.
+​
+
+Gravar exemplos de violações (vídeo + logs de ID, tempo fora, lado por onde saiu) cria material para justificar o projeto e, se quiser, para treinar versões futuras mais robustas.​
+
+Se quiser, na próxima mensagem dá para ajustar o seu yolo.py atual com: redução de resolução, pular frames, e um exemplo de botsort.yaml tunado para ambiente industrial.

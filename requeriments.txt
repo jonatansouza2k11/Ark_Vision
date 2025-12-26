@@ -1,0 +1,10 @@
+ultralytics
+torch
+torchvision
+numpy
+pandas
+scikit-learn
+flask
+opencv-python
+werkzeug
+ffmpeg

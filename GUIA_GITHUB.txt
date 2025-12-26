@@ -1,0 +1,295 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                                                                            ║
+║                    📤 GUIA: UPLOAD PARA GITHUB                            ║
+║                     ARK YOLO - Sistema de Monitoramento                   ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+✅ PASSOS PARA FAZER UPLOAD PARA GITHUB
+
+═══════════════════════════════════════════════════════════════════════════════
+
+OPCAO 1: Windows (PowerShell)
+────────────────────────────────
+
+1. Abra PowerShell na pasta do projeto:
+   cd d:\Archivos\Downloads\Edx\IA\CV\OpenCV
+
+2. Execute o script:
+   .\push_to_github.ps1
+
+3. Siga as instruções na tela
+
+═══════════════════════════════════════════════════════════════════════════════
+
+OPCAO 2: Linux / macOS (Bash)
+─────────────────────────────
+
+1. Abra terminal na pasta do projeto:
+   cd /caminho/para/OpenCV
+
+2. Execute o script:
+   bash push_to_github.sh
+
+3. Siga as instruções na tela
+═══════════════════════════════════════════════════════════════════════════════
+
+OPCAO 3: Manual (Qualquer OS)
+─────────────────────────────
+
+1. Verifique o status:
+   git status
+
+2. Adicione todos os arquivos:
+   git add .
+
+3. Faça commit:
+   git commit -m "Sua mensagem aqui"
+
+4. Faça push:
+   git push -u origin main
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 PREPARACAO INICIAL (Se ainda não foi feita)
+───────────────────────────────────────────────
+
+1. Crie repositório vazio no GitHub:
+   https://github.com/new
+   Nome: computacional_vision
+   Descrição: Real-time Person Detection + Zone Monitoring
+
+2. Inicialize git local:
+   git init
+
+3. Configure remote:
+   git remote add origin https://github.com/jonatansouza2k11/computacional_vision.git
+
+4. Verifique:
+   git remote -v
+
+5. Faça primeiro commit:
+   git add .
+   git commit -m "Initial commit: ARK YOLO system"
+
+6. Faça primeiro push:
+   git branch -M main
+   git push -u origin main
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🏗️ ESTRUTURA QUE SERÁ ENVIADA
+──────────────────────────────
+
+ARK-YOLO/
+│
+├── 📁 documentation/           (8 arquivos - 100+ KB)
+│   ├── DOCUMENTACAO.md
+│   ├── GUIA_RAPIDO.md
+│   ├── ARQUITETURA_TECNICA.md
+│   ├── FAQ_E_CASOS_USO.md
+│   ├── ROADMAP.md
+│   ├── RESUMO_EXECUTIVO.md
+│   ├── COMECE_AQUI.md
+│   └── INDICE_DOCUMENTACAO.md
+│
+├── 📁 ia_documentation/        (7 arquivos - contexto para IA)
+│   ├── 00_LEIA_PRIMEIRO_CONTEXTO_IA.txt
+│   ├── CONTEXTO_COMPLETO_PARA_IA.md
+│   ├── CONTEXT_FOR_AI_AGENTS.txt
+│   ├── AI_AGENT_CONTEXT.yaml
+│   ├── SELECIONE_CONTEXTO_PARA_IA.txt
+│   ├── EXEMPLOS_USO_CONTEXTO.txt
+│   └── README_CONTEXTO_IA.txt
+│
+├── 📁 templates/               (8 arquivos HTML)
+│   ├── base.html
+│   ├── dashboard.html
+│   ├── settings.html
+│   ├── login.html
+│   ├── register.html
+│   ├── logs.html
+│   ├── users.html
+│   └── diagnostics.html
+│
+├── 📁 yolo_models/            (Modelos YOLO .pt - ~200 MB)
+│   ├── yolov8n.pt
+│   ├── yolov8m.pt
+│   ├── yolov8l.pt
+│   ├── yolov8x.pt
+│   ├── yolov11n.pt
+│   ├── yolov11m.pt
+│   ├── yolov11l.pt
+│   └── yolov11x.pt
+│
+├── 📁 alertas/                (Gerado em tempo real - excluído)
+│
+├── 📁 cv_env/                 (Virtual env - excluído por .gitignore)
+│
+├── 📄 Arquivos Python
+│   ├── app.py                 (Flask server - 814 linhas)
+│   ├── yolo.py                (Vision system - 810 linhas)
+│   ├── database.py            (SQLite - 148 linhas)
+│   ├── zones.py               (Geometria - 143 linhas)
+│   ├── notifications.py       (Email - 112 linhas)
+│   ├── auth.py                (Autenticação - 36 linhas)
+│   └── ...
+│
+├── 📄 Configuração
+│   ├── .gitignore            (Excluir pastas/arquivos)
+│   ├── requeriments.txt       (Dependências)
+│   ├── botsort_reid.yaml      (Config tracker)
+│   └── ...
+│
+├── 📄 Documentação Raiz
+│   ├── README_GITHUB.md       (README para GitHub)
+│   ├── LICENSE                (MIT)
+│   └── ...
+│
+└── 📄 Scripts
+    ├── push_to_github.ps1     (Script Windows)
+    └── push_to_github.sh      (Script Linux/Mac)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+⚠️ O QUE NAO SERA ENVIADO (.gitignore)
+──────────────────────────────────────
+
+❌ cv_env/                 (Virtual environment - muito pesado)
+❌ __pycache__/            (Cache Python)
+❌ cv_system.db            (Banco de dados com dados sensíveis)
+❌ alertas/                (Vídeos e snapshots - muito pesado)
+❌ *.pyc                   (Compiled Python)
+❌ .env                    (Variáveis de ambiente)
+❌ .vscode/                (IDE settings)
+❌ .idea/                  (IDE JetBrains)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 TAMANHO TOTAL
+────────────────
+
+Código Python:           ~5-10 MB
+Documentação:           ~200 KB
+Templates HTML:         ~100 KB
+YOLO Models (.pt):      ~200-300 MB
+
+IMPORTANTE: Os modelos YOLO são MUITO pesados. 
+Se quiser enviar sem eles:
+  git rm --cached yolo_models/*.pt
+  git commit -m "Remove large model files"
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔑 CONFIGURAR CHAVES SSH (Recomendado)
+─────────────────────────────────────
+
+1. Gere chave SSH:
+   ssh-keygen -t ed25519 -C "seu_email@example.com"
+
+2. Copie a chave pública:
+   Windows: type %USERPROFILE%\.ssh\id_ed25519.pub
+   Linux:   cat ~/.ssh/id_ed25519.pub
+
+3. Cole em GitHub Settings > SSH and GPG keys
+
+4. Configure git:
+   git config --global user.name "Seu Nome"
+   git config --global user.email "seu_email@example.com"
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🚀 PRIMEIRO PUSH
+────────────────
+
+Se é primeira vez:
+
+1. git branch -M main           (Renomeia master para main)
+2. git push -u origin main      (Push com --set-upstream)
+
+Próximos pushs:
+
+3. git push                     (Apenas git push é suficiente)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ VERIFICACAO POS-PUSH
+──────────────────────
+
+1. Visite seu repositório:
+   https://github.com/jonatansouza2k11/computacional_vision
+
+2. Verifique:
+   ✓ Todos os arquivos estão lá?
+   ✓ A estrutura está correta?
+   ✓ README.md aparece na homepage?
+   ✓ Documentação está visível?
+
+3. Clone em outra pasta para testar:
+   git clone https://github.com/jonatansouza2k11/computacional_vision.git
+   cd computacional_vision
+   python -m venv test_env
+   source test_env/bin/activate  # ou test_env\Scripts\Activate.ps1
+   pip install -r requeriments.txt
+   python app.py
+
+═══════════════════════════════════════════════════════════════════════════════
+
+💡 DICAS
+────────
+
+1. Commit frequente:
+   git commit -m "Feature: descrição clara"
+
+2. Mensagens claras:
+   ❌ "update"
+   ✅ "Add person crowding detection feature"
+
+3. Use branches para features:
+   git checkout -b feature/nova-feature
+   git push -u origin feature/nova-feature
+
+4. Faça Pull Requests para code review
+
+5. Mantenha .gitignore atualizado
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🆘 PROBLEMAS COMUNS
+───────────────────
+
+"fatal: repository not found"
+  → Verifique a URL do repositório
+  → Verifique suas credenciais GitHub
+
+"Permission denied (publickey)"
+  → Configure chaves SSH
+  → Ou use token de acesso pessoal (PAT)
+
+"The following untracked files would be overwritten"
+  → git clean -fd
+  → git reset --hard
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📞 SUPORTE
+──────────
+
+GitHub Docs:
+  https://docs.github.com/
+
+Problemas com Git:
+  https://git-scm.com/doc
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✨ BOA SORTE COM GITHUB!
+
+Seu repositório estará pronto para:
+✅ Compartilhar com equipe
+✅ Receber contribuições
+✅ Histórico completo de commits
+✅ Documentação acessível
+✅ Integração com CI/CD
+
+═══════════════════════════════════════════════════════════════════════════════

@@ -1,0 +1,1154 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - YOLOv8{% endblock %}
+
+{% block page_content %}
+{% set username = user.get('username') if user is mapping else user.username %}
+{% set model_name = system_info.model_name if system_info is defined else '---' %}
+{% set video_source_label = system_info.video_source_label if system_info is defined else '---' %}
+
+<header class="bg-dark-card border-b border-dark-border px-8 py-4 flex items-center justify-between">
+  <div>
+    <h1 class="text-2xl font-bold flex items-center gap-3">
+      Computação Visual Ark
+      <span id="status-badge"
+            class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-900 text-green-300 border border-green-500">
+        <span id="status-dot" class="w-2 h-2 rounded-full bg-green-400 mr-1"></span>
+        <span id="status-label">OPERATIONAL</span>
+      </span>
+    </h1>
+    <p class="text-sm text-gray-400 mt-1" id="status-subtext"></p>
+    <p class="text-xs text-gray-500 mt-1" id="model-source-line">
+      Modelo: <span id="header-model-name">{{ model_name }}</span> •
+      Fonte: <span id="header-video-source">{{ video_source_label }}</span>
+    </p>
+  </div>
+
+  <div class="flex items-center space-x-4">
+    <span class="text-sm">{{ username }}</span>
+    <div class="w-8 h-8 bg-accent-cyan rounded-full flex items-center justify-center font-bold">
+      {{ username[0].upper() }}
+    </div>
+  </div>
+</header>
+
+<div class="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <!-- COLUNA ESQUERDA -->
+  <div class="lg:col-span-2 space-y-6">
+
+    <!-- LIVE DETECTION -->
+    <div id="live-card" class="bg-dark-card rounded-2xl p-6 glow-blue card-hover transition-shadow duration-200">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-xl font-semibold flex items-center gap-2">
+            Live Detection
+          </h2>
+          <p class="text-xs text-gray-500 mt-1">
+            Modelo: <span id="chip-model-name" class="font-semibold">{{ model_name }}</span> •
+            Fonte: <span id="chip-video-source">{{ video_source_label }}</span>
+          </p>
+        </div>
+
+        <div class="flex gap-2">
+          <button onclick="togglePause()" id="btn-pause"
+                  class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-sm font-semibold transition">
+            ⏸️ Pausar
+          </button>
+          <button onclick="stopStream()" id="btn-stop"
+                  class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-semibold transition">
+            ⏹️ Parar
+          </button>
+          <button onclick="startStream()" id="btn-start"
+                  class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm font-semibold transition"
+                  style="display:none;">
+            ▶️ Reiniciar
+          </button>
+        </div>
+      </div>
+
+      <img id="video-main"
+           class="w-full rounded-xl"
+           alt="Video Feed"
+           style="max-height: 450px; object-fit: cover; display: block;" />
+
+      <div class="mt-4 flex items-center justify-between text-sm text-gray-400">
+        <span id="status-text"><span class="text-green-400">●</span> Stream ativo</span>
+        <span>
+          FPS inst.: <span id="fps-counter">--</span>
+          <span class="mx-1 text-gray-500">|</span>
+          FPS médio: <span id="fps-avg">--</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- SAFE ZONE + ACTIVITY -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <!-- SAFE ZONE MAP -->
+      <div class="bg-dark-card rounded-2xl p-6 card-hover">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold">Safe Zone Map</h3>
+          {% if user and (user.role == 'admin' or user.get('role') == 'admin') %}
+            <button
+              type="button"
+              onclick="openSafeZoneModal()"
+              class="px-3 py-1 text-xs rounded bg-accent-blue hover:bg-blue-600 text-white">
+              Map
+            </button>
+          {% endif %}
+        </div>
+        <div id="safe-zone-container" class="relative h-64 bg-dark-bg rounded-xl overflow-hidden">
+          <div class="absolute inset-0 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 opacity-70"></div>
+
+          <div id="safe-zone-box"
+               class="absolute border-4 border-yellow-400 border-dashed rounded-lg flex items-center justify-center text-xs font-bold text-yellow-300"
+               style="display:none;">
+            SAFE ZONE
+          </div>
+
+          <div id="out-point"
+               class="absolute w-3 h-3 bg-red-400 rounded-full animate-pulse"
+               style="display:none;"></div>
+
+          <div id="safe-zone-fallback"
+               class="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div class="w-48 h-32 border-4 border-yellow-400 border-dashed rounded-lg flex items-center justify-center">
+              <span class="text-yellow-400 font-bold text-sm">SAFE ZONE</span>
+            </div>
+          </div>
+        </div>
+        <p class="mt-2 text-xs text-gray-500">
+          A zona é definida no modal <span class="font-semibold">Safe Zone Map &gt; Map</span>.
+        </p>
+      </div>
+
+      <!-- ACTIVITY -->
+      <div class="bg-dark-card rounded-2xl p-6 card-hover">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold">Activity</h3>
+          <a href="{{ url_for('logs') }}" class="text-accent-blue text-sm hover:underline">Ver todos</a>
+        </div>
+        <div class="space-y-3 text-sm" id="recent-activity">
+          <p class="text-gray-400">Carregando atividades...</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- COLUNA DIREITA: MÉTRICAS + ZONES -->
+  <div class="space-y-6">
+    <!-- Cards principais -->
+    <div class="grid grid-cols-2 gap-4">
+      <div class="bg-gradient-to-br from-pink-600 to-pink-700 rounded-xl p-4 card-hover">
+        <p class="text-4xl font-bold" id="persons-in">0</p>
+        <p class="text-sm mt-2 opacity-90">Na zona</p>
+        <p class="text-[11px] mt-1 text-pink-100/80" id="persons-in-sub">Sessão atual</p>
+      </div>
+      <div class="bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl p-4 card-hover">
+        <p class="text-4xl font-bold" id="persons-out">0</p>
+        <p class="text-sm mt-2 opacity-90">Fora da zona</p>
+        <p class="text-[11px] mt-1 text-purple-100/80" id="persons-out-sub">Sessão atual</p>
+      </div>
+      <div class="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-4 card-hover">
+        <p class="text-4xl font-bold" id="alerts-count">0</p>
+        <p class="text-sm mt-2 opacity-90">Alertas</p>
+        <p class="text-[11px] mt-1 text-yellow-100/80" id="alerts-sub">Últimas 24h / total</p>
+      </div>
+      <div class="bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl p-4 card-hover">
+        <p class="text-4xl font-bold" id="detections">0</p>
+        <p class="text-sm mt-2 opacity-90">Detecções</p>
+        <p class="text-[11px] mt-1 text-gray-100/80" id="detections-sub">Sessão atual</p>
+      </div>
+    </div>
+
+    <!-- CARD ZONES -->
+    <div class="bg-dark-card rounded-2xl p-6 card-hover">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-semibold">Zones</h3>
+        <span class="text-xs text-gray-400" id="zones-summary">Nenhuma zona configurada</span>
+      </div>
+
+      <div class="overflow-hidden rounded-xl border border-dark-border">
+        <table class="min-w-full text-xs">
+          <thead class="bg-slate-800/70 text-gray-300">
+            <tr>
+              <th class="px-3 py-2 text-left font-semibold">Zona</th>
+              <th class="px-3 py-2 text-left font-semibold">Contagem</th>
+              <th class="px-3 py-2 text-left font-semibold">Tempo vazia</th>
+              <th class="px-3 py-2 text-left font-semibold">Tempo cheia</th>
+              <th class="px-3 py-2 text-left font-semibold">Estado</th>
+            </tr>
+          </thead>
+          <tbody id="zones-table-body" class="divide-y divide-slate-800">
+            <tr>
+              <td colspan="5" class="px-3 py-3 text-center text-gray-500">
+                Nenhuma zona definida.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="mt-2 text-[11px] text-gray-500">
+        Estados: <span class="font-semibold text-green-400">OK</span>,
+        <span class="font-semibold text-yellow-400">EMPTY_LONG</span>,
+        <span class="font-semibold text-red-400">FULL_LONG</span>.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL SAFE ZONE -->
+<div id="safe-zone-modal"
+     class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 hidden">
+  <div class="bg-dark-card rounded-2xl p-4 w-[90vw] h-[80vh] flex flex-col">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-lg font-semibold">
+        Editar Safe Zones 
+        <span id="zone-counter" class="text-sm text-gray-400">(Zona 1 de 1)</span>
+      </h3>
+      <div class="flex gap-2">
+        <button type="button" id="btn-prev-zone"
+                class="px-3 py-1 text-xs rounded bg-gray-600 hover:bg-gray-700">
+          ◄ Anterior
+        </button>
+        <button type="button" id="btn-next-zone"
+                class="px-3 py-1 text-xs rounded bg-gray-600 hover:bg-gray-700">
+          Próxima ►
+        </button>
+        <button type="button" id="btn-new-zone"
+                class="px-3 py-1 text-xs rounded bg-green-600 hover:bg-green-700">
+          + Nova Zona
+        </button>
+        <button type="button" id="btn-delete-zone"
+                class="px-3 py-1 text-xs rounded bg-red-600 hover:bg-red-700">
+          🗑️ Remover
+        </button>
+        <button type="button"
+                class="px-3 py-1 text-xs rounded bg-gray-600 hover:bg-gray-700"
+                onclick="closeSafeZoneModal()">
+          Cancelar
+        </button>
+        <button type="button"
+                class="px-3 py-1 text-xs rounded bg-accent-blue hover:bg-blue-600"
+                onclick="saveSafeZones()">
+          Salvar Tudo
+        </button>
+      </div>
+    </div>
+
+    <div class="relative flex-1 bg-black rounded-xl overflow-hidden">
+      <img id="safe-zone-video"
+           class="absolute inset-0 w-full h-full object-contain"
+           src="{{ url_for('video_feed') }}"
+           alt="Safe Zone Video">
+
+      <canvas id="safe-zone-canvas"
+              class="absolute inset-0 w-full h-full"></canvas>
+    </div>
+
+    <p class="mt-2 text-xs text-gray-400">
+      Clique para adicionar pontos. Arraste para mover. Clique direito para deletar vértice. Use botões acima para alternar/criar zonas.
+    </p>
+  </div>
+</div>
+
+<script>
+  const img = document.getElementById('video-main');
+
+  // ===============================
+  // VIDEO STREAM
+  // ===============================
+  function initVideoStream() {
+    if (img) {
+      const videoUrl = '{{ url_for("video_feed") }}';
+      img.src = videoUrl;
+      img.addEventListener('error', () => {
+        console.error('Erro ao carregar stream de vídeo');
+        setTimeout(initVideoStream, 2000);
+      });
+    }
+  }
+  document.addEventListener('DOMContentLoaded', initVideoStream);
+
+  // ===============================
+  // TIMER DE STATUS
+  // ===============================
+  let statusState = {
+    mode: 'running',
+    since: null,
+    intervalId: null
+  };
+
+  function formatDuration(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+  function startStatusTimer(mode) {
+    const subtext = document.getElementById('status-subtext');
+    statusState.mode = mode;
+    statusState.since = Date.now();
+
+    if (statusState.intervalId) {
+      clearInterval(statusState.intervalId);
+      statusState.intervalId = null;
+    }
+
+    if (mode === 'running') {
+      if (subtext) subtext.textContent = '';
+      return;
+    }
+
+    function update() {
+      if (!subtext || !statusState.since) return;
+      const diffSec = (Date.now() - statusState.since) / 1000;
+      const label = mode === 'paused' ? 'Stream pausado há' : 'Stream parado há';
+      subtext.textContent = `${label} ${formatDuration(diffSec)}`;
+    }
+
+    update();
+    statusState.intervalId = setInterval(update, 1000);
+  }
+
+  // ===============================
+  // HEADER / STATUS
+  // ===============================
+  function updateSystemHeader(data) {
+    const status = data.system_status || 'running';
+    const modelName = data.model_name || '{{ model_name }}';
+    const sourceLabel = data.video_source_label || '{{ video_source_label }}';
+
+    const badge = document.getElementById('status-badge');
+    const dot = document.getElementById('status-dot');
+    const label = document.getElementById('status-label');
+    const liveCard = document.getElementById('live-card');
+
+    const headerModel = document.getElementById('header-model-name');
+    const headerSource = document.getElementById('header-video-source');
+    const chipModel = document.getElementById('chip-model-name');
+    const chipSource = document.getElementById('chip-video-source');
+
+    if (headerModel) headerModel.textContent = modelName;
+    if (chipModel) chipModel.textContent = modelName;
+    if (headerSource) headerSource.textContent = sourceLabel;
+    if (chipSource) chipSource.textContent = sourceLabel;
+
+    if (!badge || !dot || !label || !liveCard) return;
+
+    badge.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border transition-colors";
+    dot.className = "w-2 h-2 rounded-full mr-1";
+
+    if (status === 'running') {
+      badge.classList.add("bg-green-900", "text-green-300", "border-green-500");
+      dot.classList.add("bg-green-400");
+      label.textContent = "OPERATIONAL";
+      liveCard.classList.add("shadow-[0_0_25px_rgba(34,197,94,0.4)]");
+      startStatusTimer('running');
+    } else if (status === 'paused') {
+      badge.classList.add("bg-yellow-900", "text-yellow-300", "border-yellow-500");
+      dot.classList.add("bg-yellow-400");
+      label.textContent = "PAUSED";
+      liveCard.classList.remove("shadow-[0_0_25px_rgba(34,197,94,0.4)]");
+      if (statusState.mode !== 'paused') startStatusTimer('paused');
+    } else {
+      badge.classList.add("bg-red-900", "text-red-300", "border-red-500");
+      dot.classList.add("bg-red-400");
+      label.textContent = "STOPPED";
+      liveCard.classList.remove("shadow-[0_0_25px_rgba(34,197,94,0.4)]");
+      if (statusState.mode !== 'stopped') startStatusTimer('stopped');
+    }
+  }
+
+  // ===============================
+  // SAFE ZONE MAP (card)
+  // ===============================
+  function updateSafeZoneMap(data) {
+    const container = document.getElementById('safe-zone-container');
+    const box = document.getElementById('safe-zone-box');
+    const fallback = document.getElementById('safe-zone-fallback');
+    const outPoint = document.getElementById('out-point');
+
+    if (!container || !box || !fallback || !outPoint) return;
+
+    const zone = data.safe_zone;
+
+    let mini = container.querySelector('canvas#safe-zone-mini');
+    if (!mini) {
+      mini = document.createElement('canvas');
+      mini.id = 'safe-zone-mini';
+      mini.className = 'absolute inset-0 w-full h-full';
+      container.appendChild(mini);
+    }
+    const width  = container.clientWidth;
+    const height = container.clientHeight;
+    mini.width  = width;
+    mini.height = height;
+    const ctx = mini.getContext('2d');
+    ctx.clearRect(0, 0, width, height);
+
+    // múltiplas zonas: array de arrays
+    if (Array.isArray(zone) && zone.length > 0 && Array.isArray(zone[0]) && Array.isArray(zone[0][0])) {
+      box.style.display = 'none';
+      fallback.style.display = 'none';
+      outPoint.style.display = 'none';
+
+      zone.forEach(singleZone => {
+        const pts = singleZone.map(p => {
+          const xn = Number(p[0]);
+          const yn = Number(p[1]);
+          return [xn * width, yn * height];
+        });
+        if (pts.length < 3) return;
+
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        pts.forEach(([x, y], i) => {
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.fillStyle = '#facc15';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1;
+        pts.forEach(([x, y]) => {
+          ctx.beginPath();
+          ctx.arc(x, y, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
+      });
+
+      return;
+    }
+
+    // zona única (formato antigo)
+    if (Array.isArray(zone) && zone.length >= 3 && Array.isArray(zone[0])) {
+      box.style.display = 'none';
+      fallback.style.display = 'none';
+      outPoint.style.display = 'none';
+
+      const pts = zone.map(p => {
+        const xn = Number(p[0]);
+        const yn = Number(p[1]);
+        return [xn * width, yn * height];
+      });
+      if (pts.length < 3) return;
+
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => {
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+      ctx.stroke();
+
+      ctx.fillStyle = '#facc15';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1;
+      pts.forEach(([x, y]) => {
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      });
+
+      return;
+    }
+
+    // legado: retângulo
+    if (!zone || zone.length !== 4) {
+      box.style.display = 'none';
+      outPoint.style.display = 'none';
+      fallback.style.display = 'flex';
+      return;
+    }
+
+    const [x1, y1, x2, y2] = zone;
+    const maxW = 1280;
+    const maxH = 720;
+    const scaleX = width / maxW;
+    const scaleY = height / maxH;
+
+    const left = x1 * scaleX;
+    const top  = y1 * scaleY;
+    const w    = (x2 - x1) * scaleX;
+    const h    = (y2 - y1) * scaleY;
+
+    box.style.display = 'flex';
+    box.style.left   = left + 'px';
+    box.style.top    = top  + 'px';
+    box.style.width  = w    + 'px';
+    box.style.height = h    + 'px';
+
+    fallback.style.display = 'none';
+
+    const outZone = Number(data.out_zone || 0);
+    if (outZone > 0) {
+      const px = left + w + 10;
+      const py = top + h / 2;
+      outPoint.style.display = 'block';
+      outPoint.style.left = Math.min(px, width - 8) + 'px';
+      outPoint.style.top  = Math.min(py, height - 8) + 'px';
+    } else {
+      outPoint.style.display = 'none';
+    }
+  }
+// ===============================
+// ACTIVITY
+// ===============================
+function updateRecentActivity(data) {
+  const container = document.getElementById('recent-activity');
+  if (!container) return;
+
+  const alerts = data.recent_alerts || [];
+  const systemLogs = data.system_logs || [];
+
+  // Se quiser mesclar e, futuramente, ordenar por timestamp,
+  // dá pra juntar em um único array; por enquanto, mantemos blocos:
+  container.innerHTML = '';
+
+  if (!alerts.length && !systemLogs.length) {
+    const p = document.createElement('p');
+    p.className = 'text-gray-400';
+    p.textContent = 'Nenhuma atividade recente.';
+    container.appendChild(p);
+    return;
+  }
+
+  // 1) Alertas (como já era)
+  alerts.forEach(item => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'flex flex-col bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-800/60';
+
+    const line1 = document.createElement('div');
+    line1.className = 'flex items-center justify-between text-xs';
+
+    const ts = document.createElement('span');
+    ts.className = 'text-gray-400';
+    ts.textContent = item.timestamp || '--';
+
+    const badge = document.createElement('span');
+    badge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold';
+    if (item.email_sent) {
+      badge.classList.add('bg-red-900', 'text-red-300', 'border', 'border-red-500');
+      badge.textContent = 'ALERTA CRÍTICO';
+    } else {
+      badge.classList.add('bg-yellow-900', 'text-yellow-300', 'border', 'border-yellow-500');
+      badge.textContent = 'ALERTA';
+    }
+
+    line1.appendChild(ts);
+    line1.appendChild(badge);
+
+    const line2 = document.createElement('div');
+    line2.className = 'flex items-center justify-between mt-1';
+
+    const desc = document.createElement('p');
+    desc.className = 'text-[13px] text-gray-200';
+    desc.textContent = item.status || 'Evento registrado';
+
+    const actions = document.createElement('div');
+    actions.className = 'flex items-center gap-2';
+
+    if (item.video_file) {
+      const link = document.createElement('a');
+      link.href = `/video/${encodeURIComponent(item.video_file)}`;
+      link.target = '_blank';
+      link.className = 'text-accent-blue text-xs hover:underline flex items-center gap-1';
+      link.innerHTML = '▶ Ver vídeo';
+      actions.appendChild(link);
+    }
+
+    line2.appendChild(desc);
+    line2.appendChild(actions);
+
+    wrapper.appendChild(line1);
+    wrapper.appendChild(line2);
+
+    container.appendChild(wrapper);
+  });
+
+  // 2) Logs de sistema (novos: INICIAR/PAUSAR/RETOMAR/PARAR)
+  systemLogs.forEach(log => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'flex flex-col bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-800/60';
+
+    const line1 = document.createElement('div');
+    line1.className = 'flex items-center justify-between text-xs';
+
+    const ts = document.createElement('span');
+    ts.className = 'text-gray-400';
+    ts.textContent = log.timestamp || '--';
+
+    const badge = document.createElement('span');
+    badge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-900 text-cyan-300 border border-cyan-500';
+    badge.textContent = 'ATIVIDADE DO STREAM';
+
+    line1.appendChild(ts);
+    line1.appendChild(badge);
+
+    const line2 = document.createElement('div');
+    line2.className = 'flex items-center justify-between mt-1';
+
+    const desc = document.createElement('p');
+    desc.className = 'text-[13px] text-gray-200';
+    desc.textContent = log.message || 'Ação de sistema registrada';
+
+    line2.appendChild(desc);
+    // sem ações extras (botão) por enquanto
+
+    wrapper.appendChild(line1);
+    wrapper.appendChild(line2);
+
+    container.appendChild(wrapper);
+  });
+}
+
+  // ===============================
+  // ZONES CARD
+  // ===============================
+  function secondsToLabel(sec) {
+    if (sec == null) return '--';
+    if (sec < 1) return '<1s';
+    if (sec < 60) return `${sec.toFixed(0)}s`;
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}m ${s}s`;
+  }
+
+  function updateZonesCard(data) {
+    const tbody = document.getElementById('zones-table-body');
+    const summary = document.getElementById('zones-summary');
+    if (!tbody || !summary) return;
+
+    const zones = data.zones || [];
+    tbody.innerHTML = '';
+
+    if (!zones.length) {
+      summary.textContent = 'Nenhuma zona configurada';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="5" class="px-3 py-3 text-center text-gray-500">
+                        Nenhuma zona definida.
+                      </td>`;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    summary.textContent = `${zones.length} zona(s) monitorada(s)`;
+
+    zones.forEach(z => {
+      const tr = document.createElement('tr');
+      tr.className = 'bg-slate-900/40 hover:bg-slate-900/70 transition-colors';
+
+      const state = z.state || 'OK';
+      let badgeClass = 'bg-green-900 text-green-300 border border-green-500';
+      if (state === 'EMPTY_LONG') {
+        badgeClass = 'bg-yellow-900 text-yellow-300 border border-yellow-500';
+      } else if (state === 'FULL_LONG') {
+        badgeClass = 'bg-red-900 text-red-300 border border-red-500';
+      }
+
+      tr.innerHTML = `
+        <td class="px-3 py-2 text-gray-200 font-semibold">Z${(z.index ?? 0) + 1}</td>
+        <td class="px-3 py-2 text-gray-200">${z.count ?? 0}</td>
+        <td class="px-3 py-2 text-gray-300">${secondsToLabel(z.empty_for)}</td>
+        <td class="px-3 py-2 text-gray-300">${secondsToLabel(z.full_for)}</td>
+        <td class="px-3 py-2">
+          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${badgeClass}">
+            ${state}
+          </span>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ===============================
+  // STATS LOOP
+  // ===============================
+  let currentSafeZone = null;
+
+  async function fetchAndUpdateStats() {
+    try {
+      const res = await fetch('/api/stats', { cache: 'no-store' });
+      const data = await res.json();
+
+      document.getElementById('persons-in').textContent = data.in_zone;
+      document.getElementById('persons-out').textContent = data.out_zone;
+      document.getElementById('alerts-count').textContent = data.total_alerts;
+      document.getElementById('detections').textContent = data.detections;
+
+      const fpsInstEl = document.getElementById('fps-counter');
+      const fpsAvgEl  = document.getElementById('fps-avg');
+
+      if (fpsInstEl) fpsInstEl.textContent = '--';
+      if (fpsAvgEl)  fpsAvgEl.textContent  = '--';
+
+      if (data.system_status === 'running') {
+        if (fpsInstEl && typeof data.fps_inst === 'number' && data.fps_inst > 0) {
+          fpsInstEl.textContent = data.fps_inst.toFixed(1);
+        }
+        if (fpsAvgEl && typeof data.fps_avg === 'number' && data.fps_avg > 0) {
+          fpsAvgEl.textContent = data.fps_avg.toFixed(1);
+        }
+      }
+
+      updateSystemHeader(data);
+      updateSafeZoneMap(data);
+      updateRecentActivity(data);
+      updateZonesCard(data);
+
+      currentSafeZone = data.safe_zone || null;
+    } catch (e) {
+      console.error('Erro ao buscar stats:', e);
+    }
+  }
+  fetchAndUpdateStats();
+  setInterval(fetchAndUpdateStats, 2000);
+
+  // ===============================
+  // CONTROLES DE STREAM
+  // ===============================
+  async function askReason(actionLabel) {
+    const ok = window.confirm(`Você realmente deseja ${actionLabel} o stream?`);
+    if (!ok) return null;
+
+    const reason = window.prompt(`Informe o motivo para ${actionLabel} o stream:`, "");
+    if (reason === null) return null; // cancelou
+    return reason.trim();
+  }
+
+ async function togglePause() {
+  const btn = document.getElementById('btn-pause');
+  if (!btn) return;
+
+  // Checa se o texto contém "Retomar" (com ou sem emoji)
+  const isResuming = btn.textContent.includes('Retomar') || btn.innerHTML.includes('Retomar');
+
+  // Se estiver retomando, não pergunta motivo
+  let reason = '';
+  if (!isResuming) {
+    reason = await askReason("PAUSAR");
+    if (reason === null) return;  
+  }
+
+  try {
+    const res = await fetch('/toggle_camera', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    });
+    const data = await res.json();
+    const statusText = document.getElementById('status-text');
+    const fpsInstEl = document.getElementById('fps-counter');
+    const fpsAvgEl  = document.getElementById('fps-avg');
+
+    if (data.paused) {
+      // acabou de PAUSAR
+      btn.innerHTML = '▶️ Retomar';
+      btn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
+      btn.classList.add('bg-green-600', 'hover:bg-green-700');
+      if (statusText) statusText.innerHTML = '<span class="text-yellow-400">⏸ Stream pausado</span>';
+      if (fpsInstEl) fpsInstEl.textContent = '--';
+      if (fpsAvgEl)  fpsAvgEl.textContent  = '--';
+      startStatusTimer('paused');
+    } else {
+      // acabou de RETOMAR
+      btn.innerHTML = '⏸️ Pausar';
+      btn.classList.remove('bg-green-600', 'hover:bg-green-700');
+      btn.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
+      if (statusText) statusText.innerHTML = '<span class="text-green-400">● Stream ativo</span>';
+      startStatusTimer('running');
+    }
+
+    fetchAndUpdateStats();
+  } catch (e) {
+    console.error('Erro ao pausar:', e);
+    alert('Erro ao pausar stream');
+  }
+}
+
+
+  async function stopStream() {
+    const reason = await askReason("PARAR");
+    if (reason === null) return;
+
+    try {
+      const res = await fetch('/stop_stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        const btnStop  = document.getElementById('btn-stop');
+        const btnPause = document.getElementById('btn-pause');
+        const btnStart = document.getElementById('btn-start');
+        const statusText = document.getElementById('status-text');
+        const fpsInstEl = document.getElementById('fps-counter');
+        const fpsAvgEl  = document.getElementById('fps-avg');
+
+        if (btnStop)  btnStop.style.display  = 'none';
+        if (btnPause) btnPause.style.display = 'none';
+        if (btnStart) btnStart.style.display = 'inline-block';
+
+        if (statusText) {
+          statusText.innerHTML = '<span class="text-red-400">⏹ Stream desligado</span>';
+        }
+        if (fpsInstEl) fpsInstEl.textContent = '--';
+        if (fpsAvgEl)  fpsAvgEl.textContent  = '--';
+
+        startStatusTimer('stopped');
+        await fetchAndUpdateStats();
+      } else {
+        alert('Stream já estava parado.');
+      }
+    } catch (e) {
+      console.error('Erro ao parar:', e);
+      alert('Erro ao parar stream');
+    }
+  }
+
+  async function startStream() {
+    try {
+      const res = await fetch('/start_stream', { method: 'POST' });
+      const data = await res.json();
+
+      if (data.success) {
+        document.getElementById('btn-start').style.display = 'none';
+        document.getElementById('btn-pause').style.display = 'inline-block';
+        document.getElementById('btn-stop').style.display = 'inline-block';
+        document.getElementById('status-text').innerHTML = '<span class="text-green-400">● Stream ativo</span>';
+
+        startStatusTimer('running');
+
+        setTimeout(() => {
+          location.reload();
+        }, 500);
+      }
+    } catch (e) {
+      console.error('Erro ao iniciar:', e);
+      alert('Erro ao iniciar stream');
+    }
+  }
+
+  // ===============================
+  // SAFE ZONE MODAL + CANVAS (MÚLTIPLAS ZONAS)
+  // ===============================
+  let safeZones = [[]];
+  let currentZoneIndex = 0;
+  let draggingIndex = -1;
+  let isDragging = false;
+
+  function getCurrentZone() {
+    return safeZones[currentZoneIndex] || [];
+  }
+
+  function setCurrentZone(points) {
+    safeZones[currentZoneIndex] = points;
+  }
+
+  function updateZoneCounter() {
+    const counter = document.getElementById('zone-counter');
+    if (counter) {
+      counter.textContent = `(Zona ${currentZoneIndex + 1} de ${safeZones.length})`;
+    }
+  }
+
+  function canvasCoordsToNorm(canvas, evt) {
+    const rect = canvas.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    const y = evt.clientY - rect.top;
+    const nx = Math.min(Math.max(x / rect.width, 0), 1);
+    const ny = Math.min(Math.max(y / rect.height, 0), 1);
+    return [nx, ny];
+  }
+
+  function findPointAt(canvas, evt, radiusPx = 10) {
+    const zone = getCurrentZone();
+    const rect = canvas.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    const y = evt.clientY - rect.top;
+    const w = rect.width;
+    const h = rect.height;
+
+    for (let i = 0; i < zone.length; i++) {
+      const [nx, ny] = zone[i];
+      const px = nx * w;
+      const py = ny * h;
+      if (Math.hypot(px - x, py - y) <= radiusPx) return i;
+    }
+    return -1;
+  }
+
+  function distancePointToSegment(px, py, x1, y1, x2, y2) {
+    const vx = x2 - x1;
+    const vy = y2 - y1;
+    const wx = px - x1;
+    const wy = py - y1;
+    const c1 = vx * wx + vy * wy;
+    if (c1 <= 0) return Math.hypot(px - x1, py - y1);
+    const c2 = vx * vx + vy * vy;
+    if (c2 <= c1) return Math.hypot(px - x2, py - y2);
+    const t = c1 / c2;
+    return Math.hypot(px - (x1 + t * vx), py - (y1 + t * vy));
+  }
+
+  function drawSafeZoneCanvas() {
+    const canvas = document.getElementById('safe-zone-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+
+    ctx.clearRect(0, 0, w, h);
+
+    safeZones.forEach((zone, zIdx) => {
+      if (zone.length < 3) return;
+
+      const isCurrent = zIdx === currentZoneIndex;
+      ctx.strokeStyle = isCurrent ? '#22d3ee' : '#6b7280';
+      ctx.lineWidth = isCurrent ? 2 : 1;
+
+      ctx.beginPath();
+      zone.forEach((p, i) => {
+        const x = p[0] * w;
+        const y = p[1] * h;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+      ctx.stroke();
+
+      if (isCurrent) {
+        zone.forEach(p => {
+          const x = p[0] * w;
+          const y = p[1] * h;
+          ctx.beginPath();
+          ctx.fillStyle = '#facc15';
+          ctx.arc(x, y, 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        });
+      }
+    });
+  }
+
+  function resizeSafeZoneCanvas() {
+    const canvas = document.getElementById('safe-zone-canvas');
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    drawSafeZoneCanvas();
+  }
+
+  function openSafeZoneModal() {
+    const modal = document.getElementById('safe-zone-modal');
+    const canvas = document.getElementById('safe-zone-canvas');
+    if (!modal || !canvas) return;
+
+    // carrega zonas do backend
+    if (Array.isArray(currentSafeZone)) {
+      // múltiplas zonas: [[[x,y],...], [[x,y],...]]
+      if (currentSafeZone.length > 0 && Array.isArray(currentSafeZone[0]) && Array.isArray(currentSafeZone[0][0])) {
+        safeZones = currentSafeZone.map(zone => zone.map(p => [Number(p[0]), Number(p[1])]));
+      }
+      // zona única: [[x,y],...]
+      else if (currentSafeZone.length >= 3 && Array.isArray(currentSafeZone[0])) {
+        safeZones = [currentSafeZone.map(p => [Number(p[0]), Number(p[1])])];
+      }
+      else {
+        safeZones = [[]];
+      }
+    } else {
+      safeZones = [[]];
+    }
+
+    currentZoneIndex = 0;
+    updateZoneCounter();
+
+    modal.classList.remove('hidden');
+    resizeSafeZoneCanvas();
+  }
+
+  function closeSafeZoneModal() {
+    const modal = document.getElementById('safe-zone-modal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  function attachSafeZoneCanvasHandlers() {
+    const canvas = document.getElementById('safe-zone-canvas');
+    if (!canvas) return;
+
+    canvas.addEventListener('mousedown', (evt) => {
+      const zone = getCurrentZone();
+      const idx = findPointAt(canvas, evt, 10);
+      if (idx >= 0) {
+        draggingIndex = idx;
+        isDragging = true;
+        return;
+      }
+
+      const [nx, ny] = canvasCoordsToNorm(canvas, evt);
+      const rect = canvas.getBoundingClientRect();
+      const clickX = nx * rect.width;
+      const clickY = ny * rect.height;
+
+      if (zone.length < 2) {
+        zone.push([nx, ny]);
+        setCurrentZone(zone);
+        drawSafeZoneCanvas();
+        return;
+      }
+
+      const w = rect.width;
+      const h = rect.height;
+      let bestIndex = 0;
+      let bestDist = Infinity;
+
+      for (let i = 0; i < zone.length; i++) {
+        const j = (i + 1) % zone.length;
+        const [x1n, y1n] = zone[i];
+        const [x2n, y2n] = zone[j];
+        const d = distancePointToSegment(clickX, clickY, x1n * w, y1n * h, x2n * w, y2n * h);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIndex = j;
+        }
+      }
+
+      zone.splice(bestIndex, 0, [nx, ny]);
+      setCurrentZone(zone);
+      drawSafeZoneCanvas();
+    });
+
+    canvas.addEventListener('contextmenu', (evt) => {
+      evt.preventDefault();
+      const zone = getCurrentZone();
+      const idx = findPointAt(canvas, evt, 10);
+      if (idx >= 0 && zone.length > 3) {
+        zone.splice(idx, 1);
+        setCurrentZone(zone);
+        drawSafeZoneCanvas();
+      }
+    });
+
+    window.addEventListener('mousemove', (evt) => {
+      const canvas = document.getElementById('safe-zone-canvas');
+      if (!canvas || !isDragging || draggingIndex < 0) return;
+      const [nx, ny] = canvasCoordsToNorm(canvas, evt);
+      const zone = getCurrentZone();
+      zone[draggingIndex] = [nx, ny];
+      setCurrentZone(zone);
+      drawSafeZoneCanvas();
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+      draggingIndex = -1;
+    });
+
+    document.addEventListener('keydown', (evt) => {
+      const modal = document.getElementById('safe-zone-modal');
+      if (!modal || modal.classList.contains('hidden')) return;
+      if ((evt.key === 'Backspace' || evt.key === 'Delete')) {
+        const zone = getCurrentZone();
+        if (zone.length > 0) {
+          zone.pop();
+          setCurrentZone(zone);
+          drawSafeZoneCanvas();
+        }
+      }
+    });
+  }
+
+  // Botões do modal
+  document.getElementById('btn-prev-zone')?.addEventListener('click', () => {
+    if (currentZoneIndex > 0) {
+      currentZoneIndex--;
+      updateZoneCounter();
+      drawSafeZoneCanvas();
+    }
+  });
+
+  document.getElementById('btn-next-zone')?.addEventListener('click', () => {
+    if (currentZoneIndex < safeZones.length - 1) {
+      currentZoneIndex++;
+      updateZoneCounter();
+      drawSafeZoneCanvas();
+    }
+  });
+
+  document.getElementById('btn-new-zone')?.addEventListener('click', () => {
+    safeZones.push([]);
+    currentZoneIndex = safeZones.length - 1;
+    updateZoneCounter();
+    drawSafeZoneCanvas();
+  });
+
+  document.getElementById('btn-delete-zone')?.addEventListener('click', () => {
+    if (safeZones.length === 1) {
+      alert('Não é possível remover a única zona. Crie outra antes de remover esta.');
+      return;
+    }
+    if (confirm('Remover zona atual?')) {
+      safeZones.splice(currentZoneIndex, 1);
+      if (currentZoneIndex >= safeZones.length) {
+        currentZoneIndex = safeZones.length - 1;
+      }
+      updateZoneCounter();
+      drawSafeZoneCanvas();
+    }
+  });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    attachSafeZoneCanvasHandlers();
+    resizeSafeZoneCanvas();
+  });
+
+  async function saveSafeZones() {
+    const validZones = safeZones.filter(z => z.length >= 3);
+    if (validZones.length === 0) {
+      alert('Defina pelo menos uma zona com 3 ou mais pontos.');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/safe_zone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zones: validZones })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        console.error('Erro ao salvar safe zones:', data);
+        alert(data.error || 'Erro ao salvar zonas seguras.');
+        return;
+      }
+
+      alert(`${validZones.length} zona(s) salva(s) com sucesso.`);
+      closeSafeZoneModal();
+      fetchAndUpdateStats();
+    } catch (e) {
+      console.error('Erro na requisição /api/safe_zone:', e);
+      alert('Erro ao comunicar com o servidor.');
+    }
+  }
+
+</script>
+{% endblock %}

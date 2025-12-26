@@ -1,0 +1,442 @@
+{% extends "base.html" %}
+
+{% block title %}Configurações - Ark{% endblock %}
+
+{% block page_content %}
+
+<header class="bg-dark-card border-b border-dark-border px-8 py-4">
+  <h1 class="text-2xl font-bold">Configurações</h1>
+  <p class="text-sm text-gray-400 mt-1">Ajuste todos os parâmetros de detecção e monitoramento</p>
+</header>
+
+<div class="p-6">
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="mb-4 p-4 rounded-lg {% if category == 'success' %}bg-green-900{% else %}bg-yellow-900{% endif %}">
+          {{ message }}
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="bg-dark-card rounded-2xl p-6">
+    <h2 class="text-xl font-semibold mb-6">Parâmetros YOLO e Safe Zone</h2>
+
+    <form method="POST" class="space-y-8">
+
+      <!-- Detecção YOLO -->
+      <div>
+        <h3 class="text-lg font-semibold mb-4 text-accent-blue">🎯 Detecção YOLO</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+          <div>
+            <label class="block text-sm font-medium mb-2">
+              Confiança Mínima (0.0-1.0)
+              <span class="text-gray-400 text-xs ml-2">Quanto maior, menos detecções falsas</span>
+            </label>
+            <input type="number"
+                   step="0.01"
+                   min="0"
+                   max="1"
+                   name="conf_thresh"
+                   value="{{ config.conf_thresh }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">
+              Modelo YOLO
+              <span class="text-gray-400 text-xs ml-2">Arquivos .pt em yolo_models/</span>
+            </label>
+
+            <select name="model_path"
+                    class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+
+              {% for path in available_models %}
+                {% set filename = path.split('\\')[-1].split('/')[-1] %}
+                <option value="{{ path }}"
+                        {% if config.model_path == path %}selected="selected"{% endif %}>
+                  {{ filename }}
+                </option>
+              {% endfor %}
+
+            </select>
+
+            {% if not available_models %}
+              <p class="text-xs text-yellow-300 mt-2">
+                Nenhum .pt encontrado na pasta yolo_models/.
+              </p>
+            {% endif %}
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Performance -->
+      <div class="border-t border-dark-border pt-6">
+        <h3 class="text-lg font-semibold mb-4 text-accent-blue">⚡ Performance</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label class="block text-sm font-medium mb-2">
+              Largura do Frame (px)
+              <span class="text-gray-400 text-xs ml-2">Menor = mais FPS</span>
+            </label>
+            <input type="number"
+                   step="10"
+                   min="480"
+                   max="1920"
+                   name="target_width"
+                   value="{{ config.target_width }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">
+              Pular Frames (1 em cada N)
+              <span class="text-gray-400 text-xs ml-2">2 = metade</span>
+            </label>
+            <input type="number"
+                   min="1"
+                   max="10"
+                   name="frame_step"
+                   value="{{ config.frame_step }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+        </div>
+      </div>
+
+      <!-- Fonte de vídeo -->
+      <div class="border-t border-dark-border pt-6">
+        <h3 class="text-lg font-semibold mb-4 text-accent-blue">📹 Fonte de vídeo</h3>
+
+        <div>
+          <label class="block text-sm font-medium mb-2">
+            Source (0 = webcam / URL = IP cam)
+            <span class="text-gray-400 text-xs ml-2">Ex: 0 ou http://192.168.1.100:8080/video</span>
+          </label>
+
+          <input type="text"
+                 name="source"
+                 value="{{ config.get('source', '0') }}"
+                 placeholder="0  ou  http://192.168.1.100:8080/video"
+                 class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+
+          <p class="text-xs text-gray-400 mt-2">
+            💡 Para webcam use "0". Para IP Webcam use a URL completa com /video.
+          </p>
+        </div>
+
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div>
+            <label class="block text-sm font-medium mb-2">Webcam width</label>
+            <input type="number" name="cam_width" min="320" max="3840"
+                   value="{{ config.get('cam_width', 1280) }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">Webcam height</label>
+            <input type="number" name="cam_height" min="240" max="2160"
+                   value="{{ config.get('cam_height', 720) }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">Webcam FPS</label>
+            <input type="number" name="cam_fps" min="1" max="120"
+                   value="{{ config.get('cam_fps', 30) }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">Tracker</label>
+            <select name="tracker"
+                    class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+              <option value="botsort.yaml" {% if config.get('tracker','botsort.yaml') == 'botsort.yaml' %}selected="selected"{% endif %}>BoT-SORT</option>
+              <option value="bytetrack.yaml" {% if config.get('tracker','botsort.yaml') == 'bytetrack.yaml' %}selected="selected"{% endif %}>ByteTrack</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Zona segura (retângulo legado) -->
+      <div class="border-t border-dark-border pt-6">
+        <h3 class="text-lg font-semibold mb-4 text-accent-blue">🛡️ Zona Segura (retângulo legado)</h3>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {% set sz = config.safe_zone if config.safe_zone is iterable and config.safe_zone|length == 4 else [0,0,0,0] %}
+
+          <div>
+            <label class="block text-sm font-medium mb-2">X1 (esquerda)</label>
+            <input type="number" name="safe_zone_x1" value="{{ sz[0] }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">Y1 (topo)</label>
+            <input type="number" name="safe_zone_y1" value="{{ sz[1] }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">X2 (direita)</label>
+            <input type="number" name="safe_zone_x2" value="{{ sz[2] }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">Y2 (base)</label>
+            <input type="number" name="safe_zone_y2" value="{{ sz[3] }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+        </div>
+
+        <p class="mt-2 text-xs text-gray-500">
+          Para zonas poligonais múltiplas, use o modal <span class="font-semibold">Safe Zone Map &gt; Map</span> no dashboard.
+        </p>
+      </div>
+
+      <!-- Alertas -->
+      <div class="border-t border-dark-border pt-6">
+        <h3 class="text-lg font-semibold mb-4 text-accent-blue">📧 Alertas</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div>
+            <label class="block text-sm font-medium mb-2">Tempo Máximo Fora (segundos)</label>
+            <input type="number" step="0.5" min="1" max="60"
+                   name="max_out_time" value="{{ config.max_out_time }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">Cooldown E-mail (segundos)</label>
+            <input type="number" step="1" min="5" max="300"
+                   name="email_cooldown" value="{{ config.email_cooldown }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">Buffer Pré-Gravação (segundos)</label>
+            <input type="number" step="0.5" min="0" max="10"
+                   name="buffer_seconds" value="{{ config.get('buffer_seconds', 2.0) }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+        </div>
+      </div>
+
+      <!-- Servidor de E-mail -->
+      <div class="border-t border-dark-border pt-6">
+        <h3 class="text-lg font-semibold mb-4 text-accent-blue">📡 Servidor de E-mail (SMTP)</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label class="block text-sm font-medium mb-2">SMTP Server</label>
+            <input type="text" name="email_smtp_server"
+                  value="{{ config.get('email_smtp_server', 'smtp.gmail.com') }}"
+                  class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">SMTP Port</label>
+            <input type="number" name="email_smtp_port" min="1" max="65535"
+                  value="{{ config.get('email_smtp_port', 587) }}"
+                  class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">E-mail Remetente (FROM)</label>
+            <input type="email" name="email_from"
+                  value="{{ config.get('email_from', '') }}"
+                  class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">Usuário SMTP (login)</label>
+            <input type="text" name="email_user"
+                  value="{{ config.get('email_user', '') }}"
+                  class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">Senha / App Password</label>
+            <input type="password" name="email_password"
+                  value="{{ config.get('email_password', '') }}"
+                  class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+            <p class="text-xs text-gray-500 mt-1">
+              Use App Password (ex: Gmail) em vez da senha principal. [web:97]
+            </p>
+          </div>
+
+          <div class="flex items-center gap-6">
+            <label class="flex items-center gap-2">
+              <input type="checkbox" name="email_use_tls" class="checkbox checkbox-sm"
+                    {% if config.get('email_use_tls', '1') == '1' %}checked{% endif %}>
+              <span>Usar TLS</span>
+            </label>
+
+            <label class="flex items-center gap-2">
+              <input type="checkbox" name="email_use_ssl" class="checkbox checkbox-sm"
+                    {% if config.get('email_use_ssl', '0') == '1' %}checked{% endif %}>
+              <span>Usar SSL</span>
+            </label>
+          </div>
+        </div>
+
+        <p class="mt-2 text-xs text-gray-500">
+          Essas opções são editáveis apenas por administradores e serão usadas para todos os e-mails do sistema.
+        </p>
+      </div>
+
+
+      <!-- Zones (parâmetros inteligentes) -->
+      <div class="border-t border-dark-border pt-6">
+        <h3 class="text-lg font-semibold mb-4 text-accent-blue">⚙️ Zones</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div>
+            <label class="block text-sm font-medium mb-2">
+              Tempo zona vazia (s)
+              <span class="text-gray-400 text-xs ml-2">zone_empty_timeout</span>
+            </label>
+            <input type="number" step="1" min="1" max="600"
+                   name="zone_empty_timeout"
+                   value="{{ config.get('zone_empty_timeout', 10.0) }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">
+              Tempo zona cheia (s)
+              <span class="text-gray-400 text-xs ml-2">zone_full_timeout</span>
+            </label>
+            <input type="number" step="1" min="1" max="600"
+                   name="zone_full_timeout"
+                   value="{{ config.get('zone_full_timeout', 20.0) }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">
+              Limite zona cheia (itens)
+              <span class="text-gray-400 text-xs ml-2">zone_full_threshold</span>
+            </label>
+            <input type="number" step="1" min="1" max="100"
+                   name="zone_full_threshold"
+                   value="{{ config.get('zone_full_threshold', 5) }}"
+                   class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-blue text-white">
+          </div>
+        </div>
+
+        <p class="mt-2 text-xs text-gray-500">
+          Se <span class="font-semibold">count == 0</span> por mais que <span class="font-semibold">zone_empty_timeout</span>,
+          a zona entra em estado <span class="font-semibold">EMPTY_LONG</span>. Se
+          <span class="font-semibold">count ≥ zone_full_threshold</span> por mais que
+          <span class="font-semibold">zone_full_timeout</span>, entra em <span class="font-semibold">FULL_LONG</span>.
+        </p>
+      </div>
+
+      <div class="pt-4 flex flex-wrap gap-4 items-center">
+        <button type="submit"
+                class="bg-accent-blue hover:bg-blue-600 text-white font-bold px-8 py-3 rounded-lg transition">
+          💾 Salvar Configurações
+        </button>
+        
+        <a href="{{ url_for('diagnostics') }}"
+           class="bg-purple-700 hover:bg-purple-800 text-white font-bold px-8 py-3 rounded-lg transition inline-flex items-center gap-2">
+          🔍 Diagnóstico do Banco
+        </a>
+        
+        <p class="text-sm text-gray-400 w-full mt-2">
+          ⚠️ Reinicie o stream para aplicar mudanças de câmera.
+        </p>
+      </div>
+
+
+    </form>
+  </div>
+
+  <div class="mt-6 bg-dark-card rounded-2xl p-6">
+    <h3 class="text-lg font-semibold mb-3">📊 Valores Atuais</h3>
+
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+      <div>
+        <p class="text-gray-400">Confiança</p>
+        <p class="font-bold text-accent-blue">{{ config.conf_thresh }}</p>
+      </div>
+
+      <div>
+        <p class="text-gray-400">Modelo</p>
+        <p class="font-bold text-accent-blue">{{ config.model_path }}</p>
+      </div>
+
+      <div>
+        <p class="text-gray-400">Largura Frame</p>
+        <p class="font-bold text-accent-blue">{{ config.target_width }}px</p>
+      </div>
+
+      <div>
+        <p class="text-gray-400">Frame Step</p>
+        <p class="font-bold text-accent-blue">1/{{ config.frame_step }}</p>
+      </div>
+
+      <div>
+        <p class="text-gray-400">Tempo Fora Max</p>
+        <p class="font-bold text-accent-blue">{{ config.max_out_time }}s</p>
+      </div>
+
+      <div>
+        <p class="text-gray-400">Cooldown Email</p>
+        <p class="font-bold text-accent-blue">{{ config.email_cooldown }}s</p>
+      </div>
+
+      <div>
+        <p class="text-gray-400">Safe Zone</p>
+        <p class="font-bold text-accent-blue">{{ config.safe_zone }}</p>
+      </div>
+
+      <div>
+        <p class="text-gray-400">Buffer</p>
+        <p class="font-bold text-accent-blue">{{ config.get('buffer_seconds', 2.0) }}s</p>
+      </div>
+
+      <div>
+        <p class="text-gray-400">Source</p>
+        <p class="font-bold text-accent-blue">{{ config.get('source', '0') }}</p>
+      </div>
+
+      <div>
+        <p class="text-gray-400">Webcam</p>
+        <p class="font-bold text-accent-blue">
+          {{ config.get('cam_width', 1280) }}x{{ config.get('cam_height', 720) }} @ {{ config.get('cam_fps', 30) }}
+        </p>
+      </div>
+
+      <div>
+        <p class="text-gray-400">Tracker</p>
+        <p class="font-bold text-accent-blue">{{ config.get('tracker', 'botsort.yaml') }}</p>
+      </div>
+
+      <div>
+        <p class="text-gray-400">Zone empty timeout</p>
+        <p class="font-bold text-accent-blue">{{ config.get('zone_empty_timeout', 10.0) }}s</p>
+      </div>
+
+      <div>
+        <p class="text-gray-400">Zone full timeout</p>
+        <p class="font-bold text-accent-blue">{{ config.get('zone_full_timeout', 20.0) }}s</p>
+      </div>
+
+      <div>
+        <p class="text-gray-400">Zone full threshold</p>
+        <p class="font-bold text-accent-blue">{{ config.get('zone_full_threshold', 5) }}</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

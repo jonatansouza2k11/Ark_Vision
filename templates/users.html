@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Usuários - Ark{% endblock %}
+
+{% block page_content %}
+
+<header class="bg-dark-card border-b border-dark-border px-8 py-4">
+  <h1 class="text-2xl font-bold">Gerenciar Usuários</h1>
+  <p class="text-sm text-gray-400 mt-1">Apenas administradores</p>
+</header>
+
+<div class="p-6">
+  <div class="bg-dark-card rounded-2xl p-6">
+
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-xl font-semibold">Lista de Usuários</h2>
+      <a href="{{ url_for('register') }}"
+         class="px-4 py-2 bg-accent-blue hover:bg-blue-600 rounded-lg text-sm font-semibold transition">
+        + Novo Usuário
+      </a>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-left">
+        <thead class="border-b border-dark-border">
+          <tr class="text-gray-400 text-sm">
+            <th class="pb-3">ID</th>
+            <th class="pb-3">Usuário</th>
+            <th class="pb-3">E-mail</th>
+            <th class="pb-3">Função</th>
+            <th class="pb-3">Criado em</th>
+            <th class="pb-3">Último Login</th>
+          </tr>
+        </thead>
+        <tbody class="text-sm">
+          {% for usr in users %}
+            <tr class="border-b border-dark-border hover:bg-dark-bg transition">
+              <td class="py-3">{{ usr[0] }}</td>
+              <td class="py-3 font-semibold">{{ usr[1] }}</td>
+              <td class="py-3">{{ usr[2] }}</td>
+              <td class="py-3">
+                {% if usr[3] == 'admin' %}
+                  <span class="px-2 py-1 bg-accent-blue rounded text-xs font-semibold">Admin</span>
+                {% else %}
+                  <span class="px-2 py-1 bg-gray-700 rounded text-xs">User</span>
+                {% endif %}
+              </td>
+              <td class="py-3">{{ usr[4] }}</td>
+              <td class="py-3">
+                {% if usr[5] %}
+                  {{ usr[5] }}
+                {% else %}
+                  <span class="text-gray-500">Nunca</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

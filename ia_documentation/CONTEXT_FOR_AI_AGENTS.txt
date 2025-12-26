@@ -1,0 +1,655 @@
+================================================================================
+                    ARK YOLO - CONTEXTO COMPLETO PARA AGENTES IA
+================================================================================
+
+PROJETO: Sistema de Monitoramento com IA (Detecção + Rastreamento)
+LINGUAGEM: Python 3.10+
+FRAMEWORK: Flask (Web) + YOLOv8/v11 (IA)
+DATA: Dezembro 2025
+VERSAO: 1.0
+
+================================================================================
+                              1. VISAO GERAL
+================================================================================
+
+O QUE EH:
+  ARK YOLO eh um sistema de MONITORAMENTO EM TEMPO REAL de pessoas usando:
+  - YOLOv8/v11 para deteccao de pessoas
+  - BoT-SORT para rastreamento multi-objeto (manter ID da mesma pessoa)
+  - Safe Zones (areas poligonais de interesse)
+  - Alertas automaticos por email quando pessoas saem da zona
+
+PARA QUE SERVE:
+  Detectar quando pessoas saem de uma area segura por tempo prolongado
+  e enviar alertas por email
+
+EXEMPLOS DE USO:
+  - Monitorar gerentes em fabrica
+  - Vigilancia de areas restritas
+  - Rastreamento de equipes de resgate
+  - Monitoramento de visitantes em predios
+
+ARQUITETURA EM 3 CAMADAS:
+
+  Camada 1: APRESENTACAO (app.py - 814 linhas)
+  ├─ Flask web server
+  ├─ Routes: /login, /dashboard, /video_feed, /settings
+  ├─ Autenticacao e sessoes
+  └─ Interface web (templates HTML + CSS)
+
+  Camada 2: VISAO (yolo.py - 810 linhas)
+  ├─ YOLOVisionSystem class (principal)
+  ├─ Deteccao: YOLO (ultralytics)
+  ├─ Rastreamento: BoT-SORT
+  ├─ Processamento de zonas
+  └─ Gravacao de videos de alerta
+
+  Camada 3: DADOS (database.py - 148 linhas)
+  ├─ SQLite (cv_system.db)
+  ├─ Tabelas: users, alerts, settings, system_logs
+  ├─ Autenticacao com bcrypt
+  └─ Configuracoes dinamicas
+
+COMPLEMENTOS:
+  - zones.py: Geometria de poligonos (detectar ponto em zona)
+  - notifications.py: Email SMTP com anexos
+  - auth.py: Decoradores @login_required, @admin_required
+
+================================================================================
+                        2. COMPONENTES TECNICOS
+================================================================================
+
+A) YOLO (Deteccao)
+   ─────────────────
+   
+   Funcao: Detectar pessoas em um frame de video
+   
+   Modelos disponiveis (em yolo_models/):
+   - yolov8n.pt    ← Nano (rapido, menos preciso) ⭐ PADRAO
+   - yolov8s.pt    ← Small
+   - yolov8m.pt    ← Medium
+   - yolov8l.pt    ← Large
+   - yolov8x.pt    ← Extra-Large (lento, muito preciso)
+   - yolov11n.pt   ← v11 Nano (mais rapido que v8)
+   - yolov11l.pt   ← v11 Large
+   
+   Parametros principais:
+   - conf_thresh: 0.85 (85% de confianca minima)
+   - source: 0 (webcam) ou "rtsp://..." (IP camera)
+   
+   Uso:
+   ```
+   from ultralytics import YOLO
+   model = YOLO("yolo_models/yolov8n.pt")
+   results = model(frame, conf=0.85)
+   for r in results:
+       for box in r.boxes:
+           x1, y1, x2, y2 = box.xyxy
+   ```
+
+B) BoT-SORT (Rastreamento)
+   ────────────────────────
+   
+   Funcao: Associar mesma pessoa entre frames com ID consistente
+   
+   Arquivo config: botsort_reid.yaml
+   
+   Uso:
+   ```
+   results = model.track(frame, persist=True, tracker="botsort.yaml")
+   for r in results:
+       for box in r.boxes:
+           track_id = box.id  # ID unico da pessoa
+   ```
+   
+   O que faz:
+   - Associa deteccoes entre frames (kalman filter)
+   - Mantém ID mesmo se pessoa sair de quadro por tempo
+   - Com persist=True, nunca reutiliza IDs na mesma sessao
+
+C) ZONAS (Geometria)
+    ────────────────
+    
+    Funcao: Definir areas poligonais e testar se ponto esta dentro
+    
+    Arquivo: zones.py (ZoneManager class)
+    
+    Zonas predefinidas:
+    - "entrada":      Retangulo na base (entrada/saida)
+    - "corredor_esq": Corredor vertical a esquerda
+    - "elevador_1":   Faixa vertical (simula elevador)
+    - "elevador_2":   Idem
+    - "elevador_3":   Idem
+    - "elevador_4":   Idem
+    
+    Uso:
+    ```
+    zm = ZoneManager(target_width=1280)
+    zona = zm.point_zone(xc, yc)  # Retorna nome da zona ou None
+    
+    if zona == "entrada":
+        # Pessoa na zona entrada
+    elif zona is None:
+        # Pessoa fora de todas as zonas
+    ```
+
+D) CAMERAS SUPORTADAS
+    ──────────────────
+    
+    Webcam local:
+    SOURCE = 0  # Webcam padrao
+    SOURCE = 1  # Segunda webcam
+    
+    IP Camera RTSP:
+    SOURCE = "rtsp://user:pass@192.168.1.100:554/stream"
+    
+    IP Camera HTTP:
+    SOURCE = "http://192.168.1.100:8080/video"
+
+E) EMAILS
+   ──────
+   
+   Arquivo: notifications.py (Notifier class)
+   
+   Protocolo: SMTP com TLS (porta 587)
+   Servidor padrao: smtp.gmail.com
+   
+   Importante para Gmail:
+   - NÃO use sua senha normal do Gmail
+   - Gere "App Password" em: https://myaccount.google.com/apppasswords
+   - Use esse password no settings
+   
+   Uso:
+   ```
+   notifier = Notifier(smtp_server, smtp_port, from_email, password)
+   notifier.send_email(to_email, subject, body, attachments=[])
+   notifier.send_email_background(...)  # Assincrono (thread)
+   ```
+
+================================================================================
+                        3. DATABASE SCHEMA
+================================================================================
+
+Banco de dados: cv_system.db (SQLite)
+
+TABELA: users
+──────────────
+  id              INTEGER PRIMARY KEY
+  username        TEXT UNIQUE (ex: "admin")
+  email           TEXT UNIQUE (ex: "admin@example.com")
+  password_hash   TEXT (bcrypt via werkzeug)
+  role            TEXT ("user" ou "admin")
+  created_at      TIMESTAMP
+  last_login      TIMESTAMP
+
+TABELA: alerts
+──────────────
+  id              INTEGER PRIMARY KEY
+  person_id       INTEGER (track_id)
+  out_time        REAL (segundos fora da zona)
+  snapshot_path   TEXT (caminho para foto)
+  email_sent      INTEGER (1 ou 0)
+  timestamp       TIMESTAMP
+
+TABELA: settings (MUITO IMPORTANTE)
+────────────────────────────────────
+  key             TEXT PRIMARY KEY
+  value           TEXT
+
+  Configuracoes principais:
+  
+  # YOLO
+  conf_thresh          "0.85"
+  model_path           "yolo_models\yolov8n.pt"
+  target_width         "1280"          (dimensao para redimensionar)
+  frame_step           "1"             (processar cada 1 frame, ou 2, 3...)
+  
+  # Zona
+  safe_zone            "(400,100,700,600)"  (retangulo x1,y1,x2,y2)
+  max_out_time         "5.0"           (segundos para alerta)
+  zone_empty_timeout   "10.0"
+  zone_full_threshold  "5"
+  
+  # Camera
+  source               "0"             (0=webcam, ou URL IP)
+  cam_fps              "30"
+  cam_height           "720"
+  cam_width            "1280"
+  
+  # Email
+  email_smtp_server    "smtp.gmail.com"
+  email_smtp_port      "587"
+  email_use_tls        "1"
+  email_user           "seu_email@gmail.com"
+  email_password       "sua_app_password"
+  email_cooldown       "10.0"          (espera 10s entre emails)
+  
+  # Tracker
+  tracker              "botsort.yaml"
+
+TABELA: system_logs
+────────────────────
+  id              INTEGER PRIMARY KEY
+  action          TEXT ("PAUSE", "RESUME", "START", "STOP")
+  username        TEXT
+  reason          TEXT
+  email_sent      INTEGER
+  timestamp       TIMESTAMP
+
+================================================================================
+                        4. ESTADO DO SISTEMA
+================================================================================
+
+O CORAÇÃO DO SISTEMA: track_state dictionary
+
+Estrutura:
+```
+self.track_state = {
+    track_id: {
+        "last_seen": 0.0,           # Quando visto pela ultima vez
+        "status": "IN" | "OUT",      # Dentro ou fora da safe zone
+        "out_time": 5.2,             # Quantos segundos fora da zona
+        "video_writer": obj,         # Gravador de video (H.264)
+        "video_path": "alertas/42_timestamp.avi",
+        "recording": True,           # Gravando agora?
+        "buffer": deque(40 frames),  # Buffer circular (pre-gravacao 2s)
+        "zone_idx": 0,               # Qual zona (indice)
+    }
+}
+```
+
+Exemplo de track_state com 3 pessoas rastreadas:
+```
+42: {"status": "OUT", "out_time": 5.2, "recording": True, ...}
+43: {"status": "IN",  "out_time": 0.0, "recording": False, ...}
+44: {"status": "OUT", "out_time": 12.1, "recording": True, ...}
+```
+
+Logica de atualizacao:
+1. YOLO detecta pessoa em bbox [x1,y1,x2,y2]
+2. BoT-SORT atribui track_id (mesmo pessoa = mesmo ID)
+3. Sistema calcula centro: xc = (x1+x2)/2, yc = (y1+y2)/2
+4. Verifica se (xc, yc) esta dentro safe_zone
+5. Se SIM (IN):
+   - status = "IN"
+   - out_time = 0.0 (reseta)
+6. Se NAO (OUT):
+   - Se status era "IN": transicao, zera out_time
+   - Se status era "OUT": incrementa out_time += delta_time
+7. Se out_time > max_out_time E cooldown passou:
+   - ALERTA! Enviar email
+   - Salvar video
+   - Log no banco
+
+================================================================================
+                        5. FLUXO DE UM FRAME
+================================================================================
+
+1. CAPTURA
+   cap.read() → frame bruto (1280x720)
+
+2. PRE-PROCESSAMENTO
+   - Resize preservando aspect ratio
+   - Flip horizontal (camera espelhada)
+   - Converter BGR para RGB (se necessario)
+
+3. DETECCAO YOLO
+   results = model(frame, conf=0.85)
+   bbox = [x1, y1, x2, y2, conf, class_id]
+
+4. RASTREAMENTO BoT-SORT
+   results = model.track(frame, persist=True)
+   bbox + track_id
+
+5. PROCESSAMENTO POR PESSOA
+   for track_id, bbox in deteccoes:
+       xc, yc = center(bbox)
+       in_zone = zm.point_zone(xc, yc)
+       atualizar track_state[track_id]
+       
+       if out_time > max_out_time:
+           ALERTA!
+
+6. ALERTA (se necessario)
+   - Pausar buffer circular
+   - Salvar video
+   - Tirar snapshot
+   - Log no banco
+   - Enviar email (thread background)
+
+7. GRAVACAO (se recording==True)
+   frame → H.264 → arquivo .avi
+
+8. STREAMING PARA CLIENTE
+   frame → JPEG → MJPEG boundary headers → Cliente
+   b'--frame\r\n' + jpeg_bytes + b'\r\n'
+
+================================================================================
+                        6. COMO EXECUTAR
+================================================================================
+
+PRE-REQUISITOS:
+- Python 3.10+
+- Pip
+- Venv (recomendado)
+
+PASSO 1: PREPARACAO
+  cd d:\Archivos\Downloads\Edx\IA\CV\OpenCV
+  
+  # Ativar virtual environment
+  cv_env\Scripts\Activate.ps1  (Windows)
+  # ou
+  source cv_env/bin/activate  (Linux/Mac)
+
+PASSO 2: DEPENDENCIAS
+  pip install -r requeriments.txt
+  
+  Principais:
+  - ultralytics (YOLO)
+  - opencv-python (cv2)
+  - flask
+  - numpy
+
+PASSO 3: BANCO DE DADOS
+  python -c "from database import init_db; init_db()"
+  
+  Cria: cv_system.db com tabelas + configs padrao
+
+PASSO 4: INICIAR SISTEMA
+  python app.py
+  
+  Vai abrir em http://localhost:5000
+
+PASSO 5: ACESSAR INTERFACE
+  Browser: http://localhost:5000
+  
+  - Se primeira vez: Create account em /register
+  - Login
+  - Dashboard com video ao vivo
+
+================================================================================
+                        7. CONFIGURACAO DINAMICA
+================================================================================
+
+Toda configuracao em "settings" table pode ser mudada:
+1. Na interface web em /settings (requer admin)
+2. Diretamente no banco SQL (se souber SQL)
+
+MUDANCAS SAO INSTANTANEAS no proximo frame, SEM REINICIAR!
+
+Principais configs:
+
+conf_thresh (0.0-1.0)
+  - Quanto maior, mais confiante precisa ser YOLO
+  - 0.85 = 85% de confianca minima
+  - Reduza se nao detecta (0.70)
+  - Aumente se tem falsos positivos (0.90)
+
+max_out_time (segundos)
+  - Quanto tempo pessoa pode ficar fora da zona
+  - 5.0 = 5 segundos
+  - Reduza para alertar mais rapido
+  - Aumente para alertar menos
+
+safe_zone
+  - Formato: "(x1, y1, x2, y2)" em pixels
+  - Exemplo: "(400, 100, 700, 600)"
+  - x1,y1 = canto superior esquerdo
+  - x2,y2 = canto inferior direito
+
+target_width
+  - Dimensao para redimensionar frame
+  - 1280 = padrao (mais preciso)
+  - 640 = mais rapido
+  - Ajuste de acordo com FPS desejado
+
+frame_step
+  - Processar cada N frames
+  - 1 = cada frame
+  - 2 = cada 2 frames (2x mais rapido)
+  - Usar > 1 para ganhar FPS
+
+model_path
+  - Qual modelo YOLO usar
+  - Padrao: "yolo_models\yolov8n.pt"
+  - Mude para "yolo_models\yolov8l.pt" para mais precisao
+  - Cada mudanca requer restart!
+
+email_*
+  - email_user: seu email Gmail
+  - email_password: app password (NAO senha do Gmail)
+  - Gere em: https://myaccount.google.com/apppasswords
+
+================================================================================
+                        8. PRINCIPAIS ARQUIVOS
+================================================================================
+
+app.py (814 linhas)
+  - Flask server principal
+  - Routes: /login, /dashboard, /video_feed, /settings
+  - Autenticacao e gerencia de sessoes
+  - Interface web
+
+yolo.py (810 linhas)
+  - YOLOVisionSystem class (coração do sistema)
+  - Deteccao YOLO + BoT-SORT tracking
+  - Processamento de zonas
+  - Gravacao de videos
+  - Geracao de frames em MJPEG
+
+database.py (148 linhas)
+  - SQLite operations
+  - Autenticacao (bcrypt)
+  - CRUD de alertas
+  - Leitura/escrita de settings
+
+zones.py (143 linhas)
+  - ZoneManager class
+  - Definicao de zonas poligonais
+  - Teste de ponto em poligono
+
+notifications.py (112 linhas)
+  - Notifier class
+  - Envio de emails SMTP
+  - Suporte a anexos
+
+auth.py (36 linhas)
+  - @login_required decorator
+  - @admin_required decorator
+
+templates/ (8 arquivos HTML)
+  - base.html: Layout principal
+  - dashboard.html: Interface principal
+  - settings.html: Configuracoes (admin)
+  - login.html / register.html: Autenticacao
+  - logs.html: Historico de alertas
+  - users.html: Gerenciar usuarios (admin)
+  - diagnostics.html: Info de sistema
+
+botsort_reid.yaml
+  - Configuracao do tracker BoT-SORT
+  - Parametros de Kalman filter
+
+yolo_models/
+  - Arquivos .pt com pesos treinados
+  - Copie novos modelos aqui
+
+alertas/
+  - Pasta onde ficam videos e snapshots de alerta
+  - Estrutura: alertas/track_id_timestamp.*
+
+requeriments.txt
+  - Dependencias Python
+  - pip install -r requeriments.txt
+
+================================================================================
+                        9. EXTENSOES COMUNS
+================================================================================
+
+ADICIONAR NOVA CONFIGURACAO
+──────────────────────────
+1. templates/settings.html:
+   <input name="minha_config" value="{{ minha_config }}">
+
+2. app.py rota /settings:
+   set_setting("minha_config", request.form.get("minha_config"))
+
+3. yolo.py:
+   config = self._load_initial_config()
+   valor = config.get("minha_config", "default")
+   # Use em: self.minha_config = valor
+
+ADICIONAR NOVA ZONA
+───────────────────
+1. zones.py ZoneManager.__init__:
+   self.zones["minha_zona"] = np.array([
+       [x1, y1],
+       [x2, y2],
+       [x3, y3],
+       [x4, y4],
+   ], dtype=np.int32)
+
+2. yolo.py process_detection():
+   zona = zm.point_zone(xc, yc)
+   if zona == "minha_zona":
+       # Logica especial
+
+ADICIONAR NOVO ALERTA
+─────────────────────
+yolo.py process_detection():
+   if condicao_especial:
+       self.notifier.send_email_background(
+           to=email,
+           subject="Alerta",
+           body="Algo aconteceu",
+           attachments=[snapshot_path]
+       )
+
+MUDAR MODELO YOLO
+─────────────────
+Opcao 1 (com restart):
+   yolo.py linha 25:
+   MODEL_PATH = "yolo_models\\yolov11l.pt"
+   # Restart python app.py
+
+Opcao 2 (sem restart):
+   /settings → mude "model_path"
+   Proximo frame ja usa novo modelo
+
+================================================================================
+                        10. TROUBLESHOOTING
+================================================================================
+
+"ImportError: No module named 'ultralytics'"
+  pip install ultralytics
+
+Camera nao abre / "Cannot open camera"
+  - Tente: SOURCE = 1 (ou 2, 3...)
+  - Ou: SOURCE = "rtsp://user:pass@ip/stream"
+  - Teste: python -c "import cv2; cap = cv2.VideoCapture(0); print(cap.isOpened())"
+
+Alertas nao enviam / "SMTP Connection Error"
+  - Verifique email_smtp_server e porta
+  - Gmail requer App Password (NAO senha normal)
+  - Gere em: https://myaccount.google.com/apppasswords
+
+Pessoa detectada, mas nao alerta
+  - conf_thresh muito alto? (reduza para 0.70)
+  - max_out_time muito alto? (reduza para 3.0)
+  - Safe zone cobre a pessoa? (check dashboard)
+
+Video muito lento / FPS baixo
+  - Use modelo menor: yolov8n.pt
+  - Reduza target_width para 640
+  - Aumente frame_step para 2 ou 3
+
+"Database is locked"
+  - Feche TODAS instancias do Flask
+  - Aguarde 10s
+  - Restart: python app.py
+
+Banco corrompido / erros SQLite
+  - Delete cv_system.db
+  - Execute: python -c "from database import init_db; init_db()"
+
+================================================================================
+                        11. SEGURANCA
+================================================================================
+
+PROBLEMAS CONHECIDOS:
+
+1. Email em banco de dados
+   - Nao eh ideal ter credenciais no banco
+   - Melhoria: Use variaveis de ambiente
+
+2. SECRET_KEY no codigo
+   - Atualmente: hardcoded em app.py
+   - Melhoria: Use os.environ.get("ARK_SECRET_KEY")
+
+3. Sem HTTPS em producao
+   - Desenvolvimento OK com HTTP
+   - Em producao: Use Nginx + Let's Encrypt
+
+4. Sem rate limiting
+   - Nao ha proteccao contra brute force
+   - Melhoria: Instale Flask-Limiter
+
+5. Database sem backup
+   - Nenhum mecanismo de backup automatico
+   - Melhoria: Copie cv_system.db periodicamente
+
+================================================================================
+                        12. REFERENCIA PARA AGENTES IA
+================================================================================
+
+IMPORTS PRINCIPAIS:
+  from yolo import get_vision_system
+  from database import get_setting, set_setting, log_alert
+  from notifications import Notifier
+  from zones import ZoneManager
+  from flask import Flask, session, request
+
+PADROES USADOS:
+  - Singleton para YOLOVisionSystem (get_vision_system())
+  - Decoradores para autenticacao (@login_required)
+  - Track state como dicionario defaultdict
+  - Settings como key-value no banco (dinamico)
+  - Zonas como poligonos numpy (pointPolygonTest)
+
+DADOS IMPORTANTES:
+  - track_id eh chave do estado de rastreamento
+  - out_time sempre em SEGUNDOS (float)
+  - Coordenadas sao no espaco do frame REDIMENSIONADO
+  - Safe zone pode ser JSON ou tupla (parse em parse_safe_zone)
+  - Email eh assincrono (use threading para nao travar video)
+
+COMPORTAMENTOS ESPERADOS:
+  - Primeira deteccao: cria entrada em track_state
+  - Quando sai zona: start timer out_time
+  - Quando volta zona: reset timer
+  - Se out_time > max_out_time: alerta (com cooldown)
+  - Gravacao circular: 2s antes + durante saida
+
+================================================================================
+                        CONCLUSAO
+================================================================================
+
+Este documento descreve 100% da arquitetura do ARK YOLO.
+
+Use quando:
+- Comunicar projeto para outro agente IA
+- Onboarding de novo desenvolvedor
+- Documentar mudancas
+- Planejar novas features
+
+Atualize quando:
+- Mudar arquitetura
+- Adicionar tabela ao banco
+- Mudar fluxo principal
+- Adicionar dependencia
+
+Versao: 1.0
+Data: Dezembro 2025
+Formato: TXT puro (maxima compatibilidade)
+
+================================================================================
