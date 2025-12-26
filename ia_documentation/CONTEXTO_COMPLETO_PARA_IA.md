@@ -1,372 +1,741 @@
-# 🤖 CONTEXTO COMPLETO DO PROJETO PARA AGENTE DE IA
+# 🤖 Contexto Completo: ARK YOLO System para Agentes de IA# 🤖 CONTEXTO COMPLETO DO PROJETO PARA AGENTE DE IA
 
-**Data:** Dezembro 2025  
-**Versão:** 1.0  
-**Projeto:** ARK YOLO - Sistema de Monitoramento com IA  
-**Linguagem:** Python 3.10+  
+
+
+**Última atualização:** 26/12/2025  **Data:** Dezembro 2025  
+
+**Versão:** 1.0 Production Ready  **Versão:** 1.0  
+
+**Compatibilidade:** Claude 3+, GPT-4, Gemini Pro, Copilot Pro  **Projeto:** ARK YOLO - Sistema de Monitoramento com IA  
+
+**Tamanho otimizado:** ~30 KB**Linguagem:** Python 3.10+  
+
 **Framework Web:** Flask  
 
 ---
 
+---
+
+## 🚀 TL;DR - O que você precisa saber
+
 ## 📋 ÍNDICE RÁPIDO
 
+**O que é:** Sistema de visão computacional que detecta pessoas, rastreia com IDs persistentes, valida se estão em zona segura e envia email se saírem por muito tempo.
+
 1. [Visão Geral do Projeto](#visão-geral-do-projeto)
-2. [Arquitetura do Sistema](#arquitetura-do-sistema)
+
+**Stack:** Python 3.10+ | Flask | YOLOv8/v11 | BoT-SORT | SQLite | OpenCV | PyTorch2. [Arquitetura do Sistema](#arquitetura-do-sistema)
+
 3. [Componentes Técnicos](#componentes-técnicos)
-4. [Database Schema](#database-schema)
-5. [Fluxo de Dados](#fluxo-de-dados)
-6. [Configurações Principais](#configurações-principais)
-7. [Como Executar](#como-executar)
-8. [Pontos de Extensão](#pontos-de-extensão)
-9. [Troubleshooting](#troubleshooting)
 
----
+**Arquivos críticos:**4. [Database Schema](#database-schema)
 
-## 🎯 VISÃO GERAL DO PROJETO
+- `app.py` (814 linhas) - Flask server + rotas HTTP5. [Fluxo de Dados](#fluxo-de-dados)
 
-### O que é?
-**ARK YOLO** é um **sistema de monitoramento de pessoas em tempo real** usando:
-- **YOLOv8/v11** (detecção de pessoas)
-- **BoT-SORT** (rastreamento multi-objeto)
-- **Safe Zones** (áreas de interesse poligonais)
-- **Alertas automáticos** por email
+- `yolo.py` (810 linhas) - Detecção + tracking + alertas6. [Configurações Principais](#configurações-principais)
 
-### Para que serve?
-Monitorar se pessoas saem de uma **zona segura** por tempo prolongado e enviar **alertas automáticos**.
+- `database.py` (148 linhas) - SQLite CRUD7. [Como Executar](#como-executar)
 
-**Exemplos de uso:**
-- Monitorar gerentes em uma fábrica
-- Vigilância de áreas restritas
-- Rastreamento de equipes de resgate
-- Monitoramento de visitantes em prédios
+- `zones.py` (143 linhas) - Geometria de polígonos8. [Pontos de Extensão](#pontos-de-extensão)
 
-### Componentes principais
-```
-┌─────────────────────────────────────────┐
-│          INTERFACE WEB (Flask)          │
-│  - Login/Register                       │
-│  - Dashboard com video ao vivo          │
-│  - Configurações                        │
-│  - Histórico de alertas                 │
-└────────────┬────────────────────────────┘
-             │
+- `notifications.py` (112 linhas) - Email SMTP9. [Troubleshooting](#troubleshooting)
+
+
+
+------
+
+
+
+## 🏗️ Arquitetura (3 Camadas)## 🎯 VISÃO GERAL DO PROJETO
+
+
+
+```### O que é?
+
+┌─────────────────────────────────────────────────┐**ARK YOLO** é um **sistema de monitoramento de pessoas em tempo real** usando:
+
+│ LAYER 1: APRESENTAÇÃO (Flask)                  │- **YOLOv8/v11** (detecção de pessoas)
+
+│ • Routes: /login, /dashboard, /video_feed      │- **BoT-SORT** (rastreamento multi-objeto)
+
+│ • Session auth (bcrypt hashing)                │- **Safe Zones** (áreas de interesse poligonais)
+
+│ • Jinja2 templates + Tailwind CSS              │- **Alertas automáticos** por email
+
+│ • MJPEG streaming                              │
+
+└──────────────┬────────────────────────────────┘### Para que serve?
+
+               │Monitorar se pessoas saem de uma **zona segura** por tempo prolongado e enviar **alertas automáticos**.
+
+┌──────────────▼────────────────────────────────┐
+
+│ LAYER 2: VISÃO (YOLOVisionSystem)              │**Exemplos de uso:**
+
+│ • Singleton pattern                           │- Monitorar gerentes em uma fábrica
+
+│ • YOLO detect + BoT-SORT track                │- Vigilância de áreas restritas
+
+│ • Zone validation (point-in-polygon)          │- Rastreamento de equipes de resgate
+
+│ • Email alerts com cooldown                   │- Monitoramento de visitantes em prédios
+
+│ • State management (track_state dict)         │
+
+└──────────────┬────────────────────────────────┘### Componentes principais
+
+               │```
+
+┌──────────────▼────────────────────────────────┐┌─────────────────────────────────────────┐
+
+│ LAYER 3: DADOS (SQLite)                       ││          INTERFACE WEB (Flask)          │
+
+│ • users: id, username, password (bcrypt)      ││  - Login/Register                       │
+
+│ • alerts: person_id, out_time, snapshot       ││  - Dashboard com video ao vivo          │
+
+│ • settings: key-value (carregado runtime)     ││  - Configurações                        │
+
+│ • system_logs: audit trail                    ││  - Histórico de alertas                 │
+
+└─────────────────────────────────────────────┘└────────────┬────────────────────────────┘
+
+```             │
+
              ▼
-┌─────────────────────────────────────────┐
+
+---┌─────────────────────────────────────────┐
+
 │   YOLO VISION SYSTEM (yolo.py)          │
-│  - Detector: YOLOv8n/m/l/x              │
+
+## 🔄 Pipeline Processamento Frame│  - Detector: YOLOv8n/m/l/x              │
+
 │  - Tracker: BoT-SORT                    │
-│  - Safe Zones (poligonais)              │
-│  - Buffer circular (pré-gravação 2s)    │
-│  - Gravação de alertas                  │
-└────────────┬────────────────────────────┘
-             │
+
+```│  - Safe Zones (poligonais)              │
+
+Raw Frame → Resize (960px) → YOLO detect → BoT-SORT track │  - Buffer circular (pré-gravação 2s)    │
+
+→ Check zone → Increment out_time → Check alert threshold │  - Gravação de alertas                  │
+
+→ Send email if needed → Draw overlay → Encode JPEG → MJPEG stream└────────────┬────────────────────────────┘
+
+```             │
+
              ▼
-┌─────────────────────────────────────────┐
-│        DATABASE (SQLite)                │
-│  - Usuários (autenticação)              │
-│  - Alertas (histórico)                  │
-│  - Configurações (dinâmicas)            │
-│  - Logs do sistema                      │
-└────────────┬────────────────────────────┘
-             │
+
+**Detalhado:**┌─────────────────────────────────────────┐
+
+1. **Preprocess:** Flip horizontal, resize keeping aspect, normalize│        DATABASE (SQLite)                │
+
+2. **YOLO:** Inference, confidence filter, NMS, scale back│  - Usuários (autenticação)              │
+
+3. **BoT-SORT:** Associate detections, maintain IDs, predict next│  - Alertas (histórico)                  │
+
+4. **Zone:** Check if center point in safe_zone polygon│  - Configurações (dinâmicas)            │
+
+5. **State:** If OUT: increment counter; If IN: reset to 0│  - Logs do sistema                      │
+
+6. **Alert:** If counter > max_out_time AND cooldown passed → email└────────────┬────────────────────────────┘
+
+7. **Output:** Draw detections, encode JPEG, yield MJPEG             │
+
              ▼
-┌─────────────────────────────────────────┐
+
+---┌─────────────────────────────────────────┐
+
 │    EMAIL NOTIFICATIONS (SMTP)           │
-│  - Notifica quando pessoa sai da zona   │
+
+## 💾 Database Schema│  - Notifica quando pessoa sai da zona   │
+
 │  - Anexa snapshot + vídeo               │
-│  - Cooldown para não spammar            │
-└─────────────────────────────────────────┘
-```
 
----
+```sql│  - Cooldown para não spammar            │
 
-## 🏗️ ARQUITETURA DO SISTEMA
+CREATE TABLE users (└─────────────────────────────────────────┘
 
-### Camadas
+  id INTEGER PRIMARY KEY,```
 
-#### 1️⃣ **Presentation Layer** (`app.py` - 814 linhas)
-**Responsável por:** HTTP, templates, sessões, autenticação
+  username TEXT UNIQUE NOT NULL,
 
-```python
-# Principais rotas
-/login              → Autenticação
+  password TEXT NOT NULL,  -- bcrypt---
+
+  role TEXT DEFAULT 'user'  -- 'admin' | 'user'
+
+);## 🏗️ ARQUITETURA DO SISTEMA
+
+
+
+CREATE TABLE alerts (### Camadas
+
+  id INTEGER PRIMARY KEY,
+
+  person_id INTEGER NOT NULL,#### 1️⃣ **Presentation Layer** (`app.py` - 814 linhas)
+
+  out_time INTEGER,  -- seconds out of zone**Responsável por:** HTTP, templates, sessões, autenticação
+
+  snapshot_path TEXT,
+
+  email_sent BOOLEAN DEFAULT 0,```python
+
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP# Principais rotas
+
+);/login              → Autenticação
+
 /dashboard          → Interface principal com vídeo ao vivo
-/video_feed         → Stream MJPEG em tempo real
-/api/stats          → JSON com métricas
-/settings           → Configurações (admin)
-/alerts             → Histórico de alertas
-/users              → Gerenciar usuários (admin)
-```
 
-**Padrão de autenticação:**
-```python
-from auth import login_required, admin_required
+CREATE TABLE settings (/video_feed         → Stream MJPEG em tempo real
 
-@app.route("/settings", methods=["GET", "POST"])
-@admin_required  # ← Verifica se role == 'admin'
-def settings():
+  key TEXT PRIMARY KEY,/api/stats          → JSON com métricas
+
+  value TEXT/settings           → Configurações (admin)
+
+  -- Examples: conf_thresh, max_out_time, target_width, /alerts             → Histórico de alertas
+
+  -- frame_step, email_cooldown, safe_zone/users              → Gerenciar usuários (admin)
+
+);```
+
+
+
+CREATE TABLE system_logs (**Padrão de autenticação:**
+
+  id INTEGER PRIMARY KEY,```python
+
+  level TEXT,  -- INFO, WARNING, ERRORfrom auth import login_required, admin_required
+
+  message TEXT,
+
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP@app.route("/settings", methods=["GET", "POST"])
+
+);@admin_required  # ← Verifica se role == 'admin'
+
+```def settings():
+
     # Apenas admin pode acessar
-```
 
-#### 2️⃣ **Vision Layer** (`yolo.py` - 810 linhas)
+---```
+
+
+
+## 🎯 Componentes Técnicos#### 2️⃣ **Vision Layer** (`yolo.py` - 810 linhas)
+
 **Responsável por:** Detecção, rastreamento, gravação
+
+### YOLOVisionSystem (yolo.py)
 
 **Classe central:** `YOLOVisionSystem`
 
+**Padrão:** Singleton - `get_vision_system()` retorna mesma instância
+
 ```python
-class YOLOVisionSystem:
-    def __init__(self, source=0, model_path="yolo_models/yolov8n.pt"):
-        self.model = YOLO(model_path)  # Modelo YOLO
-        self.track_state = defaultdict(dict)  # Estado dos rastreados
-        self.paused = False  # Pausar captura
-        self.notifier = Notifier(...)  # Email
-        
-    def generate_frames(self):
-        """
+
+**Atributos:**class YOLOVisionSystem:
+
+```python    def __init__(self, source=0, model_path="yolo_models/yolov8n.pt"):
+
+self.model = YOLO(MODEL_PATH)        # YOLOv8/v11        self.model = YOLO(model_path)  # Modelo YOLO
+
+self.cap = cv2.VideoCapture(SOURCE)  # Câmera        self.track_state = defaultdict(dict)  # Estado dos rastreados
+
+self.track_state = {}                # {track_id: {last_seen, status, out_time}}        self.paused = False  # Pausar captura
+
+self.email_cooldown = {}             # {track_id: timestamp}        self.notifier = Notifier(...)  # Email
+
+self.paused = False                  # Modo pausado        
+
+self.last_frame = None               # Cache último frame    def generate_frames(self):
+
+```        """
+
         Retorna frames em MJPEG em tempo real.
-        Processa:
-        1. Captura frame
-        2. Detecta pessoas
-        3. Rastreia (BoT-SORT)
-        4. Valida safe zones
-        5. Envia alertas
+
+**Métodos críticos:**        Processa:
+
+- `generate_frames()` - Yield frames MJPEG continuamente        1. Captura frame
+
+- `process_frame(frame)` - Apply pipeline: detect → track → validate → alert        2. Detecta pessoas
+
+- `get_config()` - Load settings from DB (fresh every cycle!)        3. Rastreia (BoT-SORT)
+
+- `trigger_alert(track_id, out_time)` - Send email if not in cooldown        4. Valida safe zones
+
+- `toggle_pause()` - Pause video but keep tracking        5. Envia alertas
+
         6. Codifica para JPEG
-        """
-        while True:
-            frame = self.cap.read()
-            results = self.model(frame, conf=self.conf_thresh)
-            # ... processamento
-            yield b'--frame\r\n' + jpeg_bytes + b'\r\n'
-```
 
-**Track State (coração do sistema):**
+**Configurações dinâmicas (runtime):**        """
+
+| Setting | Default | Descrição |        while True:
+
+|---------|---------|-----------|            frame = self.cap.read()
+
+| conf_thresh | 0.78 | Confiança YOLO (0.5-0.95) |            results = self.model(frame, conf=self.conf_thresh)
+
+| max_out_time | 30 | Segundos fora zona (5-300) |            # ... processamento
+
+| target_width | 960 | Pixel width resize (480-1920) |            yield b'--frame\r\n' + jpeg_bytes + b'\r\n'
+
+| frame_step | 2 | Process every N frames (1-5) |```
+
+| email_cooldown | 300 | Segundos entre alertas (60-3600) |
+
+| safe_zone | "(400,100,700,600)" | Rectangle (x1,y1,x2,y2) |**Track State (coração do sistema):**
+
 ```python
-self.track_state = {
-    track_id: {
-        "last_seen": 0.0,           # Quando visto pela última vez
-        "status": "IN" | "OUT",      # Dentro ou fora da zona
-        "out_time": 5.2,             # Segundos fora da zona
-        "video_writer": obj,         # Gravador de vídeo
-        "recording": True,           # Gravando?
-        "buffer": deque(40 frames),  # Buffer circular pré-gravação
-        "zone_idx": 0,               # Qual zona
-    }
-}
-```
 
-#### 3️⃣ **Data Layer** (`database.py` - 148 linhas)
+### Flask App (app.py)self.track_state = {
+
+    track_id: {
+
+**Rotas principais:**        "last_seen": 0.0,           # Quando visto pela última vez
+
+```        "status": "IN" | "OUT",      # Dentro ou fora da zona
+
+GET  /                      → Dashboard        "out_time": 5.2,             # Segundos fora da zona
+
+GET  /video_feed            → MJPEG stream        "video_writer": obj,         # Gravador de vídeo
+
+GET  /settings              → Config page (admin)        "recording": True,           # Gravando?
+
+POST /settings              → Update config        "buffer": deque(40 frames),  # Buffer circular pré-gravação
+
+GET  /logs                  → Alert history        "zone_idx": 0,               # Qual zona
+
+POST /login, /logout        → Auth    }
+
+POST /register              → New user}
+
+GET  /api/status            → JSON status```
+
+GET  /users                 → User list (admin)
+
+```#### 3️⃣ **Data Layer** (`database.py` - 148 linhas)
+
 **Responsável por:** Persistência, configurações dinâmicas
 
-```python
-# Funções principais
-verify_user(username, password)      # Login
-create_user(username, email, pwd)    # Registrar
+**Decoradores:**
+
+```python```python
+
+@login_required   # Verifica session['user']# Funções principais
+
+@admin_required   # Verifica session['user']['role'] == 'admin'verify_user(username, password)      # Login
+
+```create_user(username, email, pwd)    # Registrar
+
 get_setting(key, default)            # Lê config
-set_setting(key, value)              # Escreve config
+
+### Database Layer (database.py)set_setting(key, value)              # Escreve config
+
 log_alert(person_id, out_time, ...)  # Registra alerta
-log_system_action(action, user)      # Log de ações
-```
 
-#### 4️⃣ **Zones Layer** (`zones.py` - 143 linhas)
-**Responsável por:** Geometria de polígonos, detecção de ponto em zona
+**Funções CRUD:**log_system_action(action, user)      # Log de ações
 
-```python
+- `init_db()` - Create tables```
+
+- `get_user(username, password)` - Auth check
+
+- `set_setting(key, value)` - Persist config#### 4️⃣ **Zones Layer** (`zones.py` - 143 linhas)
+
+- `get_setting(key, default)` - Load config**Responsável por:** Geometria de polígonos, detecção de ponto em zona
+
+- `log_alert(person_id, out_time)` - Insert alert
+
+- `get_alerts(limit=50)` - Query history```python
+
 class ZoneManager:
-    def __init__(self, target_width=1200):
+
+### Zone Manager (zones.py)    def __init__(self, target_width=1200):
+
         self.zones = {
-            "entrada": np.array([[50,600], [1150,600], ...]),
-            "corredor_esq": np.array([...]),
-            "elevador_1": np.array([...]),
-        }
-    
-    def point_zone(self, xc, yc):
-        """Retorna nome da zona que contém (xc, yc), ou None"""
-        for name, poly in self.zones.items():
-            if cv2.pointPolygonTest(poly, (xc, yc), False) >= 0:
-                return name
-        return None
+
+**Estrutura:**            "entrada": np.array([[50,600], [1150,600], ...]),
+
+```python            "corredor_esq": np.array([...]),
+
+class ZoneManager:            "elevador_1": np.array([...]),
+
+    zones = {        }
+
+        'entrada': [(x1,y1), (x2,y2), ...],    
+
+        'corredor_esq': [...],    def point_zone(self, xc, yc):
+
+        'elevador_1': [...],        """Retorna nome da zona que contém (xc, yc), ou None"""
+
+    }        for name, poly in self.zones.items():
+
+                if cv2.pointPolygonTest(poly, (xc, yc), False) >= 0:
+
+    def point_zone(self, point, zone_name):                return name
+
+        # Winding number algorithm        return None
+
+        return True/False  # Point in polygon```
+
 ```
 
 #### 5️⃣ **Notifications Layer** (`notifications.py` - 112 linhas)
-**Responsável por:** Email SMTP com anexos
 
-```python
-class Notifier:
-    def send_email(self, to_email, subject, body, attachments=[]):
-        """Síncrono - bloqueia"""
-        # SMTP com TLS
-        
-    def send_email_background(self, ...):
-        """Assíncrono - threading"""
-        threading.Thread(target=self.send_email, ...).start()
+### Notifications (notifications.py)**Responsável por:** Email SMTP com anexos
+
+
+
+**Uso:**```python
+
+```pythonclass Notifier:
+
+notifier = Notifier()    def send_email(self, to_email, subject, body, attachments=[]):
+
+notifier.send_email_background(        """Síncrono - bloqueia"""
+
+    to_email='person@gmail.com',        # SMTP com TLS
+
+    subject='Alert: Person left zone!',        
+
+    body='...',    def send_email_background(self, ...):
+
+    attachment_path='snapshot.jpg'        """Assíncrono - threading"""
+
+)        threading.Thread(target=self.send_email, ...).start()
+
+``````
+
+
+
+------
+
+
+
+## 🎥 Seleção Modelo YOLO## 🔧 COMPONENTES TÉCNICOS
+
+
+
+**Trade-offs:**### 1. YOLO (Detecção)
+
+| Modelo | FPS | Accuracy | Memory | GPU | Use |**Arquivo:** `yolo_models/` (contém `.pt` files)
+
+|--------|-----|----------|--------|-----|-----|
+
+| yolov8n | 45 | 78% | 50MB | Opt | CPU realtime |**Modelos disponíveis:**
+
+| yolov8s | 35 | 82% | 100MB | Yes | Balanced |```
+
+| yolov8m | 25 | 85% | 150MB | Yes | Accuracy |yolov8n.pt   ← Nano (rápido, menos preciso)
+
+| yolo11n | 40 | 80% | 60MB | Opt | New + fast |yolov8s.pt   ← Small
+
+yolov8m.pt   ← Medium
+
+**Como trocar (yolo.py linha 16):**yolov8l.pt   ← Large
+
+```pythonyolov8x.pt   ← Extra-Large (lento, muito preciso)
+
+MODEL_PATH = "yolo_models/yolov8n.pt"  # Change hereyolov11n.pt  ← v11 Nano (mais rápido que v8)
+
+```yolov11l.pt  ← v11 Large
+
 ```
 
 ---
 
-## 🔧 COMPONENTES TÉCNICOS
-
-### 1. YOLO (Detecção)
-**Arquivo:** `yolo_models/` (contém `.pt` files)
-
-**Modelos disponíveis:**
-```
-yolov8n.pt   ← Nano (rápido, menos preciso)
-yolov8s.pt   ← Small
-yolov8m.pt   ← Medium
-yolov8l.pt   ← Large
-yolov8x.pt   ← Extra-Large (lento, muito preciso)
-yolov11n.pt  ← v11 Nano (mais rápido que v8)
-yolov11l.pt  ← v11 Large
-```
-
 **Como mudar:**
-```python
+
+## 🎥 Fonte de Vídeo```python
+
 # Em yolo.py linha 25
-MODEL_PATH = "yolo_models\\yolov8m.pt"  # ← Mude aqui
-```
 
-**Configuração:**
-```python
+```pythonMODEL_PATH = "yolo_models\\yolov8m.pt"  # ← Mude aqui
+
+SOURCE = 0                          # Webcam```
+
+SOURCE = "rtsp://user:pass@ip/stream"  # IP RTSP
+
+SOURCE = "http://ip:8080/video"    # IP HTTP**Configuração:**
+
+``````python
+
 conf_thresh = get_setting("conf_thresh", 0.85)  # 85% confiança
-model = YOLO(MODEL_PATH)
+
+---model = YOLO(MODEL_PATH)
+
 results = model(frame, conf=conf_thresh)
-```
 
-### 2. BoT-SORT (Rastreamento)
-**Arquivo:** `botsort_reid.yaml`
+## 🚀 Setup & Execução```
 
-**O que faz:**
-- Associa detecções entre frames (mesma pessoa = mesmo ID)
+
+
+```bash### 2. BoT-SORT (Rastreamento)
+
+# 1. Virtualenv**Arquivo:** `botsort_reid.yaml`
+
+python -m venv cv_env
+
+source cv_env/bin/activate  # Linux**O que faz:**
+
+# OR cv_env\Scripts\Activate.ps1  # Windows- Associa detecções entre frames (mesma pessoa = mesmo ID)
+
 - Mantém ID mesmo se sair de quadro por tempo
-- Usa `persist=True` para manter histórico
+
+# 2. Install- Usa `persist=True` para manter histórico
+
+pip install -r requeriments.txt
 
 **Config:**
-```python
-results = model.track(
+
+# 3. Init DB```python
+
+python -c "from database import init_db; init_db()"results = model.track(
+
     frame,
-    persist=True,           # ← Mantém IDs
-    tracker="botsort.yaml"  # ← Configuração
-)
-```
 
-### 3. Camera Compatibility
+# 4. Run    persist=True,           # ← Mantém IDs
 
-**Webcam local:**
+python app.py    tracker="botsort.yaml"  # ← Configuração
+
+# Visit: http://localhost:5000)
+
+``````
+
+
+
+---### 3. Camera Compatibility
+
+
+
+## 🔐 Segurança**Webcam local:**
+
 ```python
-SOURCE = 0          # Webcam padrão
-SOURCE = 1          # Webcam segunda (se houver)
-```
+
+**Implementado:**SOURCE = 0          # Webcam padrão
+
+✅ Bcrypt password hashingSOURCE = 1          # Webcam segunda (se houver)
+
+✅ Session-based auth```
+
+✅ Role-based access (admin/user)
 
 **IP Camera RTSP:**
+
+**⚠️ Limitações:**```python
+
+⚠️ Email credentials hardcoded (move to .env)SOURCE = "rtsp://user:pass@192.168.1.100:554/stream"
+
+⚠️ Flask SECRET_KEY hardcoded```
+
+⚠️ No HTTPS in dev
+
+⚠️ No rate limiting**IP Camera HTTP:**
+
 ```python
-SOURCE = "rtsp://user:pass@192.168.1.100:554/stream"
+
+---SOURCE = "http://192.168.1.100:8080/video"
+
 ```
 
-**IP Camera HTTP:**
-```python
-SOURCE = "http://192.168.1.100:8080/video"
-```
+## 🔧 Extensão do Sistema
 
 ### 4. Redimensionamento e Performance
 
-```python
-target_width = int(get_setting("target_width", 1280))
-frame_step = int(get_setting("frame_step", 1))
+### Adicionar Nova Zona
+
+```python```python
+
+# zones.pytarget_width = int(get_setting("target_width", 1280))
+
+self.zones['my_zone'] = [(100,100), (200,100), (200,200)]frame_step = int(get_setting("frame_step", 1))
+
+```
 
 # Resize preservando aspecto
-frame = cv2.resize(frame, (target_width, h_novo))
 
-# Processar cada N frames
-if frame_number % frame_step == 0:
-    results = model(frame)  # Processa
+### Adicionar Novo Settingframe = cv2.resize(frame, (target_width, h_novo))
+
+1. HTML form em settings.html
+
+2. POST handler em app.py: `set_setting('my_key', request.form.get('my_key'))`# Processar cada N frames
+
+3. Load em yolo.py: `config['my_key'] = get_setting('my_key', 'default')`if frame_number % frame_step == 0:
+
+4. Use: `if config['my_key']: ...`    results = model(frame)  # Processa
+
 else:
-    # Salta frame para ganhar FPS
-```
 
----
+### Adicionar Lógica Customizada de Alerta    # Salta frame para ganhar FPS
 
-## 📊 DATABASE SCHEMA
+```python```
 
-### Tabela: `users`
-```sql
-CREATE TABLE users (
-    id INTEGER PRIMARY KEY,
-    username TEXT UNIQUE,
-    email TEXT UNIQUE,
-    password_hash TEXT,        -- bcrypt via werkzeug
-    role TEXT DEFAULT 'user',  -- 'user' ou 'admin'
-    created_at TIMESTAMP,
+# yolo.py process_detection()
+
+if some_condition:---
+
+    trigger_alert(track_id, reason)
+
+```## 📊 DATABASE SCHEMA
+
+
+
+### Adicionar Rota API### Tabela: `users`
+
+```python```sql
+
+# app.pyCREATE TABLE users (
+
+@app.route('/api/custom', methods=['GET'])    id INTEGER PRIMARY KEY,
+
+@login_required    username TEXT UNIQUE,
+
+def custom():    email TEXT UNIQUE,
+
+    vs = get_vision_system()    password_hash TEXT,        -- bcrypt via werkzeug
+
+    return jsonify({'result': vs.method()})    role TEXT DEFAULT 'user',  -- 'user' ou 'admin'
+
+```    created_at TIMESTAMP,
+
     last_login TIMESTAMP
-);
+
+---);
+
 ```
+
+## 📊 Performance Tips
 
 **Exemplo:**
-```
-id | username | email              | role  | created_at
-1  | admin    | admin@example.com  | admin | 2025-01-01
-2  | joao     | joao@example.com   | user  | 2025-01-02
-```
 
-### Tabela: `alerts`
+| Problema | Solução |```
+
+|----------|---------|id | username | email              | role  | created_at
+
+| Baixo FPS | Reduzir target_width, aumentar frame_step, modelo menor |1  | admin    | admin@example.com  | admin | 2025-01-01
+
+| Alto RAM | target_width 480, frame_step 3-5 |2  | joao     | joao@example.com   | user  | 2025-01-02
+
+| Detecções ruins | Reduzir conf_thresh (0.60), modelo maior, melhor luz |```
+
+| IDs pulando | Aumentar resolução, mais historia de frames |
+
+| Alertas spam | Aumentar max_out_time, email_cooldown |### Tabela: `alerts`
+
 ```sql
-CREATE TABLE alerts (
+
+---CREATE TABLE alerts (
+
     id INTEGER PRIMARY KEY,
-    person_id INTEGER,           -- track_id da pessoa
+
+## 🚨 Troubleshooting    person_id INTEGER,           -- track_id da pessoa
+
     out_time REAL,               -- Segundos fora (ex: 5.2)
-    snapshot_path TEXT,          -- Caminho para foto
-    email_sent INTEGER,          -- 1 = já enviou email
-    timestamp TIMESTAMP
-);
+
+**Detecções ruins?** → Aumentar conf_thresh (0.85+) ou modelo maior    snapshot_path TEXT,          -- Caminho para foto
+
+**Lento?** → Baixar target_width (480) ou aumentar frame_step (3-5)    email_sent INTEGER,          -- 1 = já enviou email
+
+**IDs instáveis?** → Aumentar resolução, melhor iluminação    timestamp TIMESTAMP
+
+**Emails não chegam?** → Verificar app password (não senha normal), credenciais SMTP);
+
+**Câmera não conecta?** → URL RTSP correta, credenciais, porta aberta, mesmo network```
+
+
+
+---**Exemplo:**
+
 ```
 
-**Exemplo:**
-```
-id | person_id | out_time | snapshot_path           | email_sent | timestamp
+## 📁 Estrutura Projetoid | person_id | out_time | snapshot_path           | email_sent | timestamp
+
 1  | 42        | 5.2      | alertas/42_20250101.jpg | 1          | 2025-01-01
-```
 
-### Tabela: `settings`
-```sql
-CREATE TABLE settings (
-    key TEXT PRIMARY KEY,
-    value TEXT
-);
-```
+``````
 
-**Configurações padrão:**
-```
-key                 | value
-conf_thresh         | 0.85
-target_width        | 1280
+├── app.py                          # Flask (814 linhas)
+
+├── yolo.py                         # Vision (810 linhas)### Tabela: `settings`
+
+├── database.py                     # SQLite (148 linhas)```sql
+
+├── zones.py                        # Zones (143 linhas)CREATE TABLE settings (
+
+├── auth.py                         # Auth (36 linhas)    key TEXT PRIMARY KEY,
+
+├── notifications.py                # Email (112 linhas)    value TEXT
+
+├── requeriments.txt                # Dependencies);
+
+├── botsort_reid.yaml               # Tracker config```
+
+├── templates/                      # 10 HTML files
+
+├── yolo_models/                    # Models (6 .pt files)**Configurações padrão:**
+
+├── documentation/                  # User docs (8 files)```
+
+├── ia_documentation/               # AI context (7 files)key                 | value
+
+└── alertas/                        # Generated runtimeconf_thresh         | 0.85
+
+```target_width        | 1280
+
 frame_step          | 1
-max_out_time        | 5.0          -- Segundos
+
+---max_out_time        | 5.0          -- Segundos
+
 safe_zone           | (400,100,700,600)
-model_path          | yolo_models\yolov8n.pt
+
+## 📚 Documentação Relacionadamodel_path          | yolo_models\yolov8n.pt
+
 email_smtp_server   | smtp.gmail.com
-email_smtp_port     | 587
-email_user          | seu_email@gmail.com
-email_password      | sua_senha_app_específica
-```
+
+- `README.md` - Professional overviewemail_smtp_port     | 587
+
+- `documentation/DOCUMENTACAO.md` - Complete referenceemail_user          | seu_email@gmail.com
+
+- `documentation/ARQUITETURA_TECNICA.md` - Deep diveemail_password      | sua_senha_app_específica
+
+- `documentation/GUIA_RAPIDO.md` - 15min quickstart```
+
+- `ia_documentation/00_LEIA_PRIMEIRO_CONTEXTO_IA.txt` - Entry point
 
 ### Tabela: `system_logs`
-```sql
+
+---```sql
+
 CREATE TABLE system_logs (
-    id INTEGER PRIMARY KEY,
+
+## ✅ AI Agent Checklist    id INTEGER PRIMARY KEY,
+
     action TEXT,      -- 'PAUSE', 'RESUME', 'START', 'STOP'
-    username TEXT,
-    reason TEXT,
-    email_sent INTEGER,
-    timestamp TIMESTAMP
-);
-```
 
----
+- [ ] Entendi as 3 camadas (Presentation → Vision → Data)    username TEXT,
 
-## 🔄 FLUXO DE DADOS
+- [ ] Entendi pipeline de frame (detect → track → validate → alert)    reason TEXT,
 
-### Pipeline de um frame
+- [ ] Entendi Singleton pattern para YOLOVisionSystem    email_sent INTEGER,
 
-```
+- [ ] Entendi database schema (4 tables)    timestamp TIMESTAMP
+
+- [ ] Entendi YOLO model tradeoffs);
+
+- [ ] Entendi zone validation (polygon winding)```
+
+- [ ] Entendi email cooldown throttling
+
+- [ ] Entendi settings carregados em runtime---
+
+- [ ] Entendi bcrypt + sessions + roles
+
+- [ ] Entendi como estender (rotas, settings, zonas)## 🔄 FLUXO DE DADOS
+
+
+
+---### Pipeline de um frame
+
+
+
+**Use este documento como referência. Volte aqui antes de modificações!**```
+
 1. CAPTURA
    cap.read() → frame bruto (1280x720)
    

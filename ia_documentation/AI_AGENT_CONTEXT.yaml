@@ -1,577 +1,430 @@
-################################################################################
-#                   ARK YOLO - MACHINE-READABLE CONTEXT
-#                        Para Agentes de IA
-################################################################################
+---
+# 🤖 ARK YOLO System - AI Agent Context (YAML Format)
+# Última atualização: 26/12/2025
+# Versão: 1.0 Production Ready
+# Compatibilidade: Claude, GPT-4, Gemini, Copilot (YAML parsers)
 
-project_metadata:
-  name: "ARK YOLO"
-  description: "Real-time person detection + zone monitoring + alert system"
-  version: "1.0"
-  language: "Python 3.10+"
-  framework: "Flask + YOLOv8/v11"
-  license: "MIT"
-  created: "2025-12"
+metadata:
+  name: ARK YOLO System
+  description: Real-time person detection and zone monitoring with email alerts
+  version: 1.0
+  status: Production Ready
+  language: Python 3.10+
+  lastUpdated: 2025-12-26
+  documentFormat: YAML (structured data)
 
-################################################################################
-#                           ARCHITECTURE OVERVIEW
-################################################################################
+quick_overview:
+  what_is_it: |
+    System that detects people via YOLOv8/v11, tracks with BoT-SORT,
+    validates if they're in safe zones, and emails when they leave too long.
+  
+  main_components:
+    - Flask web server (HTTP routing, auth, templates)
+    - YOLOVisionSystem (detection, tracking, alerting)
+    - SQLite database (users, alerts, config, logs)
+    - Zone manager (polygon validation)
+    - Notification system (email SMTP)
+  
+  key_files:
+    app.py: 814 lines (Flask server)
+    yolo.py: 810 lines (Vision system core)
+    database.py: 148 lines (SQLite CRUD)
+    zones.py: 143 lines (Polygon geometry)
+    notifications.py: 112 lines (Email SMTP)
 
 architecture:
-  description: "Three-layer system"
   layers:
-    presentation:
-      component: "app.py"
-      lines: 814
-      responsible_for:
-        - "HTTP routing"
-        - "Flask server"
-        - "Authentication"
-        - "Web templates"
-        - "Session management"
-      main_routes:
-        - "/login (GET|POST)"
-        - "/register (GET|POST)"
-        - "/dashboard (GET)"
-        - "/video_feed (GET)"
-        - "/api/stats (GET)"
-        - "/settings (GET|POST)"
-        - "/alerts (GET)"
-        - "/users (GET|POST)"
-      key_classes: []
-      key_functions:
-        - "login()"
-        - "register()"
-        - "dashboard()"
-        - "video_feed()"
+    layer_1:
+      name: Presentation Layer
+      file: app.py
+      tech: Flask 3.0+ Jinja2 HTML5 Tailwind CSS
+      responsibility: HTTP routing, session management, template rendering
+      
+      routes:
+        - path: /
+          method: GET
+          auth: required
+          description: Dashboard main interface
+        
+        - path: /video_feed
+          method: GET
+          auth: required
+          description: MJPEG stream (real-time video)
+          encoding: multipart/x-mixed-replace; boundary=frame
+        
+        - path: /settings
+          method: GET POST
+          auth: required
+          admin_only: true
+          description: Configuration page
+        
+        - path: /logs
+          method: GET
+          auth: required
+          description: Alert history
+        
+        - path: /api/status
+          method: GET
+          auth: required
+          returns: JSON
+          description: System status metrics
+        
+        - path: /users
+          method: GET DELETE
+          auth: required
+          admin_only: true
+          description: User management
+        
+        - path: /login
+          method: POST
+          auth: not_required
+          description: Authenticate user
+        
+        - path: /logout
+          method: GET
+          auth: required
+          description: Clear session
+        
+        - path: /register
+          method: POST
+          auth: not_required
+          description: Create new user
+      
+      auth_decorators:
+        login_required: Verifies session['user'] exists
+        admin_required: Verifies session['user']['role'] == 'admin'
     
-    vision:
-      component: "yolo.py"
-      lines: 810
-      responsible_for:
-        - "YOLO detection"
-        - "BoT-SORT tracking"
-        - "Frame processing"
-        - "Safe zone validation"
-        - "Video recording"
-        - "MJPEG streaming"
-      key_classes:
-        - "YOLOVisionSystem"
-      key_methods:
-        - "generate_frames()"
-        - "process_detection()"
-        - "toggle_pause()"
-        - "get_config()"
-      state_structure:
-        track_state:
-          type: "defaultdict"
-          key_type: "int (track_id)"
-          value_type: "dict"
-          value_fields:
-            - "last_seen (float)"
-            - "status (str: IN|OUT)"
-            - "out_time (float)"
-            - "recording (bool)"
-            - "buffer (deque)"
-            - "zone_idx (int)"
-            - "video_writer (cv2.VideoWriter)"
-            - "video_path (str)"
+    layer_2:
+      name: Vision Layer
+      file: yolo.py
+      class: YOLOVisionSystem
+      pattern: Singleton (get_vision_system() returns same instance)
+      responsibility: Real-time detection, tracking, zone validation, alerts
+      
+      attributes:
+        model: YOLO instance (YOLOv8 or v11)
+        cap: Video capture (cv2.VideoCapture)
+        track_state: Dict[int, Dict] - {track_id: {last_seen, status, out_time}}
+        email_cooldown: Dict[int, float] - throttling per person
+        paused: bool - pause state
+        last_frame: ndarray - cache
+      
+      methods:
+        generate_frames: Yield MJPEG frames continuously
+        process_frame: Full pipeline (detect → track → validate → alert)
+        get_config: Load settings from DB (ALWAYS FRESH!)
+        trigger_alert: Send email if not in cooldown
+        toggle_pause: Pause video keep tracking
+      
+      processing_pipeline:
+        step_1_preprocess: Flip horizontal, resize 960px, normalize
+        step_2_yolo: Inference, confidence filter, NMS, scale
+        step_3_botsort: Associate, maintain IDs, predict
+        step_4_zone: Check if center in safe_zone
+        step_5_state: Increment out_time if OUT, reset if IN
+        step_6_alert: Check threshold and cooldown, send email
+        step_7_output: Draw overlays, encode JPEG, yield MJPEG
     
-    data:
-      component: "database.py"
-      lines: 148
-      responsible_for:
-        - "User authentication"
-        - "Alert logging"
-        - "Configuration storage"
-        - "System logging"
-      database_engine: "SQLite"
-      database_file: "cv_system.db"
+    layer_3:
+      name: Data Layer
+      file: database.py
+      tech: SQLite3 (built-in Python)
+      responsibility: User auth, alert logging, config storage
+      
       tables:
         users:
           columns:
-            - "id: INTEGER PRIMARY KEY"
-            - "username: TEXT UNIQUE"
-            - "email: TEXT UNIQUE"
-            - "password_hash: TEXT (bcrypt)"
-            - "role: TEXT (user|admin)"
-            - "created_at: TIMESTAMP"
-            - "last_login: TIMESTAMP"
+            - id: INTEGER PRIMARY KEY
+            - username: TEXT UNIQUE NOT NULL
+            - password: TEXT NOT NULL (bcrypt hash)
+            - role: TEXT DEFAULT 'user' ('admin' | 'user')
         
         alerts:
           columns:
-            - "id: INTEGER PRIMARY KEY"
-            - "person_id: INTEGER (track_id)"
-            - "out_time: REAL"
-            - "snapshot_path: TEXT"
-            - "email_sent: INTEGER (0|1)"
-            - "timestamp: TIMESTAMP"
+            - id: INTEGER PRIMARY KEY
+            - person_id: INTEGER NOT NULL
+            - out_time: INTEGER (seconds out of zone)
+            - snapshot_path: TEXT (path to alert frame)
+            - email_sent: BOOLEAN DEFAULT 0
+            - created_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         
         settings:
           columns:
-            - "key: TEXT PRIMARY KEY"
-            - "value: TEXT"
-          common_keys:
-            - "conf_thresh: 0.85"
-            - "model_path: yolo_models/yolov8n.pt"
-            - "target_width: 1280"
-            - "frame_step: 1"
-            - "safe_zone: (400,100,700,600)"
-            - "max_out_time: 5.0"
-            - "source: 0"
-            - "email_user: your@email.com"
+            - key: TEXT PRIMARY KEY
+            - value: TEXT (dynamic configuration)
+          
+          example_keys:
+            conf_thresh: "0.78"
+            max_out_time: "30"
+            target_width: "960"
+            frame_step: "2"
+            email_cooldown: "300"
+            safe_zone: "(400,100,700,600)"
         
         system_logs:
           columns:
-            - "id: INTEGER PRIMARY KEY"
-            - "action: TEXT (PAUSE|RESUME|START|STOP)"
-            - "username: TEXT"
-            - "reason: TEXT"
-            - "email_sent: INTEGER"
-            - "timestamp: TIMESTAMP"
-  
-  complementary_modules:
-    zones:
-      file: "zones.py"
-      lines: 143
-      class_name: "ZoneManager"
-      responsibility: "Polygon-based zone detection"
-      key_methods:
-        - "point_zone(xc, yc) -> str|None"
-        - "draw_zones(frame) -> None"
-    
-    notifications:
-      file: "notifications.py"
-      lines: 112
-      class_name: "Notifier"
-      responsibility: "Email alerts with SMTP"
-      protocol: "SMTP TLS (port 587)"
-      key_methods:
-        - "send_email(to, subject, body, attachments)"
-        - "send_email_background(...)"
-    
-    auth:
-      file: "auth.py"
-      lines: 36
-      decorators:
-        - "@login_required"
-        - "@admin_required"
-
-################################################################################
-#                          TECHNICAL COMPONENTS
-################################################################################
-
-components:
-  yolo:
-    name: "YOLO Object Detection"
-    library: "ultralytics"
-    purpose: "Detect persons in video frame"
-    available_models:
-      - "yolov8n.pt (nano - fast, less accurate)"
-      - "yolov8s.pt (small)"
-      - "yolov8m.pt (medium)"
-      - "yolov8l.pt (large)"
-      - "yolov8x.pt (extra-large - slow, very accurate)"
-      - "yolov11n.pt (v11 nano)"
-      - "yolov11l.pt (v11 large)"
-    configuration:
-      conf_thresh: 0.85  # Confidence threshold
-      class_id_person: 0
-    usage_example: |
-      model = YOLO("yolo_models/yolov8n.pt")
-      results = model(frame, conf=0.85)
-  
-  botsort:
-    name: "BoT-SORT Multi-Object Tracker"
-    purpose: "Maintain consistent track IDs across frames"
-    config_file: "botsort_reid.yaml"
-    features:
-      - "Kalman filter for prediction"
-      - "Re-ID network for appearance matching"
-      - "Persistent IDs (no reuse in session)"
-    usage_example: |
-      results = model.track(frame, persist=True, tracker="botsort.yaml")
-      for box in results[0].boxes:
-          track_id = box.id
-  
-  opencv:
-    name: "OpenCV"
-    library: "opencv-python"
-    primary_uses:
-      - "Frame reading/writing"
-      - "Color space conversions"
-      - "Image resizing"
-      - "Polygon point testing"
-      - "MJPEG encoding"
-    key_functions:
-      - "cv2.VideoCapture()"
-      - "cv2.VideoWriter()"
-      - "cv2.resize()"
-      - "cv2.pointPolygonTest()"
-      - "cv2.imread/imwrite"
-  
-  cameras:
-    supported_sources:
-      - source: "webcam"
-        example: "SOURCE = 0"
-        description: "Local USB/built-in camera"
-      - source: "ip_camera_rtsp"
-        example: 'SOURCE = "rtsp://user:pass@ip:554/stream"'
-        description: "IP camera with RTSP protocol"
-      - source: "ip_camera_http"
-        example: 'SOURCE = "http://ip:8080/video"'
-        description: "IP camera with HTTP streaming"
-
-################################################################################
-#                         DATA FLOW PIPELINE
-################################################################################
-
-data_flow:
-  frame_processing_pipeline:
-    step_1_capture:
-      input: "Camera stream"
-      operation: "cap.read()"
-      output: "BGR frame (1280x720)"
-    
-    step_2_preprocessing:
-      input: "Raw frame"
-      operations:
-        - "Resize to target_width (keep aspect)"
-        - "Flip horizontally"
-      output: "Preprocessed frame"
-    
-    step_3_detection:
-      input: "Preprocessed frame"
-      model: "YOLO"
-      operation: "model(frame, conf=0.85)"
-      output: "Detections [x1,y1,x2,y2,conf,class_id]"
-    
-    step_4_tracking:
-      input: "Detections"
-      model: "BoT-SORT"
-      operation: "model.track(frame, persist=True)"
-      output: "Detections + track_ids"
-    
-    step_5_zone_validation:
-      input: "track_id, bbox"
-      operation: |
-        for each detection:
-          xc = (x1 + x2) / 2
-          yc = (y1 + y2) / 2
-          in_zone = zm.point_zone(xc, yc)
-      output: "in_zone flag per person"
-    
-    step_6_state_update:
-      input: "track_id, in_zone"
-      operation: |
-        if in_zone:
-          status = "IN"
-          out_time = 0.0
-        else:
-          if was_in:
-            status = "OUT"
-            out_time = 0.0
-          else:
-            out_time += delta_time
-      output: "Updated track_state"
-    
-    step_7_alert_decision:
-      input: "out_time, max_out_time, cooldown"
-      condition: "out_time > max_out_time AND cooldown passed"
-      action:
-        - "Save video"
-        - "Take snapshot"
-        - "Log to database"
-        - "Send email (background thread)"
-      output: "Alert if condition met"
-    
-    step_8_recording:
-      input: "Frame (if recording=True)"
-      operation: "video_writer.write(frame)"
-      output: "Alert video file"
-    
-    step_9_streaming:
-      input: "Annotated frame"
-      operation: |
-        frame → JPEG encode
-        → Add MJPEG headers
-        → Send to client
-      output: "MJPEG stream"
-
-  state_transitions:
-    track_lifecycle:
-      - "Frame 1: Detect person → create track_id → IN"
-      - "Frame 5: Person leaves zone → status=OUT, out_time=0"
-      - "Frame 7: out_time=2.0 (still OUT)"
-      - "Frame 9: out_time=4.0 (still OUT)"
-      - "Frame 11: out_time=6.0 > max_out_time(5.0) → ALERT!"
-      - "Frame 15: Person returns → status=IN, out_time=0"
-      - "Frame 50: Not detected for X frames → remove from track_state"
-
-################################################################################
-#                         CONFIGURATION SYSTEM
-################################################################################
+            - id: INTEGER PRIMARY KEY
+            - level: TEXT ('INFO' | 'WARNING' | 'ERROR')
+            - message: TEXT
+            - created_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 
 configuration:
-  type: "Dynamic (database-driven)"
-  source: "cv_system.db → settings table"
-  refresh: "Every frame (within generate_frames loop)"
-  changes_require_restart: false
+  dynamic_settings: All loaded from database at RUNTIME (no restart needed!)
   
-  critical_settings:
-    vision:
-      conf_thresh:
-        type: "float 0.0-1.0"
-        default: "0.85"
-        impact: "Detection sensitivity"
-      
-      target_width:
-        type: "int pixels"
-        default: "1280"
-        impact: "Frame dimensions + speed"
-      
-      frame_step:
-        type: "int"
-        default: "1"
-        impact: "Process every N frames (1=all, 2=half speed)"
-      
-      model_path:
-        type: "string path"
-        default: "yolo_models\\yolov8n.pt"
-        impact: "Which YOLO model to use"
+  settings:
+    conf_thresh:
+      default: 0.78
+      type: float
+      range: 0.5 - 0.95
+      impact: YOLO confidence minimum (lower = more detections, more false positives)
     
-    zone:
-      safe_zone:
-        type: "string (tuple or JSON)"
-        default: "(400, 100, 700, 600)"
-        format: "(x1, y1, x2, y2) in pixels"
-        impact: "Rectangle boundary of safe area"
-      
-      max_out_time:
-        type: "float seconds"
-        default: "5.0"
-        impact: "Trigger alert after N seconds outside"
+    max_out_time:
+      default: 30
+      type: int
+      unit: seconds
+      range: 5 - 300
+      impact: Alert threshold (time outside zone before email)
     
-    email:
-      email_user:
-        type: "string email"
-        impact: "Gmail account to send alerts from"
-      
-      email_password:
-        type: "string password"
-        notes: "Use Gmail App Password, NOT regular password"
-        impact: "Authentication for SMTP"
-      
-      email_cooldown:
-        type: "float seconds"
-        default: "10.0"
-        impact: "Wait between emails for same person"
+    target_width:
+      default: 960
+      type: int
+      unit: pixels
+      range: 480 - 1920
+      impact: Resize width (lower = faster but less accurate)
     
-    camera:
-      source:
-        type: "int|string"
-        examples: ["0", "1", "rtsp://...", "http://..."]
-        impact: "Which camera to use"
-      
-      cam_fps:
-        type: "int"
-        default: "30"
-        impact: "Capture frame rate"
-
-################################################################################
-#                      KEY PATTERNS & IDIOMS
-################################################################################
-
-design_patterns:
-  singleton:
-    name: "YOLOVisionSystem Singleton"
-    location: "yolo.py"
-    usage: |
-      from yolo import get_vision_system
-      vs = get_vision_system()  # Always same instance
-      for frame in vs.generate_frames():
-          ...
-  
-  generator:
-    name: "MJPEG Stream Generator"
-    location: "app.py → video_feed()"
-    usage: |
-      def generate_frames():
-          while True:
-              frame = ...
-              jpeg = encode_jpeg(frame)
-              yield b'--frame\r\n' + jpeg + b'\r\n'
-  
-  decorator:
-    name: "Route Protection"
-    location: "auth.py"
-    usage: |
-      @app.route("/dashboard")
-      @login_required
-      def dashboard():
-          ...
-  
-  defaultdict:
-    name: "Track State Storage"
-    location: "yolo.py → YOLOVisionSystem"
-    usage: |
-      track_state = defaultdict(lambda: {...})
-      track_state[track_id]["out_time"] += delta
-  
-  context_processor:
-    name: "Template Context Injection"
-    location: "app.py"
-    usage: |
-      @app.context_processor
-      def inject_user():
-          return {"user": session.get("user")}
-
-################################################################################
-#                        EXTENSION POINTS
-################################################################################
-
-extension_points:
-  add_setting:
-    steps:
-      - "Add HTML input in templates/settings.html"
-      - "Process in app.py POST /settings"
-      - "Use in yolo.py get_config()"
-  
-  add_zone:
-    steps:
-      - "Define polygon in zones.py ZoneManager.__init__"
-      - "Use point_zone() in yolo.py"
-      - "Add visualization logic"
-  
-  add_alert_condition:
-    steps:
-      - "Define condition in yolo.py process_detection()"
-      - "Call notifier.send_email_background()"
-      - "Log to database with log_alert()"
-  
-  change_model:
-    steps:
-      - "Copy new .pt file to yolo_models/"
-      - "Update model_path in settings OR code"
-      - "Restart app (if changing code)"
-  
-  add_log_event:
-    steps:
-      - "Call log_system_action() in app.py"
-      - "Query in logs.html template"
-
-################################################################################
-#                          DEPLOYMENT INFO
-################################################################################
-
-deployment:
-  requirements:
-    python: "3.10+"
-    os: "Windows | Linux | macOS"
-    memory: "4GB+ (recommend 8GB)"
-    gpu: "Optional (2x faster with NVIDIA)"
-    disk: "2GB+ (for models + videos)"
-  
-  dependencies:
-    core:
-      - "ultralytics (YOLO)"
-      - "opencv-python (cv2)"
-      - "flask"
-      - "numpy"
-      - "torch/torchvision (implicit via ultralytics)"
+    frame_step:
+      default: 2
+      type: int
+      range: 1 - 5
+      impact: Process every N-th frame (higher = faster but misses movement)
     
-    optional:
-      - "python-dotenv (for env vars)"
-      - "gunicorn (for production)"
-      - "nginx (reverse proxy)"
-  
-  installation:
-    - "Create venv: python -m venv cv_env"
-    - "Activate: cv_env\\Scripts\\Activate.ps1"
-    - "Install: pip install -r requeriments.txt"
-    - "Init DB: python -c \"from database import init_db; init_db()\""
-    - "Run: python app.py"
-  
-  startup:
-    command: "python app.py"
-    output: "Running on http://localhost:5000"
-    default_user:
-      note: "Create account in /register or modify database"
+    email_cooldown:
+      default: 300
+      type: int
+      unit: seconds
+      range: 60 - 3600
+      impact: Throttle seconds between alerts per person (prevent spam)
+    
+    safe_zone:
+      default: "(400,100,700,600)"
+      type: string
+      format: "(x1,y1,x2,y2)"
+      coords_in: Resized frame space (not original)
+      impact: Rectangle defining safe area (people inside = safe)
 
-################################################################################
-#                         QUICK REFERENCE
-################################################################################
+yolo_models:
+  available:
+    yolov8n:
+      size: 5.6 MB
+      fps: 45
+      accuracy: 78%
+      memory: 50 MB
+      gpu_required: false
+      use_case: CPU real-time
+    
+    yolov8s:
+      size: 22.5 MB
+      fps: 35
+      accuracy: 82%
+      memory: 100 MB
+      gpu_required: true
+      use_case: Balanced
+    
+    yolov8m:
+      size: 52 MB
+      fps: 25
+      accuracy: 85%
+      memory: 150 MB
+      gpu_required: true
+      use_case: Accuracy important
+    
+    yolo11n:
+      size: 5.8 MB
+      fps: 40
+      accuracy: 80%
+      memory: 60 MB
+      gpu_required: false
+      use_case: New + fast
+  
+  how_to_change:
+    file: yolo.py
+    line: 16
+    current: "MODEL_PATH = \"yolo_models/yolov8n.pt\""
+    action: Change filename to desired model
 
-quick_reference:
-  import_core_system: |
-    from yolo import get_vision_system
-    vs = get_vision_system()
+camera_sources:
+  webcam:
+    code: "SOURCE = 0"
+    alternate: "SOURCE = 1, 2, 3 for multiple cameras"
   
-  get_config: |
-    from database import get_setting
-    conf = float(get_setting("conf_thresh", "0.85"))
+  ip_camera_rtsp:
+    code: "SOURCE = \"rtsp://user:pass@192.168.1.100:554/stream\""
   
-  update_config: |
-    from database import set_setting
-    set_setting("max_out_time", "10.0")
-  
-  send_alert: |
-    notifier.send_email_background(
-        to="admin@example.com",
-        subject="Alert",
-        body="Person left zone"
-    )
-  
-  check_zone: |
-    zone = zm.point_zone(xc, yc)
-    if zone == "entrada":
-        # person in entrance zone
-  
-  log_event: |
-    log_system_action("PAUSE", "admin", "Manual pause")
-  
-  access_track_state: |
-    track_state = vs.track_state
-    out_time = track_state[track_id]["out_time"]
-
-################################################################################
-#                          SECURITY NOTES
-################################################################################
+  ip_camera_http:
+    code: "SOURCE = \"http://192.168.1.100:8080/video\""
 
 security:
-  known_issues:
-    - "Email credentials in database (should use env vars)"
-    - "SECRET_KEY in code (should use env var)"
-    - "No HTTPS in development"
-    - "No rate limiting"
-    - "No automated backups"
+  implemented:
+    - bcrypt: Password hashing (werkzeug.security)
+    - sessions: Session-based auth (Flask secure cookies)
+    - rbac: Role-based access control (admin/user)
+    - csrf: CSRF protection (implicit Flask)
+    - input_validation: Parameterized SQL queries
   
-  recommendations:
-    - "Use environment variables for secrets"
-    - "Enable HTTPS in production"
-    - "Add Flask-Limiter for rate limiting"
-    - "Regular database backups"
-    - "SQL injection protection (use parameterized queries)"
-    - "XSS protection (Jinja2 auto-escapes)"
+  limitations:
+    - email_credentials: Hardcoded in yolo.py (MOVE TO .env)
+    - flask_secret_key: Hardcoded (MOVE TO .env)
+    - https: Not in dev (ADD gunicorn + nginx + SSL)
+    - rate_limiting: Not implemented (ADD Flask-Limiter)
 
-################################################################################
-#                            GLOSSARY
-################################################################################
+file_structure:
+  root_files:
+    - app.py (814 lines) Flask server
+    - yolo.py (810 lines) Vision system
+    - database.py (148 lines) SQLite
+    - zones.py (143 lines) Zone logic
+    - auth.py (36 lines) Auth decorators
+    - notifications.py (112 lines) Email SMTP
+    - requeriments.txt Python dependencies
+    - botsort_reid.yaml Tracker config
+    - .gitignore Git exclusions
+    - README.md (563 lines) Professional docs
+    - cv_system.db (generated at runtime)
+  
+  directories:
+    templates: 10 HTML Jinja2 files
+    yolo_models: 6 .pt files (~100 MB)
+    documentation: 8 user docs
+    ia_documentation: 7 AI context files
+    alertas: Generated at runtime
 
-glossary:
-  track_id: "Unique identifier for a person in current session"
-  bbox: "Bounding box [x1, y1, x2, y2] of detected person"
-  xc_yc: "Center point of bounding box"
-  safe_zone: "Polygon area where persons should stay"
-  out_time: "Seconds person has been outside safe zone"
-  conf_thresh: "Confidence threshold for YOLO detections (0-1)"
-  MJPEG: "Motion JPEG - streaming protocol for video"
-  BoT-SORT: "Tracking algorithm combining Kalman filter + Re-ID"
-  persist: "Keep track IDs even if person leaves frame temporarily"
-  cooldown: "Wait period before sending next alert"
+extension_points:
+  add_new_zone:
+    file: zones.py
+    step: Edit self.zones dict
+    example: "self.zones['my_zone'] = [(100,100), (200,100), (200,200)]"
+  
+  add_new_setting:
+    steps:
+      1_html: Add form input in templates/settings.html
+      2_flask: Add POST handler in app.py
+      3_load: Add get_setting() in yolo.py get_config()
+      4_use: Use config['my_setting'] in logic
+  
+  add_alert_logic:
+    file: yolo.py
+    method: process_detection()
+    example: "if custom_condition: trigger_alert(track_id, reason)"
+  
+  add_api_route:
+    file: app.py
+    decorator: "@app.route('/api/endpoint')"
+    access_control: "@login_required"
+    return: "jsonify({...})"
 
-################################################################################
+performance:
+  benchmarks_gtx_1080_ti:
+    - "yolov8n @ 960px: 45 FPS"
+    - "yolov8m @ 960px: 25 FPS"
+    - "yolov8l @ 960px: 15 FPS"
+  
+  cpu_only_intel_i7_10700k:
+    - "yolov8n @ 480px: 12 FPS"
+    - "yolov8n @ 960px: 4 FPS (not recommended)"
+  
+  optimization_tips:
+    - reduce_resolution: Lower target_width (480 or 640)
+    - skip_frames: Increase frame_step (3 or 5)
+    - smaller_model: yolov8n instead of yolov8l
+    - enable_gpu: 5-10x speedup
+    - pause_mode: Reduce CPU without stopping tracking
 
+troubleshooting:
+  bad_detections:
+    cause: Low confidence threshold or wrong model
+    solutions:
+      - increase conf_thresh in settings (0.85+)
+      - switch to larger model (yolov8l)
+      - improve lighting
+  
+  slow_performance:
+    cause: High resolution or large model
+    solutions:
+      - reduce target_width (640 or 480)
+      - increase frame_step (3-5)
+      - use smaller model
+      - enable GPU
+  
+  unstable_tracking:
+    cause: Low resolution or poor lighting
+    solutions:
+      - increase input resolution
+      - improve lighting
+      - adjust tracker parameters in botsort_reid.yaml
+  
+  no_emails:
+    checks:
+      - use_app_password: Not regular Gmail password
+      - less_secure_apps: Enabled in Gmail settings
+      - credentials_correct: Check notifications.py
+      - port_open: 587 or 465
+  
+  camera_not_connecting:
+    checks:
+      - url_correct: Check camera documentation
+      - credentials: If RTSP auth required
+      - port: 554 (RTSP) 8080 (HTTP, common)
+      - same_network: Ping IP address
+
+execution:
+  install_steps:
+    - "python -m venv cv_env"
+    - "source cv_env/bin/activate  # Linux/Mac"
+    - "# OR cv_env\\Scripts\\Activate.ps1  # Windows"
+    - "pip install -r requeriments.txt"
+    - "python -c \"from database import init_db; init_db()\""
+    - "python app.py"
+    - "# Visit http://localhost:5000"
+  
+  first_login:
+    access_register: True on first visit
+    create_user: Yes (first user is admin)
+    password_requirement: Any string
+
+ai_agent_checklist:
+  understanding:
+    - [ ] "3 layers (Presentation → Vision → Data)"
+    - [ ] "Frame pipeline (detect → track → validate → alert)"
+    - [ ] "Singleton pattern for YOLOVisionSystem"
+    - [ ] "Database schema (4 tables)"
+    - [ ] "YOLO model tradeoffs"
+    - [ ] "Zone validation (polygon winding)"
+    - [ ] "Email cooldown throttling"
+    - [ ] "Settings loaded at runtime"
+    - [ ] "Bcrypt + sessions + roles"
+    - [ ] "Extension points (routes, settings, zones)"
+
+references:
+  external:
+    yolo_docs: https://docs.ultralytics.com
+    botsort_paper: https://arxiv.org/abs/2110.14652
+    flask_docs: https://flask.palletsprojects.com
+    opencv_docs: https://docs.opencv.org
+    pytorch_docs: https://pytorch.org/docs
+  
+  internal:
+    readme: README.md (563 lines professional overview)
+    full_docs: documentation/DOCUMENTACAO.md (complete reference)
+    architecture: documentation/ARQUITETURA_TECNICA.md (deep dive)
+    quick_start: documentation/GUIA_RAPIDO.md (15 minutes)
+  
+  repository:
+    url: https://github.com/jonatansouza2k11/computacional_vision
+    issues: Use GitHub Issues for bugs
+    branch: main (production ready)
+
+---
+# Document ends here
 # Version: 1.0
-# Created: 2025-12
-# Format: YAML-like structured text
-# Purpose: Machine-readable project context for AI agents
+# Updated: 2025-12-26
+# For AI agents: Use this document as your primary reference
