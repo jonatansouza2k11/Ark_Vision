@@ -8,3 +8,4 @@ flask
 opencv-python
 werkzeug
 ffmpeg
+python-dotenv
