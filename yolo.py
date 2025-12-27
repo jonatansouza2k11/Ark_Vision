@@ -99,7 +99,7 @@ class YOLOVisionSystem:
         email_user = get_setting("email_user", "")
         email_password = get_setting("email_password", "")
         email_from = get_setting("email_from", email_user)
-        email_to = email_from or email_user  # destinatário padrão
+        email_to = email_from or email_user
 
         self.notifier = None
         if smtp_server and email_user and email_password and email_to:

@@ -13,6 +13,9 @@ from flask import (
 )
 from werkzeug.exceptions import NotFound
 
+# Carrega configurações do .env via config.py
+import config
+
 from database import (
     verify_user, create_user, update_last_login,
     get_recent_alerts, get_all_users, get_setting, set_setting,
@@ -23,10 +26,8 @@ from yolo import get_vision_system
 
 app = Flask(__name__)
 
-app.config["SECRET_KEY"] = os.environ.get(
-    "ARK_SECRET_KEY",
-    "sua_chave_secreta_super_segura_aqui_2025"
-)
+# Usa a chave secreta do .env ou valor padrão do config.py
+app.config["SECRET_KEY"] = config.FLASK_SECRET_KEY
 
 
 # ==========================================================
@@ -810,4 +811,29 @@ def diagnostics():
 
 if __name__ == "__main__":
     print("[Flask] Iniciando servidor...")
+        # Valida configurações antes de iniciar
+    errors, warnings = config.validate_config()
+    
+    if errors:
+        print("\n❌ ERROS DE CONFIGURAÇÃO - não é possível iniciar:")
+        for error in errors:
+            print(f"  {error}")
+        exit(1)
+    
+    if warnings:
+        print("\n⚠️  AVISOS DE CONFIGURAÇÃO:")
+        for warning in warnings:
+            print(f"  {warning}")
+    
+    # Exibe resumo de configuração
+    config.print_config_summary()
+    
+    # Inicia servidor Flask
+    app.run(
+        host=config.FLASK_HOST,
+        port=config.FLASK_PORT,
+        debug=config.FLASK_DEBUG,
+        threaded=True
+    )
+    
     app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)

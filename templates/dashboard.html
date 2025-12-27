@@ -12,7 +12,7 @@
     <h1 class="text-2xl font-bold flex items-center gap-3">
       Computação Visual Ark
       <span id="status-badge"
-            class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-900 text-green-300 border border-green-500">
+        class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-900 text-green-300 border border-green-500">
         <span id="status-dot" class="w-2 h-2 rounded-full bg-green-400 mr-1"></span>
         <span id="status-label">OPERATIONAL</span>
       </span>
@@ -52,25 +52,23 @@
 
         <div class="flex gap-2">
           <button onclick="togglePause()" id="btn-pause"
-                  class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-sm font-semibold transition">
+            class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-sm font-semibold transition">
             ⏸️ Pausar
           </button>
           <button onclick="stopStream()" id="btn-stop"
-                  class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-semibold transition">
+            class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-semibold transition">
             ⏹️ Parar
           </button>
           <button onclick="startStream()" id="btn-start"
-                  class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm font-semibold transition"
-                  style="display:none;">
+            class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm font-semibold transition"
+            style="display:none;">
             ▶️ Reiniciar
           </button>
         </div>
       </div>
 
-      <img id="video-main"
-           class="w-full rounded-xl"
-           alt="Video Feed"
-           style="max-height: 450px; object-fit: cover; display: block;" />
+      <img id="video-main" class="w-full rounded-xl" alt="Video Feed"
+        style="max-height: 450px; object-fit: cover; display: block;" />
 
       <div class="mt-4 flex items-center justify-between text-sm text-gray-400">
         <span id="status-text"><span class="text-green-400">●</span> Stream ativo</span>
@@ -90,29 +88,25 @@
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-lg font-semibold">Safe Zone Map</h3>
           {% if user and (user.role == 'admin' or user.get('role') == 'admin') %}
-            <button
-              type="button"
-              onclick="openSafeZoneModal()"
-              class="px-3 py-1 text-xs rounded bg-accent-blue hover:bg-blue-600 text-white">
-              Map
-            </button>
+          <button type="button" onclick="openSafeZoneModal()"
+            class="px-3 py-1 text-xs rounded bg-accent-blue hover:bg-blue-600 text-white">
+            Map
+          </button>
           {% endif %}
         </div>
         <div id="safe-zone-container" class="relative h-64 bg-dark-bg rounded-xl overflow-hidden">
           <div class="absolute inset-0 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 opacity-70"></div>
 
           <div id="safe-zone-box"
-               class="absolute border-4 border-yellow-400 border-dashed rounded-lg flex items-center justify-center text-xs font-bold text-yellow-300"
-               style="display:none;">
+            class="absolute border-4 border-yellow-400 border-dashed rounded-lg flex items-center justify-center text-xs font-bold text-yellow-300"
+            style="display:none;">
             SAFE ZONE
           </div>
 
-          <div id="out-point"
-               class="absolute w-3 h-3 bg-red-400 rounded-full animate-pulse"
-               style="display:none;"></div>
+          <div id="out-point" class="absolute w-3 h-3 bg-red-400 rounded-full animate-pulse" style="display:none;">
+          </div>
 
-          <div id="safe-zone-fallback"
-               class="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div id="safe-zone-fallback" class="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div class="w-48 h-32 border-4 border-yellow-400 border-dashed rounded-lg flex items-center justify-center">
               <span class="text-yellow-400 font-bold text-sm">SAFE ZONE</span>
             </div>
@@ -201,56 +195,47 @@
 </div>
 
 <!-- MODAL SAFE ZONE -->
-<div id="safe-zone-modal"
-     class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 hidden">
+<div id="safe-zone-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 hidden">
   <div class="bg-dark-card rounded-2xl p-4 w-[90vw] h-[80vh] flex flex-col">
     <div class="flex items-center justify-between mb-3">
       <h3 class="text-lg font-semibold">
-        Editar Safe Zones 
+        Editar Safe Zones
         <span id="zone-counter" class="text-sm text-gray-400">(Zona 1 de 1)</span>
       </h3>
       <div class="flex gap-2">
-        <button type="button" id="btn-prev-zone"
-                class="px-3 py-1 text-xs rounded bg-gray-600 hover:bg-gray-700">
+        <button type="button" id="btn-prev-zone" class="px-3 py-1 text-xs rounded bg-gray-600 hover:bg-gray-700">
           ◄ Anterior
         </button>
-        <button type="button" id="btn-next-zone"
-                class="px-3 py-1 text-xs rounded bg-gray-600 hover:bg-gray-700">
+        <button type="button" id="btn-next-zone" class="px-3 py-1 text-xs rounded bg-gray-600 hover:bg-gray-700">
           Próxima ►
         </button>
-        <button type="button" id="btn-new-zone"
-                class="px-3 py-1 text-xs rounded bg-green-600 hover:bg-green-700">
+        <button type="button" id="btn-new-zone" class="px-3 py-1 text-xs rounded bg-green-600 hover:bg-green-700">
           + Nova Zona
         </button>
-        <button type="button" id="btn-delete-zone"
-                class="px-3 py-1 text-xs rounded bg-red-600 hover:bg-red-700">
+        <button type="button" id="btn-delete-zone" class="px-3 py-1 text-xs rounded bg-red-600 hover:bg-red-700">
           🗑️ Remover
         </button>
-        <button type="button"
-                class="px-3 py-1 text-xs rounded bg-gray-600 hover:bg-gray-700"
-                onclick="closeSafeZoneModal()">
+        <button type="button" class="px-3 py-1 text-xs rounded bg-gray-600 hover:bg-gray-700"
+          onclick="closeSafeZoneModal()">
           Cancelar
         </button>
-        <button type="button"
-                class="px-3 py-1 text-xs rounded bg-accent-blue hover:bg-blue-600"
-                onclick="saveSafeZones()">
+        <button type="button" class="px-3 py-1 text-xs rounded bg-accent-blue hover:bg-blue-600"
+          onclick="saveSafeZones()">
           Salvar Tudo
         </button>
       </div>
     </div>
 
     <div class="relative flex-1 bg-black rounded-xl overflow-hidden">
-      <img id="safe-zone-video"
-           class="absolute inset-0 w-full h-full object-contain"
-           src="{{ url_for('video_feed') }}"
-           alt="Safe Zone Video">
+      <img id="safe-zone-video" class="absolute inset-0 w-full h-full object-contain" src="{{ url_for('video_feed') }}"
+        alt="Safe Zone Video">
 
-      <canvas id="safe-zone-canvas"
-              class="absolute inset-0 w-full h-full"></canvas>
+      <canvas id="safe-zone-canvas" class="absolute inset-0 w-full h-full"></canvas>
     </div>
 
     <p class="mt-2 text-xs text-gray-400">
-      Clique para adicionar pontos. Arraste para mover. Clique direito para deletar vértice. Use botões acima para alternar/criar zonas.
+      Clique para adicionar pontos. Arraste para mover. Clique direito para deletar vértice. Use botões acima para
+      alternar/criar zonas.
     </p>
   </div>
 </div>
@@ -383,9 +368,9 @@
       mini.className = 'absolute inset-0 w-full h-full';
       container.appendChild(mini);
     }
-    const width  = container.clientWidth;
+    const width = container.clientWidth;
     const height = container.clientHeight;
-    mini.width  = width;
+    mini.width = width;
     mini.height = height;
     const ctx = mini.getContext('2d');
     ctx.clearRect(0, 0, width, height);
@@ -479,15 +464,15 @@
     const scaleY = height / maxH;
 
     const left = x1 * scaleX;
-    const top  = y1 * scaleY;
-    const w    = (x2 - x1) * scaleX;
-    const h    = (y2 - y1) * scaleY;
+    const top = y1 * scaleY;
+    const w = (x2 - x1) * scaleX;
+    const h = (y2 - y1) * scaleY;
 
     box.style.display = 'flex';
-    box.style.left   = left + 'px';
-    box.style.top    = top  + 'px';
-    box.style.width  = w    + 'px';
-    box.style.height = h    + 'px';
+    box.style.left = left + 'px';
+    box.style.top = top + 'px';
+    box.style.width = w + 'px';
+    box.style.height = h + 'px';
 
     fallback.style.display = 'none';
 
@@ -497,121 +482,121 @@
       const py = top + h / 2;
       outPoint.style.display = 'block';
       outPoint.style.left = Math.min(px, width - 8) + 'px';
-      outPoint.style.top  = Math.min(py, height - 8) + 'px';
+      outPoint.style.top = Math.min(py, height - 8) + 'px';
     } else {
       outPoint.style.display = 'none';
     }
   }
-// ===============================
-// ACTIVITY
-// ===============================
-function updateRecentActivity(data) {
-  const container = document.getElementById('recent-activity');
-  if (!container) return;
+  // ===============================
+  // ACTIVITY
+  // ===============================
+  function updateRecentActivity(data) {
+    const container = document.getElementById('recent-activity');
+    if (!container) return;
 
-  const alerts = data.recent_alerts || [];
-  const systemLogs = data.system_logs || [];
+    const alerts = data.recent_alerts || [];
+    const systemLogs = data.system_logs || [];
 
-  // Se quiser mesclar e, futuramente, ordenar por timestamp,
-  // dá pra juntar em um único array; por enquanto, mantemos blocos:
-  container.innerHTML = '';
+    // Se quiser mesclar e, futuramente, ordenar por timestamp,
+    // dá pra juntar em um único array; por enquanto, mantemos blocos:
+    container.innerHTML = '';
 
-  if (!alerts.length && !systemLogs.length) {
-    const p = document.createElement('p');
-    p.className = 'text-gray-400';
-    p.textContent = 'Nenhuma atividade recente.';
-    container.appendChild(p);
-    return;
+    if (!alerts.length && !systemLogs.length) {
+      const p = document.createElement('p');
+      p.className = 'text-gray-400';
+      p.textContent = 'Nenhuma atividade recente.';
+      container.appendChild(p);
+      return;
+    }
+
+    // 1) Alertas (como já era)
+    alerts.forEach(item => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex flex-col bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-800/60';
+
+      const line1 = document.createElement('div');
+      line1.className = 'flex items-center justify-between text-xs';
+
+      const ts = document.createElement('span');
+      ts.className = 'text-gray-400';
+      ts.textContent = item.timestamp || '--';
+
+      const badge = document.createElement('span');
+      badge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold';
+      if (item.email_sent) {
+        badge.classList.add('bg-red-900', 'text-red-300', 'border', 'border-red-500');
+        badge.textContent = 'ALERTA CRÍTICO';
+      } else {
+        badge.classList.add('bg-yellow-900', 'text-yellow-300', 'border', 'border-yellow-500');
+        badge.textContent = 'ALERTA';
+      }
+
+      line1.appendChild(ts);
+      line1.appendChild(badge);
+
+      const line2 = document.createElement('div');
+      line2.className = 'flex items-center justify-between mt-1';
+
+      const desc = document.createElement('p');
+      desc.className = 'text-[13px] text-gray-200';
+      desc.textContent = item.status || 'Evento registrado';
+
+      const actions = document.createElement('div');
+      actions.className = 'flex items-center gap-2';
+
+      if (item.video_file) {
+        const link = document.createElement('a');
+        link.href = `/video/${encodeURIComponent(item.video_file)}`;
+        link.target = '_blank';
+        link.className = 'text-accent-blue text-xs hover:underline flex items-center gap-1';
+        link.innerHTML = '▶ Ver vídeo';
+        actions.appendChild(link);
+      }
+
+      line2.appendChild(desc);
+      line2.appendChild(actions);
+
+      wrapper.appendChild(line1);
+      wrapper.appendChild(line2);
+
+      container.appendChild(wrapper);
+    });
+
+    // 2) Logs de sistema (novos: INICIAR/PAUSAR/RETOMAR/PARAR)
+    systemLogs.forEach(log => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex flex-col bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-800/60';
+
+      const line1 = document.createElement('div');
+      line1.className = 'flex items-center justify-between text-xs';
+
+      const ts = document.createElement('span');
+      ts.className = 'text-gray-400';
+      ts.textContent = log.timestamp || '--';
+
+      const badge = document.createElement('span');
+      badge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-900 text-cyan-300 border border-cyan-500';
+      badge.textContent = 'ATIVIDADE DO STREAM';
+
+      line1.appendChild(ts);
+      line1.appendChild(badge);
+
+      const line2 = document.createElement('div');
+      line2.className = 'flex items-center justify-between mt-1';
+
+      const desc = document.createElement('p');
+      desc.className = 'text-[13px] text-gray-200';
+      desc.textContent = log.message || 'Ação de sistema registrada';
+
+      line2.appendChild(desc);
+      // sem ações extras (botão) por enquanto
+
+      wrapper.appendChild(line1);
+      wrapper.appendChild(line2);
+
+      container.appendChild(wrapper);
+    });
   }
-
-  // 1) Alertas (como já era)
-  alerts.forEach(item => {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'flex flex-col bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-800/60';
-
-    const line1 = document.createElement('div');
-    line1.className = 'flex items-center justify-between text-xs';
-
-    const ts = document.createElement('span');
-    ts.className = 'text-gray-400';
-    ts.textContent = item.timestamp || '--';
-
-    const badge = document.createElement('span');
-    badge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold';
-    if (item.email_sent) {
-      badge.classList.add('bg-red-900', 'text-red-300', 'border', 'border-red-500');
-      badge.textContent = 'ALERTA CRÍTICO';
-    } else {
-      badge.classList.add('bg-yellow-900', 'text-yellow-300', 'border', 'border-yellow-500');
-      badge.textContent = 'ALERTA';
-    }
-
-    line1.appendChild(ts);
-    line1.appendChild(badge);
-
-    const line2 = document.createElement('div');
-    line2.className = 'flex items-center justify-between mt-1';
-
-    const desc = document.createElement('p');
-    desc.className = 'text-[13px] text-gray-200';
-    desc.textContent = item.status || 'Evento registrado';
-
-    const actions = document.createElement('div');
-    actions.className = 'flex items-center gap-2';
-
-    if (item.video_file) {
-      const link = document.createElement('a');
-      link.href = `/video/${encodeURIComponent(item.video_file)}`;
-      link.target = '_blank';
-      link.className = 'text-accent-blue text-xs hover:underline flex items-center gap-1';
-      link.innerHTML = '▶ Ver vídeo';
-      actions.appendChild(link);
-    }
-
-    line2.appendChild(desc);
-    line2.appendChild(actions);
-
-    wrapper.appendChild(line1);
-    wrapper.appendChild(line2);
-
-    container.appendChild(wrapper);
-  });
-
-  // 2) Logs de sistema (novos: INICIAR/PAUSAR/RETOMAR/PARAR)
-  systemLogs.forEach(log => {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'flex flex-col bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-800/60';
-
-    const line1 = document.createElement('div');
-    line1.className = 'flex items-center justify-between text-xs';
-
-    const ts = document.createElement('span');
-    ts.className = 'text-gray-400';
-    ts.textContent = log.timestamp || '--';
-
-    const badge = document.createElement('span');
-    badge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-900 text-cyan-300 border border-cyan-500';
-    badge.textContent = 'ATIVIDADE DO STREAM';
-
-    line1.appendChild(ts);
-    line1.appendChild(badge);
-
-    const line2 = document.createElement('div');
-    line2.className = 'flex items-center justify-between mt-1';
-
-    const desc = document.createElement('p');
-    desc.className = 'text-[13px] text-gray-200';
-    desc.textContent = log.message || 'Ação de sistema registrada';
-
-    line2.appendChild(desc);
-    // sem ações extras (botão) por enquanto
-
-    wrapper.appendChild(line1);
-    wrapper.appendChild(line2);
-
-    container.appendChild(wrapper);
-  });
-}
 
   // ===============================
   // ZONES CARD
@@ -688,10 +673,10 @@ function updateRecentActivity(data) {
       document.getElementById('detections').textContent = data.detections;
 
       const fpsInstEl = document.getElementById('fps-counter');
-      const fpsAvgEl  = document.getElementById('fps-avg');
+      const fpsAvgEl = document.getElementById('fps-avg');
 
       if (fpsInstEl) fpsInstEl.textContent = '--';
-      if (fpsAvgEl)  fpsAvgEl.textContent  = '--';
+      if (fpsAvgEl) fpsAvgEl.textContent = '--';
 
       if (data.system_status === 'running') {
         if (fpsInstEl && typeof data.fps_inst === 'number' && data.fps_inst > 0) {
@@ -727,55 +712,55 @@ function updateRecentActivity(data) {
     return reason.trim();
   }
 
- async function togglePause() {
-  const btn = document.getElementById('btn-pause');
-  if (!btn) return;
+  async function togglePause() {
+    const btn = document.getElementById('btn-pause');
+    if (!btn) return;
 
-  // Checa se o texto contém "Retomar" (com ou sem emoji)
-  const isResuming = btn.textContent.includes('Retomar') || btn.innerHTML.includes('Retomar');
+    // Checa se o texto contém "Retomar" (com ou sem emoji)
+    const isResuming = btn.textContent.includes('Retomar') || btn.innerHTML.includes('Retomar');
 
-  // Se estiver retomando, não pergunta motivo
-  let reason = '';
-  if (!isResuming) {
-    reason = await askReason("PAUSAR");
-    if (reason === null) return;  
-  }
-
-  try {
-    const res = await fetch('/toggle_camera', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason })
-    });
-    const data = await res.json();
-    const statusText = document.getElementById('status-text');
-    const fpsInstEl = document.getElementById('fps-counter');
-    const fpsAvgEl  = document.getElementById('fps-avg');
-
-    if (data.paused) {
-      // acabou de PAUSAR
-      btn.innerHTML = '▶️ Retomar';
-      btn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
-      btn.classList.add('bg-green-600', 'hover:bg-green-700');
-      if (statusText) statusText.innerHTML = '<span class="text-yellow-400">⏸ Stream pausado</span>';
-      if (fpsInstEl) fpsInstEl.textContent = '--';
-      if (fpsAvgEl)  fpsAvgEl.textContent  = '--';
-      startStatusTimer('paused');
-    } else {
-      // acabou de RETOMAR
-      btn.innerHTML = '⏸️ Pausar';
-      btn.classList.remove('bg-green-600', 'hover:bg-green-700');
-      btn.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
-      if (statusText) statusText.innerHTML = '<span class="text-green-400">● Stream ativo</span>';
-      startStatusTimer('running');
+    // Se estiver retomando, não pergunta motivo
+    let reason = '';
+    if (!isResuming) {
+      reason = await askReason("PAUSAR");
+      if (reason === null) return;
     }
 
-    fetchAndUpdateStats();
-  } catch (e) {
-    console.error('Erro ao pausar:', e);
-    alert('Erro ao pausar stream');
+    try {
+      const res = await fetch('/toggle_camera', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+      });
+      const data = await res.json();
+      const statusText = document.getElementById('status-text');
+      const fpsInstEl = document.getElementById('fps-counter');
+      const fpsAvgEl = document.getElementById('fps-avg');
+
+      if (data.paused) {
+        // acabou de PAUSAR
+        btn.innerHTML = '▶️ Retomar';
+        btn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
+        btn.classList.add('bg-green-600', 'hover:bg-green-700');
+        if (statusText) statusText.innerHTML = '<span class="text-yellow-400">⏸ Stream pausado</span>';
+        if (fpsInstEl) fpsInstEl.textContent = '--';
+        if (fpsAvgEl) fpsAvgEl.textContent = '--';
+        startStatusTimer('paused');
+      } else {
+        // acabou de RETOMAR
+        btn.innerHTML = '⏸️ Pausar';
+        btn.classList.remove('bg-green-600', 'hover:bg-green-700');
+        btn.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
+        if (statusText) statusText.innerHTML = '<span class="text-green-400">● Stream ativo</span>';
+        startStatusTimer('running');
+      }
+
+      fetchAndUpdateStats();
+    } catch (e) {
+      console.error('Erro ao pausar:', e);
+      alert('Erro ao pausar stream');
+    }
   }
-}
 
 
   async function stopStream() {
@@ -791,14 +776,14 @@ function updateRecentActivity(data) {
       const data = await res.json();
 
       if (data.success) {
-        const btnStop  = document.getElementById('btn-stop');
+        const btnStop = document.getElementById('btn-stop');
         const btnPause = document.getElementById('btn-pause');
         const btnStart = document.getElementById('btn-start');
         const statusText = document.getElementById('status-text');
         const fpsInstEl = document.getElementById('fps-counter');
-        const fpsAvgEl  = document.getElementById('fps-avg');
+        const fpsAvgEl = document.getElementById('fps-avg');
 
-        if (btnStop)  btnStop.style.display  = 'none';
+        if (btnStop) btnStop.style.display = 'none';
         if (btnPause) btnPause.style.display = 'none';
         if (btnStart) btnStart.style.display = 'inline-block';
 
@@ -806,7 +791,7 @@ function updateRecentActivity(data) {
           statusText.innerHTML = '<span class="text-red-400">⏹ Stream desligado</span>';
         }
         if (fpsInstEl) fpsInstEl.textContent = '--';
-        if (fpsAvgEl)  fpsAvgEl.textContent  = '--';
+        if (fpsAvgEl) fpsAvgEl.textContent = '--';
 
         startStatusTimer('stopped');
         await fetchAndUpdateStats();
@@ -1146,7 +1131,7 @@ function updateRecentActivity(data) {
       fetchAndUpdateStats();
     } catch (e) {
       console.error('Erro na requisição /api/safe_zone:', e);
-      alert('Erro ao comunicar com o servidor.');
+      alert('Erro ao comunicar com o SERVEEEERRRRR.');
     }
   }
 

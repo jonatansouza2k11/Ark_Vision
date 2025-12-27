@@ -122,8 +122,8 @@ Se 10 tarefas/mês = 10-20 horas economizadas por mês
 │ Compatibilidade  │ Alta     │ Máxima   │ Média    │
 │ Legibilidade     │ Muito boa│ Boa      │ Ótima*   │
 │ Parseável        │ Não      │ Não      │ Sim      │
-│ Formatação       │ Rich     │ Simples  │ Estrut.  │
-│ Para ChatGPT     │ ✅ Ideal │ ✅ OK    │ ✅ OK    │
+│ Formatação       │ Rich     │ Simples  │ Estrut.   
+│ Para ChatGPT     │ ✅ Ideal │ ✅ OK    │ ✅ OK   │
 │ Para CLI tool    │ ✅ OK    │ ✅ Ideal │ ✅ OK    │
 │ Para script      │ ❌ Difícil│ ❌ Difícil│ ✅ Ideal │
 └──────────────────┴──────────┴──────────┴──────────┘

@@ -77,7 +77,7 @@ SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
 SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
 SMTP_USE_TLS = os.getenv('SMTP_USE_TLS', 'true').lower() == 'true'
 
-EMAIL_RECIPIENTS = os.getenv('EMAIL_RECIPIENTS', 'admin@example.com')
+EMAIL_RECIPIENTS = os.getenv('EMAIL_RECIPIENTS')
 # Converte string separada por vírgula em lista
 EMAIL_RECIPIENTS_LIST = [email.strip() for email in EMAIL_RECIPIENTS.split(',')]
 

@@ -2,7 +2,7 @@
 # Script para fazer commit e push para GitHub
 
 echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║          PUSH PARA GITHUB - ARK YOLO                         ║"
+echo "║          PUSH PARA GITHUB - ARK YOLO                           ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
 
