@@ -8,10 +8,7 @@ Suporta:
 - Webcam local (SOURCE = 0, 1, 2, etc.)
 - Câmera IP (SOURCE = "rtsp://user:pass@ip:port/stream")
 - Câmera HTTP (SOURCE = "http://ip:port/video")
-- Múltiplas safe zones poligonais
-
-Requisitos:
-pip install ultralytics opencv-python
+- Múltiplas safe zones poligonais (normalizadas 0-1)
 """
 
 import time
@@ -47,19 +44,22 @@ def _load_safe_zone_from_db():
     """
     Lê settings.safe_zone do banco.
 
-    Formatos aceitos:
+    Formato esperado (apenas novo formato):
     - JSON múltiplas zonas: "[[[x,y],...], [[x,y],...]]" (x,y normalizados 0-1)
-    - JSON zona única: "[[x,y], ...]"
-    - tupla antiga: "(x1, y1, x2, y2)" em pixels (resolução base 1280x720)
+    - JSON zona única: "[[x,y], ...]" (será tratado como uma única zona)
     """
-    raw_safe = get_setting("safe_zone", "(400, 100, 700, 600)")
+    raw_safe = get_setting("safe_zone", "[]")
     try:
         s = str(raw_safe).strip()
-        if s.startswith("["):
-            return json.loads(s)
-        return eval(s)
+        if not s:
+            return []
+        if not s.startswith("["):
+            # Se não for JSON de lista, considera sem zonas válidas
+            return []
+        data = json.loads(s)
+        return data
     except Exception:
-        return (400, 100, 700, 600)
+        return []
 
 
 class YOLOVisionSystem:
@@ -111,7 +111,6 @@ class YOLOVisionSystem:
                 smtp_port=smtp_port,
             )
 
-
         self.zone_stats = {}
 
         self.zone_empty_timeout = cfg.get("zone_empty_timeout", 10.0)
@@ -119,8 +118,10 @@ class YOLOVisionSystem:
         self.zone_full_threshold = cfg.get("zone_full_threshold", 5)
 
         print(f"[YOLO] Sistema inicializado. Source: {self.source} | Model: {self.model_path}")
-        print(f"[YOLO] Zone params: empty_timeout={self.zone_empty_timeout}s, "
-              f"full_timeout={self.zone_full_timeout}s, full_threshold={self.zone_full_threshold}")
+        print(
+            f"[YOLO] Zone params: empty_timeout={self.zone_empty_timeout}s, "
+            f"full_timeout={self.zone_full_timeout}s, full_threshold={self.zone_full_threshold}"
+        )
 
     # =========================
     # INTERNAL CONFIG LOAD (INICIAL)
@@ -248,11 +249,6 @@ class YOLOVisionSystem:
         return cv2.resize(frame, (target_width, int(h * scale))), scale
 
     @staticmethod
-    def point_in_rect(xc, yc, rect):
-        x1, y1, x2, y2 = rect
-        return x1 <= xc <= x2 and y1 <= yc <= y2
-
-    @staticmethod
     def point_in_polygon(px, py, poly):
         inside = False
         n = len(poly)
@@ -271,9 +267,8 @@ class YOLOVisionSystem:
 
     def draw_safe_zone(self, frame, zones):
         """
-        zones pode ser:
-        - [x1, y1, x2, y2] (retângulo antigo, pixels)
-        - [[x_norm,y_norm], ...] (zona única poligonal)
+        Desenha apenas zonas poligonais normalizadas:
+        - [[x_norm,y_norm], ...] (zona única)
         - [[[x,y],...], [[x,y],...]] (múltiplas zonas)
         """
         if not zones:
@@ -281,17 +276,12 @@ class YOLOVisionSystem:
 
         h, w = frame.shape[:2]
 
-        if isinstance(zones, (list, tuple)) and len(zones) == 4 and isinstance(zones[0], (int, float)):
-            zx1, zy1, zx2, zy2 = map(int, zones)
-            cv2.rectangle(frame, (zx1, zy1), (zx2, zy2), (255, 255, 0), 2)
-            cv2.putText(frame, "SAFE ZONE", (zx1, max(zy1 - 10, 10)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-            return
-
         if isinstance(zones, list) and len(zones) > 0:
-            is_multi = (isinstance(zones[0], list) and
-                        len(zones[0]) > 0 and
-                        isinstance(zones[0][0], (list, tuple)))
+            is_multi = (
+                isinstance(zones[0], list)
+                and len(zones[0]) > 0
+                and isinstance(zones[0][0], (list, tuple))
+            )
 
             if is_multi:
                 for zone_idx, zone in enumerate(zones):
@@ -312,8 +302,15 @@ class YOLOVisionSystem:
                         cv2.polylines(frame, [pts_np], isClosed=True, color=(255, 255, 0), thickness=2)
 
                         x0, y0 = pts[0]
-                        cv2.putText(frame, f"ZONE {zone_idx + 1}", (x0, max(y0 - 10, 10)),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+                        cv2.putText(
+                            frame,
+                            f"ZONE {zone_idx + 1}",
+                            (x0, max(y0 - 10, 10)),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (255, 255, 0),
+                            2,
+                        )
                     except Exception:
                         continue
             else:
@@ -332,8 +329,15 @@ class YOLOVisionSystem:
                         cv2.polylines(frame, [pts_np], isClosed=True, color=(255, 255, 0), thickness=2)
 
                         x0, y0 = pts[0]
-                        cv2.putText(frame, "SAFE ZONE", (x0, max(y0 - 10, 10)),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+                        cv2.putText(
+                            frame,
+                            "SAFE ZONE",
+                            (x0, max(y0 - 10, 10)),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            (255, 255, 0),
+                            2,
+                        )
                 except Exception:
                     pass
 
@@ -344,8 +348,15 @@ class YOLOVisionSystem:
         blend = cv2.addWeighted(frame, 0.3, overlay, 0.7, 0)
         text = "SISTEMA PAUSADO"
         (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 2.0, 4)
-        cv2.putText(blend, text, ((w - tw) // 2, (h + th) // 2),
-                    cv2.FONT_HERSHEY_SIMPLEX, 2.0, (0, 0, 255), 4)
+        cv2.putText(
+            blend,
+            text,
+            ((w - tw) // 2, (h + th) // 2),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2.0,
+            (0, 0, 255),
+            4,
+        )
         return blend
 
     def draw_stopped_overlay(self, frame):
@@ -354,8 +365,15 @@ class YOLOVisionSystem:
         cv2.rectangle(black, (0, 0), (w, h), (0, 0, 0), -1)
         text = "STREAM DESLIGADO"
         (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.5, 3)
-        cv2.putText(black, text, ((w - tw) // 2, (h + th) // 2),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1.5, (100, 100, 100), 3)
+        cv2.putText(
+            black,
+            text,
+            ((w - tw) // 2, (h + th) // 2),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.5,
+            (100, 100, 100),
+            3,
+        )
         return black
 
     # =========================
@@ -410,18 +428,19 @@ class YOLOVisionSystem:
     # ZONE HELPERS
     # =========================
     def get_zone_index(self, px, py, zones, frame_w, frame_h):
+        """
+        Retorna o índice da zona em que (px,py) está, ou -1 se estiver fora.
+        Considera apenas zonas poligonais normalizadas.
+        """
         if not zones:
             return -1
 
-        #if isinstance(zones, (list, tuple)) and len(zones) == 4 and isinstance(zones[0], (int, float)):
-        #    if self.point_in_rect(px, py, zones):
-        #        return 0
-        #    return -1
-
         if isinstance(zones, list) and len(zones) > 0:
-            is_multi = (isinstance(zones[0], list) and
-                        len(zones[0]) > 0 and
-                        isinstance(zones[0][0], (list, tuple)))
+            is_multi = (
+                isinstance(zones[0], list)
+                and len(zones[0]) > 0
+                and isinstance(zones[0][0], (list, tuple))
+            )
 
             if is_multi:
                 for idx, zone in enumerate(zones):
@@ -509,8 +528,15 @@ class YOLOVisionSystem:
         rec = " REC" if state["recording"] else ""
         lbl_zone = f" Z{zone_idx + 1}" if zone_idx >= 0 else " OUTZONE"
         lbl = f"ID {tid}{lbl_zone} {state['status']} {state['out_time']:.1f}s{rec}"
-        cv2.putText(frame, lbl, (x1b, max(y1b - 10, 10)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+        cv2.putText(
+            frame,
+            lbl,
+            (x1b, max(y1b - 10, 10)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            color,
+            2,
+        )
 
         if state["out_time"] > config["max_out_time"]:
             if now - self.last_email_time[tid] < config["email_cooldown"]:
@@ -518,14 +544,22 @@ class YOLOVisionSystem:
             self.trigger_alert(tid, state, frame, now)
 
     def trigger_alert(self, tid, state, frame, now):
-        cv2.putText(frame, f"ALERTA ID {tid}", (50, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
+        cv2.putText(
+            frame,
+            f"ALERTA ID {tid}",
+            (50, 60),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.0,
+            (0, 0, 255),
+            3,
+        )
 
         vp = self.stop_recording(tid, convert=True)
         if vp and os.path.exists(vp):
             subj = "Alerta zona YOLO"
             body = f"Pessoa ID {tid} fora por {state['out_time']:.1f}s."
-            self.notifier.send_email_background(subject=subj, body=body, attachment_path=vp)
+            if self.notifier:
+                self.notifier.send_email_background(subject=subj, body=body, attachment_path=vp)
 
             vf = os.path.basename(vp)
             log_alert(tid, state["out_time"], vf, email_sent=True)
@@ -581,7 +615,6 @@ class YOLOVisionSystem:
         self.stream_active = True
         target_interval = 1.0 / 60.0
 
-        # config inicial para abrir câmera
         init_config = self.get_config()
         self.zone_empty_timeout = init_config.get("zone_empty_timeout", self.zone_empty_timeout)
         self.zone_full_timeout = init_config.get("zone_full_timeout", self.zone_full_timeout)
@@ -596,7 +629,6 @@ class YOLOVisionSystem:
             while True:
                 loop_start = time.time()
 
-                # recarrega config/safe_zone em cada iteração
                 config = self.get_config()
                 self.zone_empty_timeout = config.get("zone_empty_timeout", self.zone_empty_timeout)
                 self.zone_full_timeout = config.get("zone_full_timeout", self.zone_full_timeout)
@@ -609,8 +641,11 @@ class YOLOVisionSystem:
                     if stopped_frame is not None:
                         ret, buf = cv2.imencode(".jpg", stopped_frame)
                         if ret:
-                            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" +
-                                   buf.tobytes() + b"\r\n")
+                            yield (
+                                b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+                                + buf.tobytes()
+                                + b"\r\n"
+                            )
                     time.sleep(0.2)
                     continue
 
@@ -633,8 +668,11 @@ class YOLOVisionSystem:
                         pf = self.draw_paused_overlay(last_frame.copy())
                         ret, buf = cv2.imencode(".jpg", pf)
                         if ret:
-                            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" +
-                                   buf.tobytes() + b"\r\n")
+                            yield (
+                                b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+                                + buf.tobytes()
+                                + b"\r\n"
+                            )
 
                     elapsed = time.time() - loop_start
                     if elapsed < target_interval:
@@ -652,9 +690,13 @@ class YOLOVisionSystem:
                         persist=True,
                         classes=[PERSON_CLASS_ID],
                         tracker=config.get("tracker", "botsort.yaml"),
-                        verbose=False
+                        verbose=False,
                     )
-                    results = results_list[0] if isinstance(results_list, list) and len(results_list) > 0 else None
+                    results = (
+                        results_list[0]
+                        if isinstance(results_list, list) and len(results_list) > 0
+                        else None
+                    )
 
                     if results is not None and results.boxes is not None:
                         for box in results.boxes:
@@ -670,8 +712,11 @@ class YOLOVisionSystem:
                 ret, buf = cv2.imencode(".jpg", frame)
                 if ret:
                     last_frame = frame.copy()
-                    yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" +
-                           buf.tobytes() + b"\r\n")
+                    yield (
+                        b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+                        + buf.tobytes()
+                        + b"\r\n"
+                    )
 
                 now2 = time.time()
                 if self.last_frame_time is not None:
@@ -694,16 +739,21 @@ class YOLOVisionSystem:
     # ZONE STATS
     # =========================
     def update_zone_stats_start(self, zones, now):
-        num_zones = 0
+        """
+        Inicializa contadores por frame para cada zona poligonal.
+        """
         if not zones:
             num_zones = 0
-        elif isinstance(zones, (list, tuple)) and len(zones) == 4 and isinstance(zones[0], (int, float)):
-            num_zones = 1
         elif isinstance(zones, list):
-            if len(zones) > 0 and isinstance(zones[0], list) and len(zones[0]) > 0 and isinstance(zones[0][0], (list, tuple)):
-                num_zones = len(zones)
-            else:
-                num_zones = 1
+            is_multi = (
+                len(zones) > 0
+                and isinstance(zones[0], list)
+                and len(zones[0]) > 0
+                and isinstance(zones[0][0], (list, tuple))
+            )
+            num_zones = len(zones) if is_multi else 1
+        else:
+            num_zones = 0
 
         for idx in range(num_zones):
             if idx not in self.zone_stats:

@@ -44,7 +44,7 @@ OPCAO 3: Manual (Qualquer OS)
    git add .
 
 3. Faça commit:
-   git commit -m "Sua mensagem aqui"
+   git commit -m "Zona fixa retangular comentada em yolo.py"
 
 4. Faça push:
    git push -u origin main

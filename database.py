@@ -64,19 +64,20 @@ def init_db():
         "conf_thresh": "0.85",
         "model_path": r"yolo_models\yolov8n.pt",
 
-        # performance / resize
+        ## performance / resize
         "target_width": "1280",
         "frame_step": "1",
 
         # zona / alertas
-        "safe_zone": "(400, 100, 700, 600)",
+        # Agora apenas zonas inteligentes poligonais (JSON), sem retângulo fixo
+        "safe_zone": "[]",
         "max_out_time": "5.0",
         "email_cooldown": "10.0",
         "buffer_seconds": "2.0",
 
         # fonte de vídeo
         "source": "0",
-
+        
         # parâmetros da câmera
         "cam_width": "1280",
         "cam_height": "720",

@@ -66,35 +66,24 @@ def normalize_user(user):
 
 def parse_safe_zone(value):
     """
-    Converte string de settings.safe_zone para formato usado pelo dashboard/API.
+    Converte string de settings.safe_zone para formato usado no dashboard.
 
-    Aceita:
+    Apenas formatos aceitos agora:
     - string JSON múltiplas zonas: "[[[x,y],...], [[x,y],...]]"
     - string JSON zona única: "[[x_norm,y_norm], ...]"
-    - string tuple antiga: "(x1, y1, x2, y2)"
     """
     if not value:
         return None
     value = str(value).strip()
 
-    # novo formato: JSON
     if value.startswith("["):
         try:
-            pts = json.loads(value)
-            return pts
+            return json.loads(value)
         except Exception:
             return None
 
-    # formato antigo retângulo
-    try:
-        cleaned = value.strip().strip("()")
-        parts = [p.strip() for p in cleaned.split(",")]
-        if len(parts) != 4:
-            return None
-        x1, y1, x2, y2 = map(int, parts)
-        return [x1, y1, x2, y2]
-    except Exception:
-        return None
+    # Qualquer coisa fora de JSON é considerada inválida
+    return None
 
 
 def get_video_source_label(source_str):
