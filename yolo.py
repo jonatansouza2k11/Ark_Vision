@@ -413,10 +413,10 @@ class YOLOVisionSystem:
         if not zones:
             return -1
 
-        if isinstance(zones, (list, tuple)) and len(zones) == 4 and isinstance(zones[0], (int, float)):
-            if self.point_in_rect(px, py, zones):
-                return 0
-            return -1
+        #if isinstance(zones, (list, tuple)) and len(zones) == 4 and isinstance(zones[0], (int, float)):
+        #    if self.point_in_rect(px, py, zones):
+        #        return 0
+        #    return -1
 
         if isinstance(zones, list) and len(zones) > 0:
             is_multi = (isinstance(zones[0], list) and
