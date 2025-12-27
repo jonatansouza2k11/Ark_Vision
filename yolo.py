@@ -44,19 +44,29 @@ def _load_safe_zone_from_db():
     """
     Lê settings.safe_zone do banco.
 
-    Formato esperado (apenas novo formato):
-    - JSON múltiplas zonas: "[[[x,y],...], [[x,y],...]]" (x,y normalizados 0-1)
-    - JSON zona única: "[[x,y], ...]" (será tratado como uma única zona)
+    Formato esperado (novo formato):
+    - JSON lista de zonas ricas: [{"name": "...", "mode": "...", "points": [[x,y], ...]}, ...]
+    - JSON lista de polígonos: [[[x,y],...], [[x,y],...]]
+    - JSON zona única: [[x,y], ...]
+    Retorna SEMPRE apenas lista de polígonos: [[[x,y],...], ...]
     """
     raw_safe = get_setting("safe_zone", "[]")
     try:
         s = str(raw_safe).strip()
-        if not s:
-            return []
-        if not s.startswith("["):
-            # Se não for JSON de lista, considera sem zonas válidas
+        if not s or not s.startswith("["):
             return []
         data = json.loads(s)
+
+        # Se for lista de objetos {name, mode, points}, extrai apenas points
+        if isinstance(data, list) and data and isinstance(data[0], dict) and "points" in data[0]:
+            polys = []
+            for z in data:
+                pts = z.get("points") or []
+                if isinstance(pts, list) and len(pts) >= 3:
+                    polys.append(pts)
+            return polys
+
+        # Compat: se já for lista de lista de pontos ou zona única, usa direto
         return data
     except Exception:
         return []
@@ -72,16 +82,18 @@ class YOLOVisionSystem:
         self.model_path = cfg.get("model_path", base_model)
         self.model = YOLO(self.model_path)
 
-        self.track_state = defaultdict(lambda: {
-            "last_seen": 0.0,
-            "status": "OUT",
-            "out_time": 0.0,
-            "video_writer": None,
-            "video_path": None,
-            "recording": False,
-            "buffer": deque(maxlen=BUFFER_SIZE),
-            "zone_idx": -1,
-        })
+        self.track_state = defaultdict(
+            lambda: {
+                "last_seen": 0.0,
+                "status": "OUT",
+                "out_time": 0.0,
+                "video_writer": None,
+                "video_path": None,
+                "recording": False,
+                "buffer": deque(maxlen=BUFFER_SIZE),
+                "zone_idx": -1,
+            }
+        )
         self.last_email_time = defaultdict(lambda: 0.0)
 
         self.paused = False
@@ -136,16 +148,12 @@ class YOLOVisionSystem:
             "safe_zone": safe_zone,
             "max_out_time": float(get_setting("max_out_time", "5.0")),
             "email_cooldown": float(get_setting("email_cooldown", "10.0")),
-
             "source": get_setting("source", source),
             "cam_width": int(get_setting("cam_width", str(CAM_RESOLUTION[0]))),
             "cam_height": int(get_setting("cam_height", str(CAM_RESOLUTION[1]))),
             "cam_fps": int(get_setting("cam_fps", str(CAM_FPS))),
-
             "model_path": get_setting("model_path", model_path),
-
             "tracker": get_setting("tracker", "botsort.yaml"),
-
             "zone_empty_timeout": float(get_setting("zone_empty_timeout", "10.0")),
             "zone_full_timeout": float(get_setting("zone_full_timeout", "20.0")),
             "zone_full_threshold": int(get_setting("zone_full_threshold", "5")),
@@ -165,16 +173,12 @@ class YOLOVisionSystem:
             "safe_zone": safe_zone,
             "max_out_time": float(get_setting("max_out_time", "5.0")),
             "email_cooldown": float(get_setting("email_cooldown", "10.0")),
-
             "source": get_setting("source", self.source),
             "cam_width": int(get_setting("cam_width", str(CAM_RESOLUTION[0]))),
             "cam_height": int(get_setting("cam_height", str(CAM_RESOLUTION[1]))),
             "cam_fps": int(get_setting("cam_fps", str(CAM_FPS))),
-
             "model_path": get_setting("model_path", self.model_path),
-
             "tracker": get_setting("tracker", "botsort.yaml"),
-
             "zone_empty_timeout": float(get_setting("zone_empty_timeout", str(self.zone_empty_timeout))),
             "zone_full_timeout": float(get_setting("zone_full_timeout", str(self.zone_full_timeout))),
             "zone_full_threshold": int(get_setting("zone_full_threshold", str(self.zone_full_threshold))),
@@ -217,16 +221,25 @@ class YOLOVisionSystem:
         output_path = input_path.replace(".mp4", "_h264.mp4")
         try:
             cmd = [
-                "ffmpeg", "-i", input_path,
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-                "-movflags", "+faststart",
-                "-y", output_path
+                "ffmpeg",
+                "-i",
+                input_path,
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "28",
+                "-movflags",
+                "+faststart",
+                "-y",
+                output_path,
             ]
             result = subprocess.run(
                 cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=30
+                timeout=30,
             )
             if result.returncode == 0 and os.path.exists(output_path):
                 os.remove(input_path)
@@ -258,8 +271,9 @@ class YOLOVisionSystem:
         for i in range(n):
             xi, yi = poly[i]
             xj, yj = poly[j]
-            intersect = ((yi > py) != (yj > py)) and \
-                        (px < (xj - xi) * (py - yi) / (yj - yi + 1e-9) + xi)
+            intersect = ((yi > py) != (yj > py)) and (
+                px < (xj - xi) * (py - yi) / (yj - yi + 1e-9) + xi
+            )
             if intersect:
                 inside = not inside
             j = i
@@ -299,7 +313,13 @@ class YOLOVisionSystem:
                             continue
 
                         pts_np = np.array(pts, dtype=np.int32)
-                        cv2.polylines(frame, [pts_np], isClosed=True, color=(255, 255, 0), thickness=2)
+                        cv2.polylines(
+                            frame,
+                            [pts_np],
+                            isClosed=True,
+                            color=(255, 255, 0),
+                            thickness=2,
+                        )
 
                         x0, y0 = pts[0]
                         cv2.putText(
@@ -326,7 +346,13 @@ class YOLOVisionSystem:
 
                     if len(pts) >= 3:
                         pts_np = np.array(pts, dtype=np.int32)
-                        cv2.polylines(frame, [pts_np], isClosed=True, color=(255, 255, 0), thickness=2)
+                        cv2.polylines(
+                            frame,
+                            [pts_np],
+                            isClosed=True,
+                            color=(255, 255, 0),
+                            thickness=2,
+                        )
 
                         x0, y0 = pts[0]
                         cv2.putText(
@@ -826,13 +852,15 @@ class YOLOVisionSystem:
             if zs["full_since"] is not None:
                 full_for = max(0.0, now - zs["full_since"])
 
-            zones_list.append({
-                "index": idx,
-                "count": zs["count"],
-                "empty_for": empty_for,
-                "full_for": full_for,
-                "state": zs["state"],
-            })
+            zones_list.append(
+                {
+                    "index": idx,
+                    "count": zs["count"],
+                    "empty_for": empty_for,
+                    "full_for": full_for,
+                    "state": zs["state"],
+                }
+            )
 
         return {
             "in_zone": in_zone,

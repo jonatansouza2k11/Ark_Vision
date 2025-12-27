@@ -8,8 +8,16 @@ Usa o módulo yolo.py para toda lógica de computação visual.
 import os
 import json
 from flask import (
-    Flask, Response, render_template, request, redirect,
-    url_for, session, flash, jsonify, send_from_directory
+    Flask,
+    Response,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    session,
+    flash,
+    jsonify,
+    send_from_directory,
 )
 from werkzeug.exceptions import NotFound
 
@@ -17,9 +25,17 @@ from werkzeug.exceptions import NotFound
 import config
 
 from database import (
-    verify_user, create_user, update_last_login,
-    get_recent_alerts, get_all_users, get_setting, set_setting,
-    delete_alert, log_system_action, get_system_logs, delete_system_log
+    verify_user,
+    create_user,
+    update_last_login,
+    get_recent_alerts,
+    get_all_users,
+    get_setting,
+    set_setting,
+    delete_alert,
+    log_system_action,
+    get_system_logs,
+    delete_system_log,
 )
 from auth import login_required, admin_required
 from yolo import get_vision_system
@@ -68,22 +84,35 @@ def parse_safe_zone(value):
     """
     Converte string de settings.safe_zone para formato usado no dashboard.
 
-    Apenas formatos aceitos agora:
-    - string JSON múltiplas zonas: "[[[x,y],...], [[x,y],...]]"
-    - string JSON zona única: "[[x_norm,y_norm], ...]"
+    Formatos aceitos agora (apenas JSON):
+    - lista de zonas ricas:
+      [
+        {"name": "...", "mode": "...", "points": [[x,y], ...]},
+        ...
+      ]
+    - lista de polígonos: [[[x,y],...], [[x,y],...]]
+    - zona única: [[x,y], ...]
     """
     if not value:
         return None
-    value = str(value).strip()
+    s = str(value).strip()
+    if not s.startswith("["):
+        return None
+    try:
+        data = json.loads(s)
+    except Exception:
+        return None
 
-    if value.startswith("["):
-        try:
-            return json.loads(value)
-        except Exception:
-            return None
+    # Se vier lista de objetos, extrai só a geometria para o mini-mapa
+    if isinstance(data, list) and data and isinstance(data[0], dict):
+        polys = []
+        for z in data:
+            pts = z.get("points") or []
+            if isinstance(pts, list) and len(pts) >= 3:
+                polys.append(pts)
+        return polys
 
-    # Qualquer coisa fora de JSON é considerada inválida
-    return None
+    return data
 
 
 def get_video_source_label(source_str):
@@ -159,20 +188,26 @@ def logout():
 def dashboard():
     vs = get_vision_system()
     config = vs.get_config()
-    model_path = config.get("model_path") or get_setting("model_path") or "yolo_models\\yolov8n.pt"
+    model_path = (
+        config.get("model_path") or get_setting("model_path") or "yolo_models\\yolov8n.pt"
+    )
     source = config.get("source") or get_setting("source") or "0"
     system_info = {
         "model_name": os.path.basename(str(model_path)),
         "video_source_label": get_video_source_label(source),
     }
-    return render_template("dashboard.html", active="dashboard", system_info=system_info)
+    return render_template(
+        "dashboard.html", active="dashboard", system_info=system_info
+    )
 
 
 @app.route("/video_feed")
 @login_required
 def video_feed():
     vs = get_vision_system()
-    return Response(vs.generate_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")
+    return Response(
+        vs.generate_frames(), mimetype="multipart/x-mixed-replace; boundary=frame"
+    )
 
 
 @app.route("/start_stream", methods=["POST"])
@@ -239,8 +274,6 @@ def toggle_camera():
             vs.notifier.send_email_background(subject=subject, body=body)
 
     return jsonify({"paused": paused, "status": "pausado" if paused else "ativo"})
-
-
 
 
 @app.route("/stop_stream", methods=["POST"])
@@ -331,7 +364,9 @@ def delete_system_log_route():
 def video_file(filename):
     alerts_dir = os.path.join(os.getcwd(), "alertas")
     try:
-        return send_from_directory(alerts_dir, filename, mimetype="video/mp4", as_attachment=False)
+        return send_from_directory(
+            alerts_dir, filename, mimetype="video/mp4", as_attachment=False
+        )
     except NotFound:
         return "Vídeo não encontrado", 404
 
@@ -373,16 +408,113 @@ def settings():
         set_setting("email_cooldown", email_cooldown)
         set_setting("buffer_seconds", buffer_seconds)
 
-        # Parâmetros de zona (novos)
-        zone_empty_timeout = request.form.get("zone_empty_timeout", default="10.0", type=str)
-        zone_full_timeout = request.form.get("zone_full_timeout", default="20.0", type=str)
-        zone_full_threshold = request.form.get("zone_full_threshold", default="5", type=str)
+        # Parâmetros de zona (globais)
+        zone_empty_timeout = request.form.get(
+            "zone_empty_timeout", default="10.0", type=str
+        )
+        zone_full_timeout = request.form.get(
+            "zone_full_timeout", default="20.0", type=str
+        )
+        zone_full_threshold = request.form.get(
+            "zone_full_threshold", default="5", type=str
+        )
         set_setting("zone_empty_timeout", zone_empty_timeout)
         set_setting("zone_full_timeout", zone_full_timeout)
         set_setting("zone_full_threshold", zone_full_threshold)
 
+        # --------------------------------------
+        # Zonas inteligentes (modo + tempos)
+        # --------------------------------------
+        raw_safe = get_setting("safe_zone", "[]")
+        try:
+            current_zones = json.loads(str(raw_safe).strip() or "[]")
+        except Exception:
+            current_zones = []
+
+        if not isinstance(current_zones, list):
+            current_zones = []
+
+        new_zones = []
+
+        # Fallbacks globais
+        try:
+            g_max_out = float(max_out_time)
+        except Exception:
+            g_max_out = 5.0
+        try:
+            g_email_cd = float(email_cooldown)
+        except Exception:
+            g_email_cd = 10.0
+        try:
+            g_empty_t = float(zone_empty_timeout)
+        except Exception:
+            g_empty_t = 10.0
+        try:
+            g_full_t = float(zone_full_timeout)
+        except Exception:
+            g_full_t = 20.0
+        try:
+            g_full_thr = int(zone_full_threshold)
+        except Exception:
+            g_full_thr = 5
+
+        for i, z in enumerate(current_zones):
+            # compat: pode vir como dict ou lista de pontos
+            if isinstance(z, dict):
+                pts = z.get("points") or z.get("polygon") or []
+            else:
+                pts = z
+
+            if not isinstance(pts, list) or len(pts) < 3:
+                continue
+
+            name = request.form.get(f"zone_{i}_name") or f"Zona {i+1}"
+            mode = (request.form.get(f"zone_{i}_mode") or "GENERIC").upper()
+
+            try:
+                z_max_out = float(request.form.get(f"zone_{i}_max_out") or g_max_out)
+            except Exception:
+                z_max_out = g_max_out
+
+            try:
+                z_email_cd = float(request.form.get(f"zone_{i}_email_cd") or g_email_cd)
+            except Exception:
+                z_email_cd = g_email_cd
+
+            try:
+                z_empty_t = float(request.form.get(f"zone_{i}_empty_t") or g_empty_t)
+            except Exception:
+                z_empty_t = g_empty_t
+
+            try:
+                z_full_t = float(request.form.get(f"zone_{i}_full_t") or g_full_t)
+            except Exception:
+                z_full_t = g_full_t
+
+            try:
+                z_full_thr = int(request.form.get(f"zone_{i}_full_thr") or g_full_thr)
+            except Exception:
+                z_full_thr = g_full_thr
+
+            new_zones.append(
+                {
+                    "name": name,
+                    "mode": mode,
+                    "points": pts,
+                    "max_out_time": z_max_out,
+                    "email_cooldown": z_email_cd,
+                    "empty_timeout": z_empty_t,
+                    "full_timeout": z_full_t,
+                    "full_threshold": z_full_thr,
+                }
+            )
+
+        set_setting("safe_zone", json.dumps(new_zones, ensure_ascii=False))
+
         # Modelo / fonte
-        model_path = request.form.get("model_path", default=r"yolo_models\yolo11n.pt", type=str)
+        model_path = request.form.get(
+            "model_path", default=r"yolo_models\yolo11n.pt", type=str
+        )
         set_setting("model_path", model_path)
 
         source = request.form.get("source", default="0", type=str).strip()
@@ -423,23 +555,34 @@ def settings():
         set_setting("email_use_tls", "1" if email_use_tls else "0")
         set_setting("email_use_ssl", "1" if email_use_ssl else "0")
 
-        # Reinicia o stream automaticamente ao salvar configs
+        # Reinicia o stream
         vs = get_vision_system()
         vs.stop_live()
         vs.start_live()
 
-        flash("Configurações salvas. Stream reiniciado e redirecionado para o dashboard.", "success")
+        flash(
+            "Configurações salvas. Stream reiniciado e redirecionado para o dashboard.",
+            "success",
+        )
         return redirect(url_for("dashboard"))
 
+    # GET permanece como ajustamos antes...
     vs = get_vision_system()
     config = vs.get_config()
     available_models = list_yolo_models("yolo_models")
+
+    raw_zones = get_setting("safe_zone", "[]")
+    try:
+        zones_meta = json.loads(str(raw_zones).strip() or "[]")
+    except Exception:
+        zones_meta = []
 
     return render_template(
         "settings.html",
         config=config,
         active="settings",
-        available_models=available_models
+        available_models=available_models,
+        zones_meta=zones_meta,
     )
 
 
@@ -466,12 +609,14 @@ def api_stats():
 
     # infos de modelo/fonte
     config = vs.get_config()
-    model_path = config.get("model_path") or get_setting("model_path") or "yolo_models\\yolov8n.pt"
+    model_path = (
+        config.get("model_path") or get_setting("model_path") or "yolo_models\\yolov8n.pt"
+    )
     source = config.get("source") or get_setting("source") or "0"
     stats["model_name"] = os.path.basename(str(model_path))
     stats["video_source_label"] = get_video_source_label(source)
 
-    # safe_zone para o mini-mapa
+    # safe_zone para o mini-mapa (apenas geometria)
     safe_zone_str = config.get("safe_zone") or get_setting("safe_zone")
     stats["safe_zone"] = parse_safe_zone(safe_zone_str)
 
@@ -493,19 +638,21 @@ def api_stats():
 
         video_file = None
         if video_path and isinstance(video_path, str):
-            if ',' in video_path:
-                video_file = video_path.split(',')[0].strip()
+            if "," in video_path:
+                video_file = video_path.split(",")[0].strip()
             else:
                 video_file = video_path
 
-        recent_compact.append({
-            "type": "alert",
-            "person_id": person_id,
-            "timestamp": created_at,
-            "status": status_text,
-            "email_sent": bool(email_sent),
-            "video_file": video_file,
-        })
+        recent_compact.append(
+            {
+                "type": "alert",
+                "person_id": person_id,
+                "timestamp": created_at,
+                "status": status_text,
+                "email_sent": bool(email_sent),
+                "video_file": video_file,
+            }
+        )
 
     stats["recent_alerts"] = recent_compact
 
@@ -528,17 +675,19 @@ def api_stats():
             msg = f'Ação {action} por "{username}"'
 
         if reason:
-            msg += f' (motivo: {reason})'
+            msg += f" (motivo: {reason})"
 
-        system_compact.append({
-            "type": "system",
-            "action": action,
-            "username": username,
-            "reason": reason,
-            "timestamp": ts,
-            "email_sent": bool(email_sent),
-            "message": msg,
-        })
+        system_compact.append(
+            {
+                "type": "system",
+                "action": action,
+                "username": username,
+                "reason": reason,
+                "timestamp": ts,
+                "email_sent": bool(email_sent),
+                "message": msg,
+            }
+        )
 
     stats["system_logs"] = system_compact
 
@@ -550,8 +699,17 @@ def api_stats():
 def api_safe_zone():
     """
     Recebe JSON:
-    - {"zones": [[[x,y],...], [[x,y],...], ...]} para múltiplas zonas
-    - {"points": [[x,y],...]} para zona única (compatibilidade)
+
+    Novo formato principal:
+    - {
+        "zones": [
+          {"name": "Entrada", "mode": "FLOW", "points": [[x,y], ...]},
+          ...
+        ]
+      }
+
+    Compatibilidade (antigo):
+    - {"points": [[x,y],...]}  (zona única)
 
     Salva em settings.safe_zone como JSON e reinicia o stream em qualquer alteração.
     """
@@ -562,7 +720,7 @@ def api_safe_zone():
 
     vs = get_vision_system()
 
-    # novo formato: múltiplas zonas
+    # NOVO FORMATO: múltiplas zonas com metadados
     if "zones" in payload:
         zones = payload.get("zones")
 
@@ -574,28 +732,57 @@ def api_safe_zone():
             return jsonify({"success": True, "zones": []})
 
         if not isinstance(zones, list) or len(zones) == 0:
-            return jsonify({"success": False, "error": "É necessário ao menos uma zona"}), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "É necessário enviar uma lista em 'zones'",
+                    }
+                ),
+                400,
+            )
 
         validated_zones = []
         for zone in zones:
-            if not isinstance(zone, list) or len(zone) < 3:
+            if not isinstance(zone, dict):
                 continue
-            validated_points = []
-            for p in zone:
+
+            name = str(zone.get("name", "")).strip()
+            mode = str(zone.get("mode", "")).strip().upper() or "GENERIC"
+            points = zone.get("points")
+
+            if not name:
+                continue
+            if not isinstance(points, list) or len(points) < 3:
+                continue
+
+            norm_points = []
+            for p in points:
                 if not (isinstance(p, (list, tuple)) and len(p) == 2):
                     continue
                 try:
                     x, y = float(p[0]), float(p[1])
                     if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
                         continue
-                    validated_points.append([x, y])
+                    norm_points.append([x, y])
                 except Exception:
                     continue
-            if len(validated_points) >= 3:
-                validated_zones.append(validated_points)
+
+            if len(norm_points) >= 3:
+                validated_zones.append(
+                    {"name": name, "mode": mode, "points": norm_points}
+                )
 
         if len(validated_zones) == 0:
-            return jsonify({"success": False, "error": "Nenhuma zona válida fornecida"}), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Nenhuma zona válida fornecida (verifique name/mode/points)",
+                    }
+                ),
+                400,
+            )
 
         set_setting("safe_zone", json.dumps(validated_zones))
 
@@ -604,7 +791,7 @@ def api_safe_zone():
 
         return jsonify({"success": True, "zones": validated_zones})
 
-    # formato antigo: zona única
+    # FORMATO ANTIGO: zona única (sem nome/modo)
     if "points" in payload:
         points = payload.get("points")
 
@@ -615,28 +802,73 @@ def api_safe_zone():
             return jsonify({"success": True, "points": []})
 
         if not isinstance(points, list) or len(points) < 3:
-            return jsonify({"success": False, "error": "É necessário ao menos 3 pontos"}), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "É necessário ao menos 3 pontos em 'points'",
+                    }
+                ),
+                400,
+            )
 
         norm_points = []
         for p in points:
             if not (isinstance(p, (list, tuple)) and len(p) == 2):
-                return jsonify({"success": False, "error": "Formato de ponto inválido"}), 400
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "Formato de ponto inválido em 'points'",
+                        }
+                    ),
+                    400,
+                )
             try:
                 x, y = float(p[0]), float(p[1])
                 if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
-                    return jsonify({"success": False, "error": "Pontos devem estar entre 0 e 1"}), 400
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "error": "Pontos devem estar entre 0 e 1 em 'points'",
+                            }
+                        ),
+                        400,
+                    )
                 norm_points.append([x, y])
             except Exception:
-                return jsonify({"success": False, "error": "Erro ao processar pontos"}), 400
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "Erro ao processar pontos em 'points'",
+                        }
+                    ),
+                    400,
+                )
 
-        set_setting("safe_zone", json.dumps(norm_points))
+        # salva como lista de uma zona rica genérica
+        rich = [
+            {"name": "Zona 1", "mode": "GENERIC", "points": norm_points},
+        ]
+        set_setting("safe_zone", json.dumps(rich))
 
         vs.stop_live()
         vs.start_live()
 
         return jsonify({"success": True, "points": norm_points})
 
-    return jsonify({"success": False, "error": "Formato inválido: use 'zones' ou 'points'"}), 400
+    return (
+        jsonify(
+            {
+                "success": False,
+                "error": "Formato inválido: use 'zones' (novo) ou 'points' (legado)",
+            }
+        ),
+        400,
+    )
+
 
 @app.route("/diagnostics", methods=["GET"])
 @admin_required
@@ -646,11 +878,11 @@ def diagnostics():
     """
     import sqlite3
     from database import DB_NAME
-    
+
     try:
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
-        
+
         results = {
             "status": "success",
             "tables": {},
@@ -660,169 +892,214 @@ def diagnostics():
             "email": {},
             "data": {},
             "admin": [],
-            "missing": []
+            "missing": [],
         }
-        
+
         # 1. TABELAS
         c.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = [row[0] for row in c.fetchall()]
         required_tables = {
-            'users': 'Usuários e autenticação',
-            'alerts': 'Alertas de zona segura',
-            'settings': 'Configurações do sistema',
-            'system_logs': 'Logs de ações do sistema'
+            "users": "Usuários e autenticação",
+            "alerts": "Alertas de zona segura",
+            "settings": "Configurações do sistema",
+            "system_logs": "Logs de ações do sistema",
         }
-        
+
         for table, description in required_tables.items():
             if table in tables:
                 c.execute(f"SELECT COUNT(*) FROM {table}")
                 count = c.fetchone()[0]
-                results["tables"][table] = {"exists": True, "count": count, "desc": description}
+                results["tables"][table] = {
+                    "exists": True,
+                    "count": count,
+                    "desc": description,
+                }
             else:
-                results["tables"][table] = {"exists": False, "count": 0, "desc": description}
+                results["tables"][table] = {
+                    "exists": False,
+                    "count": 0,
+                    "desc": description,
+                }
                 results["missing"].append(f"Tabela '{table}' não existe")
-        
+
         # 2. YOLO
         yolo_keys = {
-            'conf_thresh': 'Threshold de confiança',
-            'model_path': 'Caminho do modelo',
-            'target_width': 'Largura do frame',
-            'frame_step': 'Pular frames',
-            'tracker': 'Algoritmo de tracking'
+            "conf_thresh": "Threshold de confiança",
+            "model_path": "Caminho do modelo",
+            "target_width": "Largura do frame",
+            "frame_step": "Pular frames",
+            "tracker": "Algoritmo de tracking",
         }
-        
+
         for key, desc in yolo_keys.items():
             c.execute("SELECT value FROM settings WHERE key = ?", (key,))
             result = c.fetchone()
             if result:
-                results["yolo"][key] = {"value": result[0], "desc": desc, "exists": True}
+                results["yolo"][key] = {
+                    "value": result[0],
+                    "desc": desc,
+                    "exists": True,
+                }
             else:
-                results["yolo"][key] = {"value": None, "desc": desc, "exists": False}
+                results["yolo"][key] = {
+                    "value": None,
+                    "desc": desc,
+                    "exists": False,
+                }
                 results["missing"].append(f"Config YOLO '{key}' não existe")
-        
+
         # 3. ZONA
         zone_keys = {
-            'safe_zone': 'Coordenadas da zona',
-            'max_out_time': 'Tempo máximo fora',
-            'email_cooldown': 'Cooldown e-mail',
-            'buffer_seconds': 'Buffer pré-gravação',
-            'zone_empty_timeout': 'Timeout vazia',
-            'zone_full_timeout': 'Timeout cheia',
-            'zone_full_threshold': 'Limite pessoas'
+            "safe_zone": "Coordenadas da zona",
+            "max_out_time": "Tempo máximo fora",
+            "email_cooldown": "Cooldown e-mail",
+            "buffer_seconds": "Buffer pré-gravação",
+            "zone_empty_timeout": "Timeout vazia",
+            "zone_full_timeout": "Timeout cheia",
+            "zone_full_threshold": "Limite pessoas",
         }
-        
+
         for key, desc in zone_keys.items():
             c.execute("SELECT value FROM settings WHERE key = ?", (key,))
             result = c.fetchone()
             if result:
                 value = result[0]
-                if key == 'safe_zone' and len(value) > 60:
+                if key == "safe_zone" and len(value) > 60:
                     value = value[:57] + "..."
-                results["zone"][key] = {"value": value, "desc": desc, "exists": True}
+                results["zone"][key] = {
+                    "value": value,
+                    "desc": desc,
+                    "exists": True,
+                }
             else:
-                results["zone"][key] = {"value": None, "desc": desc, "exists": False}
+                results["zone"][key] = {
+                    "value": None,
+                    "desc": desc,
+                    "exists": False,
+                }
                 results["missing"].append(f"Config ZONA '{key}' não existe")
-        
+
         # 4. CÂMERA
         camera_keys = {
-            'source': 'Fonte de vídeo',
-            'cam_width': 'Largura',
-            'cam_height': 'Altura',
-            'cam_fps': 'FPS'
+            "source": "Fonte de vídeo",
+            "cam_width": "Largura",
+            "cam_height": "Altura",
+            "cam_fps": "FPS",
         }
-        
+
         for key, desc in camera_keys.items():
             c.execute("SELECT value FROM settings WHERE key = ?", (key,))
             result = c.fetchone()
             if result:
-                results["camera"][key] = {"value": result[0], "desc": desc, "exists": True}
+                results["camera"][key] = {
+                    "value": result[0],
+                    "desc": desc,
+                    "exists": True,
+                }
             else:
-                results["camera"][key] = {"value": None, "desc": desc, "exists": False}
+                results["camera"][key] = {
+                    "value": None,
+                    "desc": desc,
+                    "exists": False,
+                }
                 results["missing"].append(f"Config CÂMERA '{key}' não existe")
-        
+
         # 5. E-MAIL
         email_keys = {
-            'email_smtp_server': 'Servidor SMTP',
-            'email_smtp_port': 'Porta',
-            'email_use_tls': 'TLS',
-            'email_use_ssl': 'SSL',
-            'email_from': 'Remetente',
-            'email_user': 'Usuário',
-            'email_password': 'Senha'
+            "email_smtp_server": "Servidor SMTP",
+            "email_smtp_port": "Porta",
+            "email_use_tls": "TLS",
+            "email_use_ssl": "SSL",
+            "email_from": "Remetente",
+            "email_user": "Usuário",
+            "email_password": "Senha",
         }
-        
+
         for key, desc in email_keys.items():
             c.execute("SELECT value FROM settings WHERE key = ?", (key,))
             result = c.fetchone()
             if result:
                 value = result[0]
-                if key == 'email_password' and value:
+                if key == "email_password" and value:
                     value = "***" + value[-4:] if len(value) > 4 else "****"
-                elif key == 'email_password':
+                elif key == "email_password":
                     value = "[vazio]"
-                results["email"][key] = {"value": value, "desc": desc, "exists": True}
+                results["email"][key] = {
+                    "value": value,
+                    "desc": desc,
+                    "exists": True,
+                }
             else:
-                results["email"][key] = {"value": None, "desc": desc, "exists": False}
+                results["email"][key] = {
+                    "value": None,
+                    "desc": desc,
+                    "exists": False,
+                }
                 results["missing"].append(f"Config E-MAIL '{key}' não existe")
-        
+
         # 6. DADOS
         c.execute("SELECT COUNT(*) FROM users")
         results["data"]["users"] = c.fetchone()[0]
-        
+
         c.execute("SELECT COUNT(*) FROM alerts")
         results["data"]["alerts"] = c.fetchone()[0]
-        
+
         c.execute("SELECT COUNT(*) FROM system_logs")
         results["data"]["logs"] = c.fetchone()[0]
-        
+
         c.execute("SELECT COUNT(*) FROM settings")
         results["data"]["settings"] = c.fetchone()[0]
-        
+
         # 7. ADMIN
         c.execute("SELECT username, email, role FROM users WHERE role = 'admin'")
         admins = c.fetchall()
-        results["admin"] = [{"username": a[0], "email": a[1], "role": a[2]} for a in admins]
-        
+        results["admin"] = [
+            {"username": a[0], "email": a[1], "role": a[2]} for a in admins
+        ]
+
         if not admins:
             results["missing"].append("Nenhum usuário admin encontrado")
-        
+
         conn.close()
-        
+
         if results["missing"]:
             results["status"] = "warning"
-        
+
         return render_template("diagnostics.html", results=results, active="settings")
-        
+
     except Exception as e:
-        return render_template("diagnostics.html", 
-                             results={"status": "error", "error": str(e)}, 
-                             active="settings")
+        return render_template(
+            "diagnostics.html",
+            results={"status": "error", "error": str(e)},
+            active="settings",
+        )
+
 
 if __name__ == "__main__":
     print("[Flask] Iniciando servidor...")
-        # Valida configurações antes de iniciar
+    # Valida configurações antes de iniciar
     errors, warnings = config.validate_config()
-    
+
     if errors:
         print("\n❌ ERROS DE CONFIGURAÇÃO - não é possível iniciar:")
         for error in errors:
             print(f"  {error}")
         exit(1)
-    
+
     if warnings:
         print("\n⚠️  AVISOS DE CONFIGURAÇÃO:")
         for warning in warnings:
             print(f"  {warning}")
-    
+
     # Exibe resumo de configuração
     config.print_config_summary()
-    
+
     # Inicia servidor Flask
     app.run(
         host=config.FLASK_HOST,
         port=config.FLASK_PORT,
         debug=config.FLASK_DEBUG,
-        threaded=True
+        threaded=True,
     )
-    
+
     app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
