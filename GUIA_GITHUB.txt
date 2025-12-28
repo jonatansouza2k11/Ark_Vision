@@ -44,7 +44,7 @@ OPCAO 3: Manual (Qualquer OS)
    git add .
 
 3. Faça commit:
-   git commit -m "Zonas inteligentes e independentes adicionadas com modo e tempo"
+   git commit -m "Adicionado as zonas inteligentes no log de inicialização"
 
 4. Faça push:
    git push -u origin main

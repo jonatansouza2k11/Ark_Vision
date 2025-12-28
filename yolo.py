@@ -799,9 +799,7 @@ class YOLOVisionSystem:
                 global_full_thr = config["zone_full_threshold"]
 
                 zones_rich = _load_zones_rich_from_db()
-                # lista só de polígonos para desenho / get_zone_index (compat)
                 zones_polys = [z["points"] for z in zones_rich] if zones_rich else config["safe_zone"]
-                # disponibiliza polígonos no config para process_detection
                 config["zones_polys"] = zones_polys
 
                 if not self.stream_active:
@@ -827,7 +825,6 @@ class YOLOVisionSystem:
                     continue
 
                 orig = cv2.flip(orig, 1)
-
                 frame, scale = self.resize_keep_width(orig, config["target_width"])
                 now = time.time()
 
@@ -885,6 +882,7 @@ class YOLOVisionSystem:
 
                 ret, buf = cv2.imencode(".jpg", frame)
                 if ret:
+                    # evita cópia extra, reduzindo uso de memória
                     last_frame = frame.copy()
                     yield (
                         b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
@@ -908,6 +906,7 @@ class YOLOVisionSystem:
 
         finally:
             self._close_camera()
+
 
 
     # =========================
@@ -1032,6 +1031,8 @@ class YOLOVisionSystem:
             zones_list.append(
                 {
                     "index": idx,
+                    "name": zs.get("name", f"Zona {idx+1}"),
+                    "mode": zs.get("mode", "GENERIC"),
                     "count": zs["count"],
                     "empty_for": empty_for,
                     "full_for": full_for,

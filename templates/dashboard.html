@@ -160,15 +160,60 @@
     <!-- CARD ZONES -->
     <div class="bg-dark-card rounded-2xl p-6 card-hover">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="text-lg font-semibold">Zones</h3>
+        <div class="flex items-center gap-2">
+          <h3 class="text-lg font-semibold">Zones</h3>
+
+          <!-- Tooltip de modos -->
+          <div class="relative group">
+            <button type="button"
+              class="w-5 h-5 rounded-full bg-slate-700 text-xs text-gray-200 flex items-center justify-center hover:bg-slate-600"
+              aria-label="Ajuda sobre modos de zona">
+              ?
+            </button>
+
+            <div class="hidden group-hover:block absolute z-30 left-0 mt-2 w-80
+                              bg-slate-900 border border-slate-700 rounded-xl shadow-xl p-3 text-[11px] text-gray-100">
+              <p class="font-semibold mb-1 text-accent-blue">Modos de Zona</p>
+
+              <p class="mt-1">
+                <span class="font-semibold text-green-300">FLOW (Fluxo)</span><br>
+                Zona onde deve haver movimento contínuo (corredor, entrada, esteira, faixa de pedestre industrial).
+                Interessa detectar quando fica <span class="font-semibold">vazia por muito tempo</span> ou quando o
+                fluxo
+                reduz demais.
+              </p>
+
+              <p class="mt-2">
+                <span class="font-semibold text-yellow-300">QUEUE (Fila / Gargalo / Tráfego)</span><br>
+                Zona onde filas são esperadas, mas não devem passar de certo tamanho/tempo (checkout, portaria, guichê).
+                Foco em <span class="font-semibold">ocupação alta por tempo demais</span> (fila longa persistente).
+              </p>
+
+              <p class="mt-2">
+                <span class="font-semibold text-red-300">CRITICAL (Zona de risco)</span><br>
+                Área onde a simples presença já é problema (proximidade de máquinas, áreas de risco).
+                Entrada não autorizada, muitas pessoas ou permanência longa disparam alertas.
+              </p>
+
+              <p class="mt-2">
+                <span class="font-semibold text-cyan-300">GENERIC (Genérico)</span><br>
+                Monitoramento geral de ocupação e uso de espaço (loja, sala, estacionamento, ambiente doméstico).
+                Usa checks básicos de <span class="font-semibold">ocupado/vazio e tempo</span>.
+              </p>
+            </div>
+          </div>
+        </div>
+
         <span class="text-xs text-gray-400" id="zones-summary">Nenhuma zona configurada</span>
       </div>
 
-      <div class="overflow-hidden rounded-xl border border-dark-border">
+
+      <div class="rounded-xl border border-dark-border overflow-visible">
         <table class="min-w-full text-xs">
           <thead class="bg-slate-800/70 text-gray-300">
             <tr>
               <th class="px-3 py-2 text-left font-semibold">Zona</th>
+              <th class="px-3 py-2 text-left font-semibold">Modo</th>
               <th class="px-3 py-2 text-left font-semibold">Contagem</th>
               <th class="px-3 py-2 text-left font-semibold">Tempo vazia</th>
               <th class="px-3 py-2 text-left font-semibold">Tempo cheia</th>
@@ -184,12 +229,13 @@
           </tbody>
         </table>
       </div>
-
+      <!--
       <p class="mt-2 text-[11px] text-gray-500">
         Estados: <span class="font-semibold text-green-400">OK</span>,
         <span class="font-semibold text-yellow-400">EMPTY_LONG</span>,
         <span class="font-semibold text-red-400">FULL_LONG</span>.
       </p>
+      -->
     </div>
   </div>
 </div>
@@ -411,16 +457,17 @@
         'transition-colors ' +
         (idx === selectedZoneIndex ? 'border-accent-blue bg-dark-bg' : '');
 
-      const name = z.name && z.name.trim() ? z.name.trim() : `Zona ${idx + 1}`;
+      // nomes/modos vindos do backend (Settings / modal), com fallback
+      const name = (z.name && String(z.name).trim()) || `Zona ${idx + 1}`;
       const mode = (z.mode || 'GENERIC').toUpperCase();
 
       btn.innerHTML = `
-        <span>
-          <span class="font-semibold text-gray-100">${name}</span>
-          <span class="text-[10px] text-gray-400 ml-2">${mode}</span>
-        </span>
-        <span class="text-[10px] text-gray-500">#${idx + 1}</span>
-      `;
+      <span>
+        <span class="font-semibold text-gray-100">${name}</span>
+        <span class="text-[10px] text-gray-400 ml-2">${mode}</span>
+      </span>
+      <span class="text-[10px] text-gray-500">#${idx + 1}</span>
+    `;
 
       btn.addEventListener('click', () => {
         selectedZoneIndex = idx;
@@ -432,6 +479,7 @@
       listEl.appendChild(btn);
     });
   }
+
 
   function updateSafeZoneMap(data) {
     const container = document.getElementById('safe-zone-container');
@@ -663,6 +711,7 @@
     return `${m}m ${s}s`;
   }
 
+
   function updateZonesCard(data) {
     const tbody = document.getElementById('zones-table-body');
     const summary = document.getElementById('zones-summary');
@@ -674,9 +723,9 @@
     if (!zones.length) {
       summary.textContent = 'Nenhuma zona configurada';
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="5" class="px-3 py-3 text-center text-gray-500">
-                        Nenhuma zona definida.
-                      </td>`;
+      tr.innerHTML = `<td colspan="6" class="px-3 py-3 text-center text-gray-500">
+                      Nenhuma zona definida.
+                    </td>`;
       tbody.appendChild(tr);
       return;
     }
@@ -695,20 +744,59 @@
         badgeClass = 'bg-red-900 text-red-300 border border-red-500';
       }
 
+      const zoneLabel = z.name ? z.name : `Z${(z.index ?? 0) + 1}`;
+      const modeLabel = (z.mode || 'GENERIC').toUpperCase();
+
+      // cor do título "Modo XXX" igual ao tooltip
+      let modeTitleClass = 'text-cyan-300';
+      if (modeLabel === 'FLOW') modeTitleClass = 'text-green-300';
+      else if (modeLabel === 'QUEUE') modeTitleClass = 'text-yellow-300';
+      else if (modeLabel === 'CRITICAL') modeTitleClass = 'text-red-300';
+
+      const modeDesc = (() => {
+        switch (modeLabel) {
+          case 'FLOW':
+            return 'FLOW (Fluxo)\nZona onde deve haver movimento contínuo (corredor, entrada, esteira, faixa de pedestre industrial). Interessa detectar quando fica vazia por muito tempo ou quando o fluxo reduz demais.';
+          case 'QUEUE':
+            return 'QUEUE (Fila / Gargalo / Tráfego)\nZona onde filas são esperadas, mas não devem passar de certo tamanho/tempo (checkout, portaria, guichê). Foco em ocupação alta por tempo demais (fila longa persistente).';
+          case 'CRITICAL':
+            return 'CRITICAL (Zona de risco)\nÁrea onde a simples presença já é problema (proximidade de máquinas, áreas de risco). Entrada não autorizada, muitas pessoas ou permanência longa disparam alertas.';
+          default:
+            return 'GENERIC (Genérico)\nMonitoramento geral de ocupação e uso de espaço (loja, sala, estacionamento, ambiente doméstico). Usa checks básicos de ocupado/vazio e tempo.';
+        }
+      })();
+
       tr.innerHTML = `
-        <td class="px-3 py-2 text-gray-200 font-semibold">Z${(z.index ?? 0) + 1}</td>
-        <td class="px-3 py-2 text-gray-200">${z.count ?? 0}</td>
-        <td class="px-3 py-2 text-gray-300">${secondsToLabel(z.empty_for)}</td>
-        <td class="px-3 py-2 text-gray-300">${secondsToLabel(z.full_for)}</td>
-        <td class="px-3 py-2">
-          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${badgeClass}">
-            ${state}
+      <td class="px-3 py-2 text-gray-200 font-semibold">${zoneLabel}</td>
+
+      <td class="px-3 py-2 text-gray-200">
+        <div class="relative group inline-flex items-center">
+          <span class="px-2 py-0.5 rounded-full bg-slate-800 border border-slate-600 text-[10px] font-semibold">
+            ${modeLabel}
           </span>
-        </td>
-      `;
+
+          <div class="hidden group-hover:block absolute z-30 left-0 bottom-full mb-2 w-80
+                      bg-slate-900 border border-slate-700 rounded-xl shadow-xl p-3 text-[11px] text-gray-100">
+            <p class="font-semibold mb-1 ${modeTitleClass}">Modo ${modeLabel}</p>
+            <p class="whitespace-pre-line">${modeDesc}</p>
+          </div>
+        </div>
+      </td>
+
+      <td class="px-3 py-2 text-gray-200">${z.count ?? 0}</td>
+      <td class="px-3 py-2 text-gray-300">${secondsToLabel(z.empty_for)}</td>
+      <td class="px-3 py-2 text-gray-300">${secondsToLabel(z.full_for)}</td>
+      <td class="px-3 py-2">
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${badgeClass}">
+          ${state}
+        </span>
+      </td>
+    `;
+
       tbody.appendChild(tr);
     });
   }
+
 
   // ===============================
   // STATS LOOP
@@ -747,10 +835,23 @@
 
       currentSafeZone = data.safe_zone || null;
 
-      // Atualiza smartZones a partir da geometria, se ainda estiver vazio
-      if (Array.isArray(currentSafeZone)) {
+      // ----- Lista do Safe Zone Map (smartZones) -----
+      // 1º: usar zonas ricas vindas do backend (mesmas do card Zones)
+      if (Array.isArray(data.zones) && data.zones.length) {
+        smartZones = data.zones.map(z => ({
+          name: z.name || `Zona ${(z.index ?? 0) + 1}`,
+          mode: (z.mode || 'GENERIC').toUpperCase(),
+          points: Array.isArray(z.points) ? z.points : []
+        }));
+        selectedZoneIndex = 0;
+        renderZoneList();
+      }
+      // 2º: fallback antigo só se não vierem zonas ricas
+      else if (Array.isArray(currentSafeZone)) {
         if (!smartZones.length) {
-          if (currentSafeZone.length > 0 && Array.isArray(currentSafeZone[0]) && Array.isArray(currentSafeZone[0][0])) {
+          if (currentSafeZone.length > 0 &&
+            Array.isArray(currentSafeZone[0]) &&
+            Array.isArray(currentSafeZone[0][0])) {
             smartZones = currentSafeZone.map((poly, i) => ({
               name: `Zona ${i + 1}`,
               mode: 'GENERIC',
@@ -769,13 +870,16 @@
           renderZoneList();
         }
       }
+      // ----------------------------------------------
 
     } catch (e) {
       console.error('Erro ao buscar stats:', e);
     }
   }
+
   fetchAndUpdateStats();
   setInterval(fetchAndUpdateStats, 2000);
+
 
   // ===============================
   // CONTROLES DE STREAM

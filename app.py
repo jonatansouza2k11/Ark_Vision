@@ -691,7 +691,33 @@ def api_stats():
 
     stats["system_logs"] = system_compact
 
+    # ---------- Nomes das zonas no payload ----------
+    zones_stats = stats.get("zones") or []
+    #zones_config = config.get("zones") or []
+    # nomes e modos vêm da mesma estrutura usada em /api/safe_zone e /settings
+    raw_safe = config.get("safe_zone") or get_setting("safe_zone", "[]")
+    try:
+        zones_config = json.loads(str(raw_safe).strip() or "[]")
+    except Exception:
+        zones_config = []
+
+    names_by_index = {}
+    for idx, zconf in enumerate(zones_config):
+        if isinstance(zconf, dict):
+            name = zconf.get("name")
+            if name:
+                names_by_index[idx] = name
+
+    for z in zones_stats:
+        idx = z.get("index")
+        if isinstance(idx, int) and idx in names_by_index:
+            z["name"] = names_by_index[idx]
+
+    stats["zones"] = zones_stats
+    # -------------------------------------------------
+
     return jsonify(stats)
+
 
 
 @app.route("/api/safe_zone", methods=["POST"])
