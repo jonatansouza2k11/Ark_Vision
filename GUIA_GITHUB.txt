@@ -43,8 +43,11 @@ OPCAO 3: Manual (Qualquer OS)
 2. Adicione todos os arquivos:
    git add .
 
+   2.1 Adicione um arquivo:
+      git add .env.example
+
 3. Faça commit:
-   git commit -m "Sincronização da lista no card Zone safe Zone"
+   git commit -m "Ajuste e documentação no .env.example"
 
 4. Faça push:
    git push -u origin main

@@ -3,19 +3,10 @@ app.py
 
 Sistema completo de monitoramento YOLO com autenticação.
 Usa o módulo yolo.py para toda lógica de computação visual.
-
-✨ MELHORIAS IMPLEMENTADAS:
-- Rate limiting em endpoints críticos (login, register, APIs)
-- Logs de tentativas de login (sucesso/falha)
-- Health check endpoints (/health e /ready)
-- Métricas de memória e performance (/metrics)
-- Integração completa com config.py
-- Monitoramento de RAM e CPU via psutil
 """
 
 import os
 import json
-from datetime import datetime
 from flask import (
     Flask,
     Response,
@@ -33,15 +24,6 @@ from werkzeug.exceptions import NotFound
 # Carrega configurações do .env via config.py
 import config
 
-# ✨ NOVO: Monitoramento de sistema
-try:
-    import psutil
-    PSUTIL_AVAILABLE = True
-except ImportError:
-    PSUTIL_AVAILABLE = False
-    print("⚠️  psutil não instalado - métricas de memória desabilitadas")
-    print("   pip install psutil")
-
 from database import (
     verify_user,
     create_user,
@@ -58,11 +40,9 @@ from database import (
 from auth import login_required, admin_required
 from yolo import get_vision_system
 
+
 app = Flask(__name__)
 
-# ==========================================================
-# FLASK-LIMITER: Proteção contra brute force e DoS
-# ==========================================================
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -70,7 +50,7 @@ limiter = Limiter(
     app=app,
     key_func=get_remote_address,
     default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://"  # Simples para começar, use Redis em produção
+    storage_uri="memory://"  # Usa memória (simples para começar)
 )
 
 # Usa a chave secreta do .env ou valor padrão do config.py
@@ -161,198 +141,12 @@ def get_video_source_label(source_str):
     return s
 
 
-def get_memory_info():
-    """✨ NOVO: Retorna informações de memória do sistema"""
-    if not PSUTIL_AVAILABLE:
-        return None
-    
-    try:
-        memory = psutil.virtual_memory()
-        return {
-            "total_mb": round(memory.total / (1024**2), 1),
-            "used_mb": round(memory.used / (1024**2), 1),
-            "available_mb": round(memory.available / (1024**2), 1),
-            "percent": memory.percent
-        }
-    except Exception:
-        return None
-
-
 # ==========================================================
 # Template context
 # ==========================================================
 @app.context_processor
 def inject_user():
     return {"user": session.get("user")}
-
-
-# ==========================================================
-# HEALTH CHECK ENDPOINTS (sem autenticação)
-# ==========================================================
-@app.route("/health", methods=["GET"])
-def health_check():
-    """
-    ✨ MELHORADO: Health check com métricas de memória.
-    
-    Health check endpoint para monitoramento (sem autenticação).
-    Útil para Docker, Kubernetes, load balancers, etc.
-    
-    Retorna:
-    - 200: Sistema saudável
-    - 503: Sistema com problemas
-    """
-    health_status = {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "checks": {},
-        "preset": config.ACTIVE_PRESET
-    }
-    
-    # 1. Check Database
-    try:
-        get_setting("model_path")
-        health_status["checks"]["database"] = "ok"
-    except Exception as e:
-        health_status["checks"]["database"] = f"error: {str(e)}"
-        health_status["status"] = "unhealthy"
-    
-    # 2. Check Vision System
-    try:
-        vs = get_vision_system()
-        if vs and hasattr(vs, 'stream_active'):
-            health_status["checks"]["vision_system"] = "ok"
-            health_status["vision_active"] = bool(vs.stream_active)
-        else:
-            health_status["checks"]["vision_system"] = "error: not initialized"
-            health_status["status"] = "unhealthy"
-    except Exception as e:
-        health_status["checks"]["vision_system"] = f"error: {str(e)}"
-        health_status["status"] = "unhealthy"
-    
-    # 3. Check Config
-    try:
-        health_status["checks"]["config"] = "ok"
-        health_status["flask_env"] = config.FLASK_ENV
-    except Exception as e:
-        health_status["checks"]["config"] = f"error: {str(e)}"
-        health_status["status"] = "unhealthy"
-    
-    # 4. ✨ NOVO: Check Memory
-    if PSUTIL_AVAILABLE:
-        try:
-            memory = psutil.virtual_memory()
-            memory_percent = memory.percent
-            
-            if memory_percent > 90:
-                health_status["checks"]["memory"] = f"critical: {memory_percent}%"
-                health_status["status"] = "unhealthy"
-            elif memory_percent > 80:
-                health_status["checks"]["memory"] = f"warning: {memory_percent}%"
-                if health_status["status"] == "healthy":
-                    health_status["status"] = "degraded"
-            else:
-                health_status["checks"]["memory"] = f"ok: {memory_percent}%"
-            
-            health_status["memory_mb"] = round(memory.used / (1024**2), 1)
-        except Exception as e:
-            health_status["checks"]["memory"] = f"error: {str(e)}"
-    else:
-        health_status["checks"]["memory"] = "unavailable (psutil not installed)"
-    
-    status_code = 200 if health_status["status"] == "healthy" else 503
-    return jsonify(health_status), status_code
-
-
-@app.route("/ready", methods=["GET"])
-def readiness_check():
-    """
-    Readiness check - verifica se app está pronta para receber tráfego.
-    Diferente de /health que verifica se está viva.
-    
-    Retorna:
-    - 200: Pronto para receber tráfego
-    - 503: Ainda inicializando ou com problemas
-    """
-    try:
-        vs = get_vision_system()
-        if vs and hasattr(vs, 'model'):
-            return jsonify({
-                "ready": True,
-                "timestamp": datetime.now().isoformat(),
-                "preset": config.ACTIVE_PRESET
-            }), 200
-        return jsonify({
-            "ready": False,
-            "reason": "Vision system not ready",
-            "timestamp": datetime.now().isoformat()
-        }), 503
-    except Exception as e:
-        return jsonify({
-            "ready": False,
-            "reason": str(e),
-            "timestamp": datetime.now().isoformat()
-        }), 503
-
-
-@app.route("/metrics", methods=["GET"])
-@admin_required
-def metrics():
-    """
-    ✨ NOVO: Endpoint de métricas detalhadas (apenas admin).
-    
-    Monitora uso de CPU, RAM, e status do vision system.
-    Útil para dashboards de monitoramento e troubleshooting.
-    """
-    if not PSUTIL_AVAILABLE:
-        return jsonify({
-            "error": "psutil not available",
-            "message": "Install psutil for system metrics: pip install psutil"
-        }), 503
-    
-    try:
-        # Métricas do sistema
-        memory = psutil.virtual_memory()
-        cpu_percent = psutil.cpu_percent(interval=0.1)
-        
-        # Métricas do Vision System
-        vs = get_vision_system()
-        stats = vs.get_stats()
-        
-        metrics_data = {
-            "timestamp": datetime.now().isoformat(),
-            "system": {
-                "cpu_percent": cpu_percent,
-                "memory_total_mb": round(memory.total / (1024**2), 1),
-                "memory_used_mb": round(memory.used / (1024**2), 1),
-                "memory_available_mb": round(memory.available / (1024**2), 1),
-                "memory_percent": memory.percent
-            },
-            "vision": {
-                "fps": stats.get("fps", 0),
-                "detected": stats.get("detected_count", 0),
-                "in_zone": stats.get("in_zone", 0),
-                "out_zone": stats.get("out_zone", 0),
-                "stream_active": stats.get("stream_active", False),
-                "paused": stats.get("paused", False)
-            },
-            "config": {
-                "preset": config.ACTIVE_PRESET,
-                "buffer_size": config.BUFFER_SIZE,
-                "buffer_duration_s": config.BUFFER_DURATION_SECONDS,
-                "buffer_memory_mb": config.ESTIMATED_BUFFER_MEMORY_MB,
-                "gc_interval": config.GC_INTERVAL,
-                "memory_threshold_mb": config.MEMORY_WARNING_THRESHOLD,
-                "camera_resolution": f"{config.CAM_WIDTH}x{config.CAM_HEIGHT}",
-                "camera_fps": config.CAM_FPS,
-                "yolo_conf": config.YOLO_CONF_THRESHOLD,
-                "yolo_width": config.YOLO_TARGET_WIDTH,
-                "frame_step": config.YOLO_FRAME_STEP
-            }
-        }
-        
-        return jsonify(metrics_data), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================================
@@ -366,81 +160,36 @@ def index():
 
 
 @app.route("/login", methods=["GET", "POST"])
-@limiter.limit("5 per minute")  # ✨ PROTEÇÃO: Máximo 5 tentativas por minuto
 def login():
-    """
-    ✨ MELHORADO: Rate limiting + logs de tentativas (sucesso/falha)
-    """
     if request.method == "POST":
         username = request.form.get("username", type=str)
         password = request.form.get("password", type=str)
         user = verify_user(username, password)
-        
         if user:
             session["user"] = normalize_user(user)
             update_last_login(username)
-            
-            # ✨ NOVO: Log de login bem-sucedido
-            log_system_action(
-                action="LOGIN_SUCCESS",
-                username=username,
-                reason=f"IP: {request.remote_addr}"
-            )
-            
             flash(f"Bem-vindo, {username}!", "success")
             return redirect(url_for("dashboard"))
-        
-        # ✨ NOVO: Log de tentativa de login falhada
-        log_system_action(
-            action="LOGIN_FAILED",
-            username=username or "unknown",
-            reason=f"IP: {request.remote_addr}"
-        )
-        
         flash("Usuário ou senha incorretos.", "danger")
-    
     return render_template("login.html")
 
 
 @app.route("/register", methods=["GET", "POST"])
-@limiter.limit("3 per hour")  # ✨ PROTEÇÃO: Máximo 3 registros por hora
 def register():
-    """
-    ✨ MELHORADO: Rate limiting para prevenir criação massiva de contas
-    """
     if request.method == "POST":
         username = request.form.get("username", type=str)
         email = request.form.get("email", type=str)
         password = request.form.get("password", type=str)
-        
         if create_user(username, email, password):
-            # ✨ NOVO: Log de novo usuário criado
-            log_system_action(
-                action="USER_CREATED",
-                username=username,
-                reason=f"Email: {email}, IP: {request.remote_addr}"
-            )
-            
             flash("Usuário criado com sucesso! Faça login.", "success")
             return redirect(url_for("login"))
-        
         flash("Usuário ou e-mail já existe.", "danger")
-    
     return render_template("register.html")
 
 
 @app.route("/logout")
 def logout():
-    username = session.get("user", {}).get("username", "unknown")
     session.pop("user", None)
-    
-    # ✨ NOVO: Log de logout
-    log_system_action(
-        action="LOGOUT",
-        username=username,
-        reason=f"IP: {request.remote_addr}"
-    )
-    
     flash("Logout realizado com sucesso.", "info")
     return redirect(url_for("login"))
 
@@ -449,25 +198,15 @@ def logout():
 @login_required
 def dashboard():
     vs = get_vision_system()
-    config_data = vs.get_config()
+    config = vs.get_config()
     model_path = (
-        config_data.get("model_path") or get_setting("model_path") or "yolo_models\\yolov8n.pt"
+        config.get("model_path") or get_setting("model_path") or "yolo_models\\yolov8n.pt"
     )
-    source = config_data.get("source") or get_setting("source") or "0"
-    
+    source = config.get("source") or get_setting("source") or "0"
     system_info = {
         "model_name": os.path.basename(str(model_path)),
         "video_source_label": get_video_source_label(source),
-        "preset": config.ACTIVE_PRESET,
     }
-    
-    # ✨ NOVO: Adiciona info de memória se disponível
-    if PSUTIL_AVAILABLE:
-        mem_info = get_memory_info()
-        if mem_info:
-            system_info["memory_percent"] = mem_info["percent"]
-            system_info["memory_used_mb"] = mem_info["used_mb"]
-    
     return render_template(
         "dashboard.html", active="dashboard", system_info=system_info
     )
@@ -484,7 +223,6 @@ def video_feed():
 
 @app.route("/start_stream", methods=["POST"])
 @login_required
-@limiter.limit("10 per minute")  # ✨ PROTEÇÃO: Evita spam de start/stop
 def start_stream():
     vs = get_vision_system()
 
@@ -510,7 +248,6 @@ def start_stream():
 
 @app.route("/toggle_camera", methods=["POST"])
 @login_required
-@limiter.limit("10 per minute")  # ✨ PROTEÇÃO: Evita spam de toggle
 def toggle_camera():
     vs = get_vision_system()
     data = request.get_json(silent=True) or {}
@@ -552,7 +289,6 @@ def toggle_camera():
 
 @app.route("/stop_stream", methods=["POST"])
 @login_required
-@limiter.limit("10 per minute")  # ✨ PROTEÇÃO: Evita spam de stop
 def stop_stream():
     vs = get_vision_system()
     data = request.get_json(silent=True) or {}
@@ -668,16 +404,16 @@ def users():
 def settings():
     if request.method == "POST":
         # Detecção / performance
-        conf_thresh = request.form.get("conf_thresh", default="0.87", type=str)
-        target_width = request.form.get("target_width", default="960", type=str)
+        conf_thresh = request.form.get("conf_thresh", default="0.78", type=str)
+        target_width = request.form.get("target_width", default="1280", type=str)
         frame_step = request.form.get("frame_step", default="2", type=str)
         set_setting("conf_thresh", conf_thresh)
         set_setting("target_width", target_width)
         set_setting("frame_step", frame_step)
 
         # Alertas / buffer
-        max_out_time = request.form.get("max_out_time", default="30.0", type=str)
-        email_cooldown = request.form.get("email_cooldown", default="600.0", type=str)
+        max_out_time = request.form.get("max_out_time", default="5.0", type=str)
+        email_cooldown = request.form.get("email_cooldown", default="10.0", type=str)
         buffer_seconds = request.form.get("buffer_seconds", default="2.0", type=str)
         set_setting("max_out_time", max_out_time)
         set_setting("email_cooldown", email_cooldown)
@@ -715,11 +451,11 @@ def settings():
         try:
             g_max_out = float(max_out_time)
         except Exception:
-            g_max_out = 30.0
+            g_max_out = 5.0
         try:
             g_email_cd = float(email_cooldown)
         except Exception:
-            g_email_cd = 600.0
+            g_email_cd = 10.0
         try:
             g_empty_t = float(zone_empty_timeout)
         except Exception:
@@ -788,7 +524,7 @@ def settings():
 
         # Modelo / fonte
         model_path = request.form.get(
-            "model_path", default=r"yolo_models\yolov8n.pt", type=str
+            "model_path", default=r"yolo_models\yolo11n.pt", type=str
         )
         set_setting("model_path", model_path)
 
@@ -798,8 +534,8 @@ def settings():
         set_setting("source", source)
 
         # Câmera
-        cam_width = request.form.get("cam_width", default=960, type=int)
-        cam_height = request.form.get("cam_height", default=540, type=int)
+        cam_width = request.form.get("cam_width", default=1280, type=int)
+        cam_height = request.form.get("cam_height", default=720, type=int)
         cam_fps = request.form.get("cam_fps", default=30, type=int)
         set_setting("cam_width", cam_width)
         set_setting("cam_height", cam_height)
@@ -830,15 +566,6 @@ def settings():
         set_setting("email_use_tls", "1" if email_use_tls else "0")
         set_setting("email_use_ssl", "1" if email_use_ssl else "0")
 
-        # ✨ NOVO: Log de mudança de configuração
-        user_info = session.get("user") or {}
-        username = user_info.get("username", "admin")
-        log_system_action(
-            action="CONFIG_UPDATE",
-            username=username,
-            reason="Configurações atualizadas via interface web"
-        )
-
         # Reinicia o stream
         vs = get_vision_system()
         vs.stop_live()
@@ -850,9 +577,9 @@ def settings():
         )
         return redirect(url_for("dashboard"))
 
-    # GET
+    # GET permanece como ajustamos antes...
     vs = get_vision_system()
-    config_data = vs.get_config()
+    config = vs.get_config()
     available_models = list_yolo_models("yolo_models")
 
     raw_zones = get_setting("safe_zone", "[]")
@@ -863,7 +590,7 @@ def settings():
 
     return render_template(
         "settings.html",
-        config=config_data,
+        config=config,
         active="settings",
         available_models=available_models,
         zones_meta=zones_meta,
@@ -872,11 +599,7 @@ def settings():
 
 @app.route("/api/stats")
 @login_required
-@limiter.limit("30 per minute")  # ✨ PROTEÇÃO: Limita chamadas de API
 def api_stats():
-    """
-    ✨ MELHORADO: Rate limiting + métricas de memória
-    """
     vs = get_vision_system()
     stats = vs.get_stats()
 
@@ -896,16 +619,16 @@ def api_stats():
     stats["system_status"] = system_status
 
     # infos de modelo/fonte
-    config_data = vs.get_config()
+    config = vs.get_config()
     model_path = (
-        config_data.get("model_path") or get_setting("model_path") or "yolo_models\\yolov8n.pt"
+        config.get("model_path") or get_setting("model_path") or "yolo_models\\yolov8n.pt"
     )
-    source = config_data.get("source") or get_setting("source") or "0"
+    source = config.get("source") or get_setting("source") or "0"
     stats["model_name"] = os.path.basename(str(model_path))
     stats["video_source_label"] = get_video_source_label(source)
 
     # safe_zone para o mini-mapa (apenas geometria)
-    safe_zone_str = config_data.get("safe_zone") or get_setting("safe_zone")
+    safe_zone_str = config.get("safe_zone") or get_setting("safe_zone")
     stats["safe_zone"] = parse_safe_zone(safe_zone_str)
 
     # Activity: últimos 5 alertas
@@ -959,21 +682,11 @@ def api_stats():
             msg = f'Stream PARADO por "{username}"'
         elif action == "INICIAR":
             msg = f'Stream INICIADO por "{username}"'
-        elif action == "LOGIN_SUCCESS":
-            msg = f'Login bem-sucedido: "{username}"'
-        elif action == "LOGIN_FAILED":
-            msg = f'Tentativa de login falhou: "{username}"'
-        elif action == "CONFIG_UPDATE":
-            msg = f'Configurações atualizadas por "{username}"'
-        elif action == "ZONE_UPDATED":
-            msg = f'Zonas atualizadas por "{username}"'
-        elif action == "ZONE_CLEARED":
-            msg = f'Zonas removidas por "{username}"'
         else:
             msg = f'Ação {action} por "{username}"'
 
         if reason:
-            msg += f" ({reason})"
+            msg += f" (motivo: {reason})"
 
         system_compact.append(
             {
@@ -991,7 +704,9 @@ def api_stats():
 
     # ---------- Nomes das zonas no payload ----------
     zones_stats = stats.get("zones") or []
-    raw_safe = config_data.get("safe_zone") or get_setting("safe_zone", "[]")
+    #zones_config = config.get("zones") or []
+    # nomes e modos vêm da mesma estrutura usada em /api/safe_zone e /settings
+    raw_safe = config.get("safe_zone") or get_setting("safe_zone", "[]")
     try:
         zones_config = json.loads(str(raw_safe).strip() or "[]")
     except Exception:
@@ -1012,28 +727,14 @@ def api_stats():
     stats["zones"] = zones_stats
     # -------------------------------------------------
 
-    # ✨ NOVO: Métricas de memória e performance
-    if PSUTIL_AVAILABLE:
-        try:
-            memory = psutil.virtual_memory()
-            stats["system_memory"] = {
-                "used_mb": round(memory.used / (1024**2), 1),
-                "percent": memory.percent,
-                "preset": config.ACTIVE_PRESET
-            }
-        except Exception:
-            pass
-
     return jsonify(stats)
+
 
 
 @app.route("/api/safe_zone", methods=["POST"])
 @admin_required
-@limiter.limit("10 per minute")  # ✨ PROTEÇÃO: Limita mudanças de zona
 def api_safe_zone():
     """
-    ✨ MELHORADO: Rate limiting para evitar spam de mudanças de zona
-    
     Recebe JSON:
 
     Novo formato principal:
@@ -1055,10 +756,6 @@ def api_safe_zone():
         return jsonify({"success": False, "error": "JSON inválido"}), 400
 
     vs = get_vision_system()
-    
-    # ✨ NOVO: Log de mudança de zona
-    user_info = session.get("user") or {}
-    username = user_info.get("username", "admin")
 
     # NOVO FORMATO: múltiplas zonas com metadados
     if "zones" in payload:
@@ -1069,13 +766,6 @@ def api_safe_zone():
             set_setting("safe_zone", json.dumps([]))
             vs.stop_live()
             vs.start_live()
-            
-            log_system_action(
-                action="ZONE_CLEARED",
-                username=username,
-                reason="Todas as zonas foram removidas"
-            )
-            
             return jsonify({"success": True, "zones": []})
 
         if not isinstance(zones, list) or len(zones) == 0:
@@ -1132,12 +822,6 @@ def api_safe_zone():
             )
 
         set_setting("safe_zone", json.dumps(validated_zones))
-        
-        log_system_action(
-            action="ZONE_UPDATED",
-            username=username,
-            reason=f"{len(validated_zones)} zona(s) configurada(s)"
-        )
 
         vs.stop_live()
         vs.start_live()
@@ -1152,13 +836,6 @@ def api_safe_zone():
             set_setting("safe_zone", json.dumps([]))
             vs.stop_live()
             vs.start_live()
-            
-            log_system_action(
-                action="ZONE_CLEARED",
-                username=username,
-                reason="Zona removida (formato legado)"
-            )
-            
             return jsonify({"success": True, "points": []})
 
         if not isinstance(points, list) or len(points) < 3:
@@ -1213,12 +890,6 @@ def api_safe_zone():
             {"name": "Zona 1", "mode": "GENERIC", "points": norm_points},
         ]
         set_setting("safe_zone", json.dumps(rich))
-        
-        log_system_action(
-            action="ZONE_UPDATED",
-            username=username,
-            reason="Zona configurada (formato legado)"
-        )
 
         vs.stop_live()
         vs.start_live()
@@ -1370,15 +1041,15 @@ def diagnostics():
                 }
                 results["missing"].append(f"Config CÂMERA '{key}' não existe")
 
-        # 5. EMAIL
+        # 5. E-MAIL
         email_keys = {
             "email_smtp_server": "Servidor SMTP",
-            "email_smtp_port": "Porta SMTP",
-            "email_from": "E-mail remetente",
-            "email_user": "Usuário SMTP",
-            "email_password": "Senha SMTP",
-            "email_use_tls": "Usar TLS",
-            "email_use_ssl": "Usar SSL",
+            "email_smtp_port": "Porta",
+            "email_use_tls": "TLS",
+            "email_use_ssl": "SSL",
+            "email_from": "Remetente",
+            "email_user": "Usuário",
+            "email_password": "Senha",
         }
 
         for key, desc in email_keys.items():
@@ -1387,7 +1058,9 @@ def diagnostics():
             if result:
                 value = result[0]
                 if key == "email_password" and value:
-                    value = "***" * len(value[:8])
+                    value = "***" + value[-4:] if len(value) > 4 else "****"
+                elif key == "email_password":
+                    value = "[vazio]"
                 results["email"][key] = {
                     "value": value,
                     "desc": desc,
@@ -1399,6 +1072,7 @@ def diagnostics():
                     "desc": desc,
                     "exists": False,
                 }
+                results["missing"].append(f"Config E-MAIL '{key}' não existe")
 
         # 6. DADOS
         c.execute("SELECT COUNT(*) FROM users")
@@ -1408,83 +1082,61 @@ def diagnostics():
         results["data"]["alerts"] = c.fetchone()[0]
 
         c.execute("SELECT COUNT(*) FROM system_logs")
-        results["data"]["system_logs"] = c.fetchone()[0]
+        results["data"]["logs"] = c.fetchone()[0]
+
+        c.execute("SELECT COUNT(*) FROM settings")
+        results["data"]["settings"] = c.fetchone()[0]
 
         # 7. ADMIN
         c.execute("SELECT username, email, role FROM users WHERE role = 'admin'")
-        for row in c.fetchall():
-            results["admin"].append(
-                {"username": row[0], "email": row[1], "role": row[2]}
-            )
+        admins = c.fetchall()
+        results["admin"] = [
+            {"username": a[0], "email": a[1], "role": a[2]} for a in admins
+        ]
+
+        if not admins:
+            results["missing"].append("Nenhum usuário admin encontrado")
 
         conn.close()
 
-        return render_template("diagnostics.html", results=results, active="diagnostics")
+        if results["missing"]:
+            results["status"] = "warning"
+
+        return render_template("diagnostics.html", results=results, active="settings")
 
     except Exception as e:
         return render_template(
             "diagnostics.html",
             results={"status": "error", "error": str(e)},
-            active="diagnostics",
+            active="settings",
         )
 
 
-# ==========================================================
-# Error Handlers
-# ==========================================================
-@app.errorhandler(404)
-def not_found(e):
-    return render_template("404.html"), 404
-
-
-@app.errorhandler(500)
-def internal_error(e):
-    return render_template("500.html"), 500
-
-
-@app.errorhandler(429)
-def ratelimit_handler(e):
-    """✨ NOVO: Handler customizado para rate limiting"""
-    return jsonify(
-        {
-            "error": "Rate limit exceeded",
-            "message": "Too many requests. Please try again later.",
-        }
-    ), 429
-
-
-# ==========================================================
-# Main
-# ==========================================================
 if __name__ == "__main__":
-    # Valida configuração antes de iniciar
+    print("[Flask] Iniciando servidor...")
+    # Valida configurações antes de iniciar
     errors, warnings = config.validate_config()
-    
+
     if errors:
-        print("\n❌ ERROS DE CONFIGURAÇÃO:")
+        print("\n❌ ERROS DE CONFIGURAÇÃO - não é possível iniciar:")
         for error in errors:
             print(f"  {error}")
-        print("\n❌ Corrija os erros antes de iniciar a aplicação.")
         exit(1)
-    
+
     if warnings:
-        print("\n⚠️  AVISOS:")
+        print("\n⚠️  AVISOS DE CONFIGURAÇÃO:")
         for warning in warnings:
             print(f"  {warning}")
-    
-    # Exibe resumo da configuração
+
+    # Exibe resumo de configuração
     config.print_config_summary()
-    
-    if PSUTIL_AVAILABLE:
-        config.print_memory_recommendations()
-    else:
-        print("\n⚠️  psutil não instalado - métricas de memória desabilitadas")
-        print("   Instale com: pip install psutil\n")
-    
-    # Inicia o servidor Flask
+
+    # Inicia servidor Flask
     app.run(
         host=config.FLASK_HOST,
         port=config.FLASK_PORT,
         debug=config.FLASK_DEBUG,
-        threaded=True
+        threaded=True,
     )
+
+    app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
