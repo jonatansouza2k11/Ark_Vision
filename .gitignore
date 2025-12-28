@@ -1,62 +1,35 @@
-# PYTHON
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-*.egg-info/
-.installed.cfg
-*.egg
-
-# VIRTUAL ENVIRONMENTS
-cv_env/
-venv/
+*.so
+.Python
 env/
-ENV/
-.venv/
+venv/
+cv_env/
 
 # IDE
 .vscode/
 .idea/
 *.swp
-*.swo
-*~
 
-# DATABASE (sensitive - generated at runtime)
-cv_system.db
+# Database
 *.db
 *.sqlite
+*.sqlite3
 
-# YOLO MODELS (too large, download at runtime)
-yolo_models/*.pt
-yolo_models/*.torchscript
-*.pt.backup
+# Logs & Alerts
+alertas/
+*.log
 
-# DATASETS & LARGE FILES
-pallet detection.v6i.yolov8.zip
-datasets/
-pallet_dataset/
-*.zip
-
-# ALERT VIDEOS (generated at runtime)
-alertas/*.mp4
-alertas/*.avi
-
-# ENVIRONMENT & SECRETS
+# Environment
 .env
 .env.local
-secrets.json
+
+# Models (grandes demais para Git)
+yolo_models/*.pt
+!yolo_models/.gitkeep
 
 # OS
 .DS_Store
 Thumbs.db
-
-# COVERAGE & TESTING
-.coverage
-.pytest_cache/
-htmlcov/
-.tox/
-
-# MISC
-.cache/
-*.log
-temp/
-tmp/
