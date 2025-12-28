@@ -44,7 +44,7 @@ OPCAO 3: Manual (Qualquer OS)
    git add .
 
 3. Faça commit:
-   git commit -m "Adicionado as zonas inteligentes no log de inicialização"
+   git commit -m "Sincronização da lista no card Zone safe Zone"
 
 4. Faça push:
    git push -u origin main
