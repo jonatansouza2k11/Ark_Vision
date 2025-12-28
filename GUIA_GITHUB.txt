@@ -44,7 +44,7 @@ OPCAO 3: Manual (Qualquer OS)
    git add .
 
 3. Faça commit:
-   git commit -m "Zona fixa retangular removida do projeto"
+   git commit -m "Zonas inteligentes e independentes adicionadas com modo e tempo"
 
 4. Faça push:
    git push -u origin main

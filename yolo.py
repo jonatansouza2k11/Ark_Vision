@@ -72,6 +72,81 @@ def _load_safe_zone_from_db():
         return []
 
 
+def _load_zones_rich_from_db():
+    """
+    Lê settings.safe_zone do banco no formato rico e normaliza.
+
+    Retorna uma lista de dicts:
+    [
+      {
+        "name": str,
+        "mode": str,
+        "points": [[x,y],...],
+        "max_out_time": float|None,
+        "email_cooldown": float|None,
+        "empty_timeout": float|None,
+        "full_timeout": float|None,
+        "full_threshold": int|None,
+      },
+      ...
+    ]
+    """
+    raw_safe = get_setting("safe_zone", "[]")
+    try:
+        s = str(raw_safe).strip()
+        if not s or not s.startswith("["):
+            return []
+        data = json.loads(s)
+
+        # Novo formato: lista de objetos
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            zones = []
+            for z in data:
+                pts = z.get("points") or z.get("polygon") or []
+                if isinstance(pts, list) and len(pts) >= 3:
+                    zones.append(
+                        {
+                            "name": z.get("name") or "",
+                            "mode": (z.get("mode") or "GENERIC").upper(),
+                            "points": pts,
+                            "max_out_time": z.get("max_out_time"),
+                            "email_cooldown": z.get("email_cooldown"),
+                            "empty_timeout": z.get("empty_timeout"),
+                            "full_timeout": z.get("full_timeout"),
+                            "full_threshold": z.get("full_threshold"),
+                        }
+                    )
+            return zones
+
+        # Formato antigo: lista de polígonos ou zona única
+        if isinstance(data, list) and data and isinstance(data[0], list):
+            if data and isinstance(data[0], (list, tuple)) and len(data[0]) == 2:
+                polys = [data]
+            else:
+                polys = data
+
+            zones = []
+            for pts in polys:
+                if isinstance(pts, list) and len(pts) >= 3:
+                    zones.append(
+                        {
+                            "name": "",
+                            "mode": "GENERIC",
+                            "points": pts,
+                            "max_out_time": None,
+                            "email_cooldown": None,
+                            "empty_timeout": None,
+                            "full_timeout": None,
+                            "full_threshold": None,
+                        }
+                    )
+            return zones
+
+        return []
+    except Exception:
+        return []
+
+
 class YOLOVisionSystem:
     def __init__(self, source=SOURCE, model_path=MODEL_PATH):
         base_source = source
@@ -134,6 +209,28 @@ class YOLOVisionSystem:
             f"[YOLO] Zone params: empty_timeout={self.zone_empty_timeout}s, "
             f"full_timeout={self.zone_full_timeout}s, full_threshold={self.zone_full_threshold}"
         )
+
+        # Loga todas as zonas configuradas (nome, modo, tempos)
+        zones_rich = _load_zones_rich_from_db()
+        if zones_rich:
+            print("[YOLO] Zonas configuradas:")
+            for i, z in enumerate(zones_rich):
+                name = z.get("name") or f"Zona {i+1}"
+                mode = (z.get("mode") or "GENERIC").upper()
+                max_out = z.get("max_out_time")
+                email_cd = z.get("email_cooldown")
+                empty_t = z.get("empty_timeout")
+                full_t = z.get("full_timeout")
+                full_thr = z.get("full_threshold")
+                print(
+                    f"  - #{i+1}: name='{name}', mode={mode}, "
+                    f"max_out={max_out}, email_cd={email_cd}, "
+                    f"empty_t={empty_t}, full_t={full_t}, full_thr={full_thr}"
+                )
+        else:
+            print("[YOLO] Nenhuma zona rica configurada em settings.safe_zone."
+    )
+
 
     # =========================
     # INTERNAL CONFIG LOAD (INICIAL)
@@ -500,6 +597,7 @@ class YOLOVisionSystem:
     def is_point_in_any_zone(self, px, py, zones, frame_w, frame_h):
         idx = self.get_zone_index(px, py, zones, frame_w, frame_h)
         return idx >= 0
+        
 
     # =========================
     # DETECTION PROCESS
@@ -520,7 +618,9 @@ class YOLOVisionSystem:
 
         h, w = frame.shape[:2]
 
-        zone_idx = self.get_zone_index(xc, yc, config["safe_zone"], w, h)
+        # Zonas geométricas (polígonos) – pode vir de config["zones_polys"] se você adicionar no generate_frames
+        zones = config.get("zones_polys", config.get("safe_zone"))
+        zone_idx = self.get_zone_index(xc, yc, zones, w, h)
         inside = zone_idx >= 0
 
         state = self.track_state[tid]
@@ -530,6 +630,29 @@ class YOLOVisionSystem:
         state["buffer"].append(frame.copy())
         state["zone_idx"] = zone_idx
 
+        # --- Carrega tempos/mode da zona específica (override dos globais) ---
+        # Globais
+        g_max_out = config.get("max_out_time", 5.0)
+        g_email_cd = config.get("email_cooldown", 10.0)
+
+        # Zonas ricas vindas do settings
+        zones_rich = _load_zones_rich_from_db()
+        if zone_idx >= 0 and zones_rich and zone_idx < len(zones_rich):
+            zr = zones_rich[zone_idx]
+            mode = (zr.get("mode") or "GENERIC").upper()
+            max_out_time = float(zr.get("max_out_time") or g_max_out)
+            email_cooldown = float(zr.get("email_cooldown") or g_email_cd)
+        else:
+            mode = "GENERIC"
+            max_out_time = g_max_out
+            email_cooldown = g_email_cd
+
+        # Guarda info da zona no track_state se quiser usar em trigger_alert ou logs
+        state["mode"] = mode
+        state["max_out_time_zone"] = max_out_time
+        state["email_cooldown_zone"] = email_cooldown
+
+        # ---------------- LÓGICA IN/OUT + GRAVAÇÃO ----------------
         if inside:
             state["status"] = "IN"
             state["out_time"] = 0.0
@@ -550,6 +673,7 @@ class YOLOVisionSystem:
             if state["recording"]:
                 self.write_frame_to_video(tid, frame)
 
+        # Desenho da bbox
         cv2.rectangle(frame, (x1b, y1b), (x2b, y2b), color, 2)
         rec = " REC" if state["recording"] else ""
         lbl_zone = f" Z{zone_idx + 1}" if zone_idx >= 0 else " OUTZONE"
@@ -564,10 +688,13 @@ class YOLOVisionSystem:
             2,
         )
 
-        if state["out_time"] > config["max_out_time"]:
-            if now - self.last_email_time[tid] < config["email_cooldown"]:
+        # ---------------- ALERTA POR ZONA ----------------
+        # Usa max_out_time/email_cooldown específicos da zona (ou globais)
+        if state["out_time"] > max_out_time:
+            if now - self.last_email_time[tid] < email_cooldown:
                 return
             self.trigger_alert(tid, state, frame, now)
+
 
     def trigger_alert(self, tid, state, frame, now):
         cv2.putText(
@@ -634,6 +761,10 @@ class YOLOVisionSystem:
                 pass
             self.cap = None
 
+
+
+
+
     # =========================
     # MAIN GENERATOR (Flask MJPEG)
     # =========================
@@ -659,6 +790,19 @@ class YOLOVisionSystem:
                 self.zone_empty_timeout = config.get("zone_empty_timeout", self.zone_empty_timeout)
                 self.zone_full_timeout = config.get("zone_full_timeout", self.zone_full_timeout)
                 self.zone_full_threshold = config.get("zone_full_threshold", self.zone_full_threshold)
+
+                # NOVO: zonas ricas + fallback globais
+                global_max_out = config["max_out_time"]
+                global_email_cd = config["email_cooldown"]
+                global_empty_t = config["zone_empty_timeout"]
+                global_full_t = config["zone_full_timeout"]
+                global_full_thr = config["zone_full_threshold"]
+
+                zones_rich = _load_zones_rich_from_db()
+                # lista só de polígonos para desenho / get_zone_index (compat)
+                zones_polys = [z["points"] for z in zones_rich] if zones_rich else config["safe_zone"]
+                # disponibiliza polígonos no config para process_detection
+                config["zones_polys"] = zones_polys
 
                 if not self.stream_active:
                     if stopped_frame is None and last_frame is not None:
@@ -687,7 +831,7 @@ class YOLOVisionSystem:
                 frame, scale = self.resize_keep_width(orig, config["target_width"])
                 now = time.time()
 
-                self.draw_safe_zone(frame, config["safe_zone"])
+                self.draw_safe_zone(frame, zones_polys)
 
                 if self.paused:
                     if last_frame is not None:
@@ -707,7 +851,9 @@ class YOLOVisionSystem:
 
                 fi += 1
 
-                self.update_zone_stats_start(config["safe_zone"], now)
+                self.update_zone_stats_start(
+                    zones_polys, now, zones_rich, global_empty_t, global_full_t, global_full_thr
+                )
 
                 if fi % config["frame_step"] == 0:
                     results_list = self.model.track(
@@ -733,7 +879,9 @@ class YOLOVisionSystem:
                         if state["recording"]:
                             self.write_frame_to_video(tid, frame)
 
-                self.update_zone_stats_end(now)
+                self.update_zone_stats_end(
+                    now, zones_rich, global_empty_t, global_full_t, global_full_thr
+                )
 
                 ret, buf = cv2.imencode(".jpg", frame)
                 if ret:
@@ -761,12 +909,14 @@ class YOLOVisionSystem:
         finally:
             self._close_camera()
 
+
     # =========================
     # ZONE STATS
     # =========================
-    def update_zone_stats_start(self, zones, now):
+    def update_zone_stats_start(self, zones, now, zones_rich, g_empty_t, g_full_t, g_full_thr):
         """
-        Inicializa contadores por frame para cada zona poligonal.
+        Inicializa contadores por frame para cada zona poligonal,
+        usando tempos específicos da zona (se existirem) ou globais.
         """
         if not zones:
             num_zones = 0
@@ -782,21 +932,42 @@ class YOLOVisionSystem:
             num_zones = 0
 
         for idx in range(num_zones):
+            zr = zones_rich[idx] if zones_rich and idx < len(zones_rich) else None
+
+            empty_t = float(zr.get("empty_timeout") or g_empty_t) if zr else g_empty_t
+            full_t = float(zr.get("full_timeout") or g_full_t) if zr else g_full_t
+            full_thr = int(zr.get("full_threshold") or g_full_thr) if zr else g_full_thr
+            mode = (zr.get("mode") or "GENERIC").upper() if zr else "GENERIC"
+            name = zr.get("name") or f"Zona {idx+1}" if zr else f"Zona {idx+1}"
+
             if idx not in self.zone_stats:
                 self.zone_stats[idx] = {
                     "count": 0,
                     "empty_since": now,
                     "full_since": None,
                     "state": "OK",
+                    "empty_timeout": empty_t,
+                    "full_timeout": full_t,
+                    "full_threshold": full_thr,
+                    "mode": mode,
+                    "name": name,
                 }
             else:
-                self.zone_stats[idx]["count"] = 0
+                zs = self.zone_stats[idx]
+                zs["count"] = 0
+                zs["empty_timeout"] = empty_t
+                zs["full_timeout"] = full_t
+                zs["full_threshold"] = full_thr
+                zs["mode"] = mode
+                zs["name"] = name
 
+        # remove índices que não existem mais
         for idx in list(self.zone_stats.keys()):
             if idx >= num_zones:
                 del self.zone_stats[idx]
 
-    def update_zone_stats_end(self, now):
+
+    def update_zone_stats_end(self, now, zones_rich, g_empty_t, g_full_t, g_full_thr):
         for tid, st in self.track_state.items():
             z = st.get("zone_idx", -1)
             if z is not None and z >= 0 and z in self.zone_stats:
@@ -805,27 +976,33 @@ class YOLOVisionSystem:
         for idx, zs in self.zone_stats.items():
             c = zs["count"]
 
+            empty_t = zs.get("empty_timeout", g_empty_t)
+            full_t = zs.get("full_timeout", g_full_t)
+            full_thr = zs.get("full_threshold", g_full_thr)
+            mode = zs.get("mode", "GENERIC")
+
             if c == 0:
                 if zs["empty_since"] is None:
                     zs["empty_since"] = now
                 zs["full_since"] = None
 
-                if now - zs["empty_since"] >= self.zone_empty_timeout:
+                if now - zs["empty_since"] >= empty_t:
                     zs["state"] = "EMPTY_LONG"
                 else:
                     zs["state"] = "OK"
             else:
                 zs["empty_since"] = None
-                if c >= self.zone_full_threshold:
+                if c >= full_thr:
                     if zs["full_since"] is None:
                         zs["full_since"] = now
-                    if now - zs["full_since"] >= self.zone_full_timeout:
+                    if now - zs["full_since"] >= full_t:
                         zs["state"] = "FULL_LONG"
                     else:
                         zs["state"] = "OK"
                 else:
                     zs["full_since"] = None
                     zs["state"] = "OK"
+
 
     # =========================
     # STATS

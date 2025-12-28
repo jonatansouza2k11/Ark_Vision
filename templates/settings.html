@@ -153,7 +153,7 @@
             As zonas são desenhadas no dashboard (Safe Zone Map). Aqui você configura o
             <span class="font-semibold">modo e tempos</span> de cada uma.
           </p>
-      
+
           <div class="overflow-hidden rounded-xl border border-dark-border">
             <table class="min-w-full text-xs">
               <thead class="bg-slate-800/70 text-gray-300">
@@ -229,7 +229,7 @@
           </div>
         </div>
       </div>
-      
+
 
       <!-- Alertas -->
       <div class="border-t border-dark-border pt-6">
@@ -500,21 +500,6 @@
       <div>
         <p class="text-gray-400">Tracker</p>
         <p class="font-bold text-accent-blue">{{ config.get('tracker', 'botsort.yaml') }}</p>
-      </div>
-
-      <div>
-        <p class="text-gray-400">Zone empty timeout</p>
-        <p class="font-bold text-accent-blue">{{ config.get('zone_empty_timeout', 10.0) }}s</p>
-      </div>
-
-      <div>
-        <p class="text-gray-400">Zone full timeout</p>
-        <p class="font-bold text-accent-blue">{{ config.get('zone_full_timeout', 20.0) }}s</p>
-      </div>
-
-      <div>
-        <p class="text-gray-400">Zone full threshold</p>
-        <p class="font-bold text-accent-blue">{{ config.get('zone_full_threshold', 5) }}</p>
       </div>
     </div>
   </div>
