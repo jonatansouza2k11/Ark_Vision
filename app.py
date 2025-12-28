@@ -16,6 +16,10 @@ Usa o módulo yolo.py para toda lógica de computação visual.
 import os
 import json
 from datetime import datetime
+
+import logging
+from logging.handlers import RotatingFileHandler
+
 from flask import (
     Flask,
     Response,
@@ -59,6 +63,52 @@ from auth import login_required, admin_required
 from yolo import get_vision_system
 
 app = Flask(__name__)
+
+# ==========================================================
+# ✨ SISTEMA DE LOGGING ESTRUTURADO
+# ==========================================================
+def setup_logging(app):
+    """
+    Configura sistema de logging com rotação de arquivos.
+    
+    Cria dois handlers:
+    - RotatingFileHandler: Para logs em arquivo (produção)
+    - StreamHandler: Para console (desenvolvimento)
+    """
+    log_dir = 'logs'
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    
+    log_format = logging.Formatter(
+        '%(asctime)s [%(levelname)s]: %(message)s [%(pathname)s:%(lineno)d]'
+    )
+    
+    file_handler = RotatingFileHandler(
+        os.path.join(log_dir, 'app.log'),
+        maxBytes=10 * 1024 * 1024,  # 10MB
+        backupCount=10
+    )
+    file_handler.setFormatter(log_format)
+    file_handler.setLevel(logging.INFO)
+    
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(log_format)
+    console_handler.setLevel(logging.INFO)
+    
+    app.logger.handlers.clear()
+    app.logger.addHandler(file_handler)
+    app.logger.addHandler(console_handler)
+    app.logger.setLevel(logging.INFO)
+    
+    app.logger.info('=' * 60)
+    app.logger.info('🚀 ARK YOLO System Startup')
+    app.logger.info(f'Environment: {config.FLASK_ENV}')
+    app.logger.info(f'Preset: {config.ACTIVE_PRESET}')
+    app.logger.info('=' * 60)
+
+
+# ✨ CHAME A FUNÇÃO AQUI:
+setup_logging(app)
 
 # ==========================================================
 # FLASK-LIMITER: Proteção contra brute force e DoS
@@ -366,21 +416,24 @@ def index():
 
 
 @app.route("/login", methods=["GET", "POST"])
-@limiter.limit("5 per minute")  # ✨ PROTEÇÃO: Máximo 5 tentativas por minuto
+@limiter.limit("5 per minute")
 def login():
-    """
-    ✨ MELHORADO: Rate limiting + logs de tentativas (sucesso/falha)
-    """
     if request.method == "POST":
         username = request.form.get("username", type=str)
         password = request.form.get("password", type=str)
+        
+        # ✨ ADICIONE ESTA LINHA:
+        app.logger.info(f"Login attempt: {username} from {request.remote_addr}")
+        
         user = verify_user(username, password)
         
         if user:
             session["user"] = normalize_user(user)
             update_last_login(username)
             
-            # ✨ NOVO: Log de login bem-sucedido
+            # ✨ ADICIONE ESTA LINHA:
+            app.logger.info(f"✅ Login successful: {username}")
+            
             log_system_action(
                 action="LOGIN_SUCCESS",
                 username=username,
@@ -390,7 +443,9 @@ def login():
             flash(f"Bem-vindo, {username}!", "success")
             return redirect(url_for("dashboard"))
         
-        # ✨ NOVO: Log de tentativa de login falhada
+        # ✨ ADICIONE ESTA LINHA:
+        app.logger.warning(f"❌ Login failed: {username} from {request.remote_addr}")
+        
         log_system_action(
             action="LOGIN_FAILED",
             username=username or "unknown",
@@ -403,18 +458,17 @@ def login():
 
 
 @app.route("/register", methods=["GET", "POST"])
-@limiter.limit("3 per hour")  # ✨ PROTEÇÃO: Máximo 3 registros por hora
+@limiter.limit("3 per hour")
 def register():
-    """
-    ✨ MELHORADO: Rate limiting para prevenir criação massiva de contas
-    """
     if request.method == "POST":
         username = request.form.get("username", type=str)
         email = request.form.get("email", type=str)
         password = request.form.get("password", type=str)
         
         if create_user(username, email, password):
-            # ✨ NOVO: Log de novo usuário criado
+            # ✨ ADICIONE ESTA LINHA:
+            app.logger.info(f"✅ New user created: {username} ({email})")
+            
             log_system_action(
                 action="USER_CREATED",
                 username=username,
@@ -423,6 +477,9 @@ def register():
             
             flash("Usuário criado com sucesso! Faça login.", "success")
             return redirect(url_for("login"))
+        
+        # ✨ ADICIONE ESTA LINHA:
+        app.logger.warning(f"⚠️ Registration failed: {username} (already exists)")
         
         flash("Usuário ou e-mail já existe.", "danger")
     
@@ -484,16 +541,18 @@ def video_feed():
 
 @app.route("/start_stream", methods=["POST"])
 @login_required
-@limiter.limit("10 per minute")  # ✨ PROTEÇÃO: Evita spam de start/stop
+@limiter.limit("10 per minute")
 def start_stream():
     vs = get_vision_system()
-
     user_info = session.get("user") or {}
     username = user_info.get("username", "desconhecido")
-
+    
     started = vs.start_live()
-
+    
     if started:
+        # ✨ ADICIONE ESTA LINHA:
+        app.logger.info(f"🎥 Stream started by {username}")
+        
         email_flag = bool(getattr(vs, "notifier", None))
         log_system_action("INICIAR", username, reason=None, email_sent=email_flag)
 
@@ -523,6 +582,7 @@ def toggle_camera():
 
     if paused:
         # PAUSAR
+        app.logger.info(f"⏸️ Stream paused by {username}. Reason: {reason or 'not provided'}")
         email_flag = bool(getattr(vs, "notifier", None))
         log_system_action("PAUSAR", username, reason=reason or None, email_sent=email_flag)
 
@@ -536,6 +596,7 @@ def toggle_camera():
             vs.notifier.send_email_background(subject=subject, body=body)
     else:
         # RETOMAR
+        app.logger.info(f"▶️ Stream resumed by {username}")
         email_flag = bool(getattr(vs, "notifier", None))
         log_system_action("RETOMAR", username, reason=None, email_sent=email_flag)
 
@@ -564,6 +625,7 @@ def stop_stream():
     stopped = vs.stop_live()
 
     if stopped:
+        app.logger.info(f"⏹️ Stream stopped by {username}. Reason: {reason or 'not provided'}")
         email_flag = bool(getattr(vs, "notifier", None))
         log_system_action("PARAR", username, reason=reason or None, email_sent=email_flag)
 
@@ -1434,16 +1496,19 @@ def diagnostics():
 # ==========================================================
 @app.errorhandler(404)
 def not_found(e):
+    app.logger.warning(f"404 Error: {request.url} from {request.remote_addr}")
     return render_template("404.html"), 404
 
 
 @app.errorhandler(500)
 def internal_error(e):
+    app.logger.error(f"500 Error: {str(e)} - URL: {request.url}", exc_info=True)
     return render_template("500.html"), 500
 
 
 @app.errorhandler(429)
 def ratelimit_handler(e):
+    app.logger.warning(f"⚠️ Rate limit exceeded: {request.remote_addr} on {request.url}")
     """✨ NOVO: Handler customizado para rate limiting"""
     return jsonify(
         {

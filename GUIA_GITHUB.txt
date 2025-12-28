@@ -47,7 +47,7 @@ OPCAO 3: Manual (Qualquer OS)
       git add .env.example
 
 3. Faça commit:
-   git commit -m "Ajuste requeriments"
+   git commit -m "Ajuste README"
 
 4. Faça push:
    git push -u origin main
