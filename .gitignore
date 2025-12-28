@@ -18,9 +18,13 @@ cv_env/
 *.sqlite
 *.sqlite3
 
-# Logs & Alerts
+# Alerts
 alertas/
+
+# Logs
+logs/
 *.log
+*.log.*
 
 # Environment
 .env

@@ -47,7 +47,7 @@ OPCAO 3: Manual (Qualquer OS)
       git add .env.example
 
 3. Faça commit:
-   git commit -m "Ajuste e documentação no .env.example"
+   git commit -m "Ajuste requeriments"
 
 4. Faça push:
    git push -u origin main

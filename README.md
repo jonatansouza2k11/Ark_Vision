@@ -44,6 +44,7 @@
 - **Web dashboard** with live video streaming and analytics
 
 **Use Cases:**
+
 - Building access control and unauthorized area detection
 - Crowd detection and people counting
 - Perimeter security monitoring
@@ -55,24 +56,28 @@
 ## 🎯 Key Features
 
 ### Core Detection & Tracking
+
 - **YOLOv8/v11 Integration**: Switchable models (nano → xlarge) for accuracy/speed tradeoff
 - **BoT-SORT Tracking**: Multi-object tracking with 99.3% ID preservation rate across frames
 - **Multi-camera Support**: Handle webcam, RTSP, and HTTP camera streams simultaneously
 - **GPU Acceleration**: CUDA/cuDNN support for 60+ FPS on modern GPUs
 
 ### Zone Management
+
 - **Polygon-based Zones**: Define complex detection areas (not just rectangles)
 - **Zone Presets**: Built-in zones (entrada, corredor_esq, elevador_1-4)
 - **Dynamic Configuration**: Update zones without restarting the application
 - **Visual Feedback**: Real-time zone visualization on video feed
 
 ### Alerting System
+
 - **SMTP Email Notifications**: Configurable Gmail integration with app passwords
 - **Alert Cooldown**: Prevents alert spam with per-person email throttling
 - **Snapshot Attachment**: Includes frame snapshots with alert emails
 - **Database Logging**: Complete alert history with timestamps and evidence
 
 ### Web Dashboard
+
 - **Live MJPEG Streaming**: Real-time video feed in browser
 - **Interactive Settings**: Configure thresholds, zones, and notifications
 - **User Management**: Role-based access (admin/user)
@@ -169,6 +174,7 @@ MJPEG Stream → Browser
 ### Key Design Patterns
 
 **Singleton Pattern (Vision System)**
+
 ```python
 # app.py obtains single instance
 vs = get_vision_system()
@@ -176,6 +182,7 @@ vs = get_vision_system()
 ```
 
 **Generator Pattern (MJPEG Streaming)**
+
 ```python
 def generate_frames():
     while True:
@@ -184,6 +191,7 @@ def generate_frames():
 ```
 
 **Decorator Pattern (Authentication)**
+
 ```python
 @login_required
 @admin_required
@@ -193,6 +201,7 @@ def admin_route():
 ```
 
 **Observer Pattern (Notifications)**
+
 ```python
 # Alert triggered by detection
 if state["out_time"] > max_out_time:
@@ -204,6 +213,7 @@ if state["out_time"] > max_out_time:
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - Python 3.10+
 - Webcam or IP camera (RTSP/HTTP)
 - 4GB RAM minimum (8GB+ recommended for GPU)
@@ -232,9 +242,10 @@ python -c "from database import init_db; init_db()"
 python app.py
 ```
 
-**Application launches at:** http://localhost:5000
+**Application launches at:** <http://localhost:5000>
 
 ### First Login
+
 - **Username:** `admin`
 - **Password:** Create during `/register` endpoint (first time only)
 
@@ -245,16 +256,19 @@ python app.py
 ### Camera Setup
 
 **Webcam (default):**
+
 ```python
 SOURCE = 0  # or 1, 2 for multiple cameras
 ```
 
 **IP Camera (RTSP):**
+
 ```python
 SOURCE = "rtsp://username:password@192.168.1.100:554/stream"
 ```
 
 **IP Camera (HTTP):**
+
 ```python
 SOURCE = "http://192.168.1.100:8080/video"
 ```
@@ -264,6 +278,7 @@ See `CAMERA_CONFIG.md` for detailed IP camera setup.
 ### Model Selection
 
 In `yolo.py` line 16:
+
 ```python
 MODEL_PATH = "yolo_models/yolov8n.pt"  # nano (fast)
 # or
@@ -273,6 +288,7 @@ MODEL_PATH = "yolo_models/yolo11m.pt"  # medium balanced
 ```
 
 **Performance Guide:**
+
 | Model | Speed | Accuracy | Memory | Use Case |
 |-------|-------|----------|--------|----------|
 | nano (n) | 45 FPS | 78% | 50 MB | Real-time, CPU |
@@ -308,38 +324,48 @@ Higher `max_out_time` = fewer false alarms but slower response
 ## 📡 API Documentation
 
 ### Authentication
+
 All endpoints except `/login` and `/register` require valid session cookie.
 
 ### Endpoints
 
 #### Dashboard
+
 ```
 GET /
 GET /dashboard
 ```
+
 Returns HTML dashboard with live video feed.
 
 #### Video Streaming
+
 ```
 GET /video_feed
 ```
+
 MJPEG stream with detection overlays.
 **Content-Type:** `multipart/x-mixed-replace; boundary=frame`
 
 #### Settings Management
+
 ```
 GET /settings
 POST /settings
 ```
+
 Get/update configuration (confidence, zones, email, etc.)
 
 #### Alert History
+
 ```
 GET /logs
 ```
+
 Browse historical alerts with snapshots.
 
 #### User Management
+
 ```
 POST /register
 POST /login
@@ -349,6 +375,7 @@ DELETE /users/<user_id>  [admin only]
 ```
 
 #### System Info
+
 ```
 GET /api/status
 GET /api/stats
@@ -356,6 +383,7 @@ GET /api/health
 ```
 
 **Example Response (GET /api/stats):**
+
 ```json
 {
   "fps": 24.5,
@@ -382,6 +410,7 @@ GET /api/health
 | yolo11n @ 1280px | 40 | 25ms | 520 MB |
 
 **CPU-only (Intel i7-10700K):**
+
 ```
 yolov8n @ 480px: 12 FPS
 yolov8n @ 960px: 4 FPS (not recommended)
@@ -402,33 +431,29 @@ yolov8n @ 960px: 4 FPS (not recommended)
 ### Current Implementation
 
 ✅ **Password Security**
+
 - Bcrypt hashing (werkzeug.security)
 - No plaintext storage
 
 ✅ **Session Management**
+
 - Flask secure sessions
 - Cookie-based authentication
 
 ✅ **Data Protection**
+
 - SQLite database (no cloud)
 - Local video storage only
 
 ### ⚠️ Known Limitations
 
-⚠️ **Email Credentials** (hardcoded in yolo.py)
-- **Risk:** Visible in source code
-- **Mitigation:** Move to environment variables (.env)
-- **Fix:** Use `os.getenv('GMAIL_PASSWORD')` instead
-
-⚠️ **Flask Secret Key** (hardcoded)
-- **Risk:** Session could be forged
-- **Mitigation:** Generate random key from environment
-
 ⚠️ **No HTTPS in Development**
+
 - **Risk:** Network traffic unencrypted
 - **Mitigation:** Deploy with gunicorn + nginx with SSL
 
 ⚠️ **No Rate Limiting**
+
 - **Risk:** Brute force attacks on login
 - **Mitigation:** Implement Flask-Limiter
 
@@ -492,6 +517,7 @@ Comprehensive documentation available in `/documentation`:
 - **ROADMAP.md** - v1.1 → v3.0 feature roadmap
 
 **AI Agent Context** (for LLM assistance) in `/ia_documentation`:
+
 - CONTEXTO_COMPLETO_PARA_IA.md - Primary context file
 - CONTEXT_FOR_AI_AGENTS.txt - Plain text alternative
 - AI_AGENT_CONTEXT.yaml - Structured YAML format
