@@ -47,7 +47,7 @@ OPCAO 3: Manual (Qualquer OS)
       git add .env.example
 
 3. Faça commit:
-   git commit -m "Backup Logger adicionado ao projeto"
+   git commit -m "Backup Logger revisado ao projeto"
 
 4. Faça push:
    git push -u origin main

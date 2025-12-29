@@ -255,6 +255,9 @@
         <button type="button" id="btn-next-zone" class="px-3 py-1 text-xs rounded bg-gray-600 hover:bg-gray-700">
           Próxima ►
         </button>
+        <button type="button" id="btn-reload-zones" class="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-700">
+          🔄 Recarregar
+        </button>
         <button type="button" id="btn-new-zone" class="px-3 py-1 text-xs rounded bg-green-600 hover:bg-green-700">
           + Nova Zona
         </button>
@@ -815,7 +818,6 @@
 
       const fpsInstEl = document.getElementById('fps-counter');
       const fpsAvgEl = document.getElementById('fps-avg');
-
       if (fpsInstEl) fpsInstEl.textContent = '--';
       if (fpsAvgEl) fpsAvgEl.textContent = '--';
 
@@ -835,50 +837,57 @@
 
       currentSafeZone = data.safe_zone || null;
 
-      // ----- Lista do Safe Zone Map (smartZones) -----
-      // 1º: usar zonas ricas vindas do backend (mesmas do card Zones)
-      if (Array.isArray(data.zones) && data.zones.length) {
-        smartZones = data.zones.map(z => ({
-          name: z.name || `Zona ${(z.index ?? 0) + 1}`,
-          mode: (z.mode || 'GENERIC').toUpperCase(),
-          points: Array.isArray(z.points) ? z.points : []
-        }));
-        selectedZoneIndex = 0;
-        renderZoneList();
-      }
-      // 2º: fallback antigo só se não vierem zonas ricas
-      else if (Array.isArray(currentSafeZone)) {
-        if (!smartZones.length) {
-          if (currentSafeZone.length > 0 &&
-            Array.isArray(currentSafeZone[0]) &&
-            Array.isArray(currentSafeZone[0][0])) {
-            smartZones = currentSafeZone.map((poly, i) => ({
-              name: `Zona ${i + 1}`,
-              mode: 'GENERIC',
-              points: poly.map(p => [Number(p[0]), Number(p[1])])
-            }));
-          } else if (currentSafeZone.length >= 3 && Array.isArray(currentSafeZone[0])) {
-            smartZones = [{
-              name: 'Zona 1',
-              mode: 'GENERIC',
-              points: currentSafeZone.map(p => [Number(p[0]), Number(p[1])])
-            }];
-          } else {
-            smartZones = [];
-          }
+      // 🔥 CORREÇÃO: SÓ atualiza smartZones se o MODAL ESTIVER FECHADO!
+      const modal = document.getElementById('safe-zone-modal');
+      const isModalOpen = modal && !modal.classList.contains('hidden');
+
+      if (!isModalOpen) {
+        // Modal fechado = pode atualizar do backend
+        if (Array.isArray(data.zones) && data.zones.length) {
+          smartZones = data.zones.map(z => ({
+            name: z.name || `Zona ${(z.index ?? 0) + 1}`,
+            mode: (z.mode || 'GENERIC').toUpperCase(),
+            points: Array.isArray(z.points) ? z.points : []
+          }));
           selectedZoneIndex = 0;
           renderZoneList();
         }
+        // Fallback antigo só se não vierem zonas ricas
+        else if (Array.isArray(currentSafeZone)) {
+          if (!smartZones.length) {
+            if (currentSafeZone.length > 0 &&
+              Array.isArray(currentSafeZone[0]) &&
+              Array.isArray(currentSafeZone[0][0])) {
+              smartZones = currentSafeZone.map((poly, i) => ({
+                name: `Zona ${i + 1}`,
+                mode: 'GENERIC',
+                points: poly.map(p => [Number(p[0]), Number(p[1])])
+              }));
+            } else if (currentSafeZone.length >= 3 && Array.isArray(currentSafeZone[0])) {
+              smartZones = [{
+                name: 'Zona 1',
+                mode: 'GENERIC',
+                points: currentSafeZone.map(p => [Number(p[0]), Number(p[1])])
+              }];
+            } else {
+              smartZones = [];
+            }
+            selectedZoneIndex = 0;
+            renderZoneList();
+          }
+        }
+      } else {
+        console.log('🔒 Modal aberto - smartZones NÃO será sobrescrito');
       }
-      // ----------------------------------------------
 
     } catch (e) {
       console.error('Erro ao buscar stats:', e);
     }
   }
 
-  fetchAndUpdateStats();
-  setInterval(fetchAndUpdateStats, 2000);
+
+  //fetchAndUpdateStats();
+  //setInterval(fetchAndUpdateStats, 2000);
 
 
   // ===============================
@@ -1004,20 +1013,20 @@
   }
 
   // ===============================
-  // SAFE ZONE MODAL + CANVAS (MÚLTIPLAS ZONAS RICAS)
+  // SAFE ZONE MODAL + CANVAS (VERSÃO COMPLETA v4.0)
   // ===============================
   let currentZoneIndex = 0;
-  let draggingIndex = -1;
+  let draggingPointIndex = -1;
   let isDragging = false;
 
   function getCurrentZonePoints() {
-    if (!smartZones.length) return [];
+    if (!smartZones.length || currentZoneIndex >= smartZones.length) return [];
     const z = smartZones[currentZoneIndex];
     return Array.isArray(z.points) ? z.points : [];
   }
 
   function setCurrentZonePoints(points) {
-    if (!smartZones.length) return;
+    if (!smartZones.length || currentZoneIndex >= smartZones.length) return;
     smartZones[currentZoneIndex].points = points;
   }
 
@@ -1039,7 +1048,7 @@
     return [nx, ny];
   }
 
-  function findPointAt(canvas, evt, radiusPx = 10) {
+  function findPointAt(canvas, evt, radiusPx = 12) {
     const zone = getCurrentZonePoints();
     const rect = canvas.getBoundingClientRect();
     const x = evt.clientX - rect.left;
@@ -1051,85 +1060,127 @@
       const [nx, ny] = zone[i];
       const px = nx * w;
       const py = ny * h;
-      if (Math.hypot(px - x, py - y) <= radiusPx) return i;
+      if (Math.hypot(px - x, py - y) <= radiusPx) {
+        return i;
+      }
     }
     return -1;
   }
 
-  function distancePointToSegment(px, py, x1, y1, x2, y2) {
-    const vx = x2 - x1;
-    const vy = y2 - y1;
-    const wx = px - x1;
-    const wy = py - y1;
-    const c1 = vx * wx + vy * wy;
-    if (c1 <= 0) return Math.hypot(px - x1, py - y1);
-    const c2 = vx * vx + vy * vy;
-    if (c2 <= c1) return Math.hypot(px - x2, py - y2);
-    const t = c1 / c2;
-    return Math.hypot(px - (x1 + t * vx), py - (y1 + t * vy));
-  }
-
   function drawSafeZoneCanvas() {
     const canvas = document.getElementById('safe-zone-canvas');
-    if (!canvas) return;
+    if (!canvas) {
+      console.error('❌ Canvas não encontrado!');
+      return;
+    }
+
     const ctx = canvas.getContext('2d');
     const w = canvas.width;
     const h = canvas.height;
 
+    // Verifica dimensões do canvas
+    if (w === 0 || h === 0) {
+      console.warn('⚠️ Canvas sem dimensões! Redimensionando...');
+      resizeSafeZoneCanvas();
+      return;
+    }
+
+    // Limpa canvas
     ctx.clearRect(0, 0, w, h);
 
-    smartZones.forEach((z, zIdx) => {
-      const zone = Array.isArray(z.points) ? z.points : [];
-      if (zone.length < 3) return;
+    if (!smartZones || !smartZones.length) {
+      console.log('ℹ️ Nenhuma zona para desenhar');
+      return;
+    }
 
-      const isCurrent = zIdx === currentZoneIndex;
-      ctx.strokeStyle = isCurrent ? '#22d3ee' : '#6b7280';
-      ctx.lineWidth = isCurrent ? 2 : 1;
+    console.log(`🎨 Desenhando ${smartZones.length} zonas (atual: ${currentZoneIndex})`);
 
-      ctx.beginPath();
-      zone.forEach((p, i) => {
-        const x = p[0] * w;
-        const y = p[1] * h;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.closePath();
-      ctx.stroke();
+    // Desenha TODAS as zonas
+    smartZones.forEach((zone, zIdx) => {
+      if (!zone || !Array.isArray(zone.points)) {
+        console.warn(`⚠️ Zona ${zIdx} sem pontos válidos`);
+        return;
+      }
 
-      if (isCurrent) {
-        zone.forEach(p => {
+      const isCurrent = (zIdx === currentZoneIndex);
+      const pointsCount = zone.points.length;
+
+      // Desenha polígono (mesmo com < 3 pontos para visualizar)
+      if (pointsCount >= 2) {
+        ctx.strokeStyle = isCurrent ? '#22d3ee' : '#6b7280'; // Ciano/Cinza
+        ctx.lineWidth = isCurrent ? 4 : 2;
+        ctx.setLineDash(isCurrent ? [] : [8, 4]);
+
+        ctx.beginPath();
+        zone.points.forEach((p, i) => {
           const x = p[0] * w;
           const y = p[1] * h;
-          ctx.beginPath();
-          ctx.fillStyle = '#facc15';
-          ctx.arc(x, y, 6, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.strokeStyle = '#000000';
-          ctx.lineWidth = 1;
-          ctx.stroke();
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
         });
+
+        if (pointsCount >= 3) {
+          ctx.closePath();
+        }
+
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Desenha PONTOS editáveis (APENAS zona atual)
+      if (isCurrent) {
+        zone.points.forEach((p, idx) => {
+          const x = p[0] * w;
+          const y = p[1] * h;
+
+          // Círculo amarelo GRANDE e VISÍVEL
+          ctx.beginPath();
+          ctx.fillStyle = '#facc15'; // Amarelo
+          ctx.arc(x, y, 12, 0, Math.PI * 2); // Raio 12px
+          ctx.fill();
+
+          // Borda preta ESPESSA
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+
+          // Número do ponto
+          ctx.fillStyle = '#000000';
+          ctx.font = 'bold 14px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText((idx + 1).toString(), x, y);
+        });
+
+        console.log(`✅ Desenhou ${pointsCount} pontos editáveis na zona ${zIdx} (${zone.name})`);
       }
     });
   }
 
+
   function resizeSafeZoneCanvas() {
     const canvas = document.getElementById('safe-zone-canvas');
     if (!canvas) return;
+
     const rect = canvas.getBoundingClientRect();
     canvas.width = rect.width;
     canvas.height = rect.height;
+
     drawSafeZoneCanvas();
   }
 
   function loadZoneMetaIntoForm(idx) {
     const nameInput = document.getElementById('zone-name-input');
     const modeSelect = document.getElementById('zone-mode-input');
+
     if (!nameInput || !modeSelect) return;
+
     if (!smartZones.length || idx < 0 || idx >= smartZones.length) {
       nameInput.value = '';
       modeSelect.value = 'GENERIC';
       return;
     }
+
     const z = smartZones[idx];
     nameInput.value = z.name || `Zona ${idx + 1}`;
     modeSelect.value = (z.mode || 'GENERIC').toUpperCase();
@@ -1138,60 +1189,96 @@
   function syncFormToCurrentZone() {
     const nameInput = document.getElementById('zone-name-input');
     const modeSelect = document.getElementById('zone-mode-input');
+
     if (!nameInput || !modeSelect) return;
-    if (!smartZones.length) return;
+    if (!smartZones.length || currentZoneIndex >= smartZones.length) return;
+
     const z = smartZones[currentZoneIndex];
-    z.name = nameInput.value || `Zona ${currentZoneIndex + 1}`;
-    z.mode = (modeSelect.value || 'GENERIC').toUpperCase();
+    z.name = nameInput.value.trim() || `Zona ${currentZoneIndex + 1}`;
+    z.mode = modeSelect.value.toUpperCase();
+
+    renderZoneList();
   }
 
-  function openSafeZoneModal() {
-    const modal = document.getElementById('safe-zone-modal');
-    const canvas = document.getElementById('safe-zone-canvas');
-    if (!modal || !canvas) return;
+  function loadZoneIntoModal(idx) {
+    console.log(`🔄 Carregando zona ${idx} no modal`);
 
-    // Reconstrói smartZones a partir da geometria atual se ainda estiver vazio
-    if (!smartZones.length) {
-      if (Array.isArray(currentSafeZone)) {
-        if (currentSafeZone.length > 0 && Array.isArray(currentSafeZone[0]) && Array.isArray(currentSafeZone[0][0])) {
-          smartZones = currentSafeZone.map((poly, i) => ({
-            name: `Zona ${i + 1}`,
-            mode: 'GENERIC',
-            points: poly.map(p => [Number(p[0]), Number(p[1])])
-          }));
-        } else if (currentSafeZone.length >= 3 && Array.isArray(currentSafeZone[0])) {
-          smartZones = [{
-            name: 'Zona 1',
-            mode: 'GENERIC',
-            points: currentSafeZone.map(p => [Number(p[0]), Number(p[1])])
-          }];
-        } else {
-          smartZones = [];
-        }
-      }
-      if (!smartZones.length) {
-        smartZones = [{
-          name: 'Zona 1',
-          mode: 'GENERIC',
-          points: []
-        }];
-      }
-      selectedZoneIndex = 0;
-      currentZoneIndex = 0;
-      renderZoneList();
+    if (idx < 0 || idx >= smartZones.length) {
+      console.error(`❌ Índice inválido: ${idx}`);
+      return;
     }
 
-    currentZoneIndex = selectedZoneIndex;
+    // Salva metadados da zona anterior
+    syncFormToCurrentZone();
+
+    // Troca para nova zona
+    currentZoneIndex = idx;
+    selectedZoneIndex = idx;
+
+    // Atualiza interface
+    updateZoneCounter();
+    loadZoneMetaIntoForm(idx);
+
+    // 🔥 CORREÇÃO: Redesenha canvas
+    setTimeout(() => {
+      resizeSafeZoneCanvas(); // Redimensiona ANTES de desenhar
+      console.log(`✅ Zona ${idx} (${smartZones[idx].name}) carregada com ${smartZones[idx].points.length} pontos`);
+    }, 50);
+
+    renderZoneList();
+    highlightZoneOnMiniMap();
+  }
+
+
+
+  function openSafeZoneModal() {
+    console.log('🚪 Abrindo modal de zonas...');
+
+    const modal = document.getElementById('safe-zone-modal');
+    const canvas = document.getElementById('safe-zone-canvas');
+
+    if (!modal || !canvas) {
+      console.error('❌ Modal ou canvas não encontrado!');
+      return;
+    }
+
+    // Se não há zonas, cria uma vazia
+    if (!smartZones.length) {
+      console.log('⚠️ Nenhuma zona existente. Criando zona padrão...');
+      smartZones = [{
+        name: 'Zona 1',
+        mode: 'GENERIC',
+        points: []
+      }];
+    }
+
+    currentZoneIndex = Math.min(selectedZoneIndex || 0, smartZones.length - 1);
+
+    console.log(`📍 Modal aberto na zona ${currentZoneIndex} (${smartZones[currentZoneIndex].name})`);
+
     updateZoneCounter();
     loadZoneMetaIntoForm(currentZoneIndex);
+    renderZoneList();
 
     modal.classList.remove('hidden');
-    resizeSafeZoneCanvas();
+
+    // 🔥 CRÍTICO: Aguarda renderização do modal antes de desenhar
+    setTimeout(() => {
+      console.log('⏱️ Redimensionando canvas...');
+      resizeSafeZoneCanvas();
+      console.log(`📐 Canvas dimensões: ${canvas.width}x${canvas.height}`);
+    }, 200); // Aumentei para 200ms
   }
+
+
+
 
   function closeSafeZoneModal() {
     const modal = document.getElementById('safe-zone-modal');
-    if (modal) modal.classList.add('hidden');
+    if (modal) {
+      syncFormToCurrentZone();
+      modal.classList.add('hidden');
+    }
   }
 
   function attachSafeZoneCanvasHandlers() {
@@ -1199,123 +1286,174 @@
     if (!canvas) return;
 
     canvas.addEventListener('mousedown', (evt) => {
+      if (!smartZones.length || currentZoneIndex >= smartZones.length) return;
+
       const zone = getCurrentZonePoints();
-      const idx = findPointAt(canvas, evt, 10);
-      if (idx >= 0) {
-        draggingIndex = idx;
+      const pointIdx = findPointAt(canvas, evt);
+
+      if (pointIdx >= 0) {
+        draggingPointIndex = pointIdx;
         isDragging = true;
         return;
       }
 
       const [nx, ny] = canvasCoordsToNorm(canvas, evt);
-      const rect = canvas.getBoundingClientRect();
-      const clickX = nx * rect.width;
-      const clickY = ny * rect.height;
-
-      if (zone.length < 2) {
-        zone.push([nx, ny]);
-        setCurrentZonePoints(zone);
-        drawSafeZoneCanvas();
-        return;
-      }
-
-      const w = rect.width;
-      const h = rect.height;
-      let bestIndex = 0;
-      let bestDist = Infinity;
-      for (let i = 0; i < zone.length; i++) {
-        const j = (i + 1) % zone.length;
-        const [x1n, y1n] = zone[i];
-        const [x2n, y2n] = zone[j];
-        const d = distancePointToSegment(clickX, clickY, x1n * w, y1n * h, x2n * w, y2n * h);
-        if (d < bestDist) {
-          bestDist = d;
-          bestIndex = j;
-        }
-      }
-
-      zone.splice(bestIndex, 0, [nx, ny]);
+      zone.push([nx, ny]);
       setCurrentZonePoints(zone);
       drawSafeZoneCanvas();
     });
 
     canvas.addEventListener('contextmenu', (evt) => {
       evt.preventDefault();
+
+      if (!smartZones.length || currentZoneIndex >= smartZones.length) return;
+
       const zone = getCurrentZonePoints();
-      const idx = findPointAt(canvas, evt, 10);
-      if (idx >= 0 && zone.length > 3) {
-        zone.splice(idx, 1);
+      const pointIdx = findPointAt(canvas, evt);
+
+      if (pointIdx >= 0 && zone.length > 3) {
+        zone.splice(pointIdx, 1);
         setCurrentZonePoints(zone);
         drawSafeZoneCanvas();
+      } else if (pointIdx >= 0) {
+        alert('Mínimo de 3 pontos necessário.');
       }
     });
 
     window.addEventListener('mousemove', (evt) => {
+      if (!isDragging || draggingPointIndex < 0) return;
+      if (!smartZones.length || currentZoneIndex >= smartZones.length) return;
+
       const canvas = document.getElementById('safe-zone-canvas');
-      if (!canvas || !isDragging || draggingIndex < 0) return;
-      const [nx, ny] = canvasCoordsToNorm(canvas, evt);
+      if (!canvas) return;
+
       const zone = getCurrentZonePoints();
-      zone[draggingIndex] = [nx, ny];
+      const [nx, ny] = canvasCoordsToNorm(canvas, evt);
+
+      zone[draggingPointIndex] = [nx, ny];
       setCurrentZonePoints(zone);
       drawSafeZoneCanvas();
     });
 
     window.addEventListener('mouseup', () => {
       isDragging = false;
-      draggingIndex = -1;
-    });
-
-    document.addEventListener('keydown', (evt) => {
-      const modal = document.getElementById('safe-zone-modal');
-      if (!modal || modal.classList.contains('hidden')) return;
-      if ((evt.key === 'Backspace' || evt.key === 'Delete')) {
-        const zone = getCurrentZonePoints();
-        if (zone.length > 0) {
-          zone.pop();
-          setCurrentZonePoints(zone);
-          drawSafeZoneCanvas();
-        }
-      }
+      draggingPointIndex = -1;
     });
   }
 
-  // Botões do modal
   document.getElementById('btn-prev-zone')?.addEventListener('click', () => {
-    if (!smartZones.length) return;
+    console.log('◀️ Botão ANTERIOR clicado');
+
+    if (!smartZones.length) {
+      console.error('❌ Nenhuma zona disponível');
+      return;
+    }
+
     syncFormToCurrentZone();
+
+    const oldIndex = currentZoneIndex;
+
     if (currentZoneIndex > 0) {
       currentZoneIndex--;
-      selectedZoneIndex = currentZoneIndex;
-      updateZoneCounter();
-      loadZoneMetaIntoForm(currentZoneIndex);
-      drawSafeZoneCanvas();
-      renderZoneList();
+    } else {
+      currentZoneIndex = smartZones.length - 1;
     }
+
+    console.log(`📍 Zona ${oldIndex} → ${currentZoneIndex} (${smartZones[currentZoneIndex].name})`);
+
+    selectedZoneIndex = currentZoneIndex;
+    updateZoneCounter();
+    loadZoneMetaIntoForm(currentZoneIndex);
+
+    // 🔥 CRÍTICO: Redesenha imediatamente
+    drawSafeZoneCanvas();
+
+    renderZoneList();
+
+    console.log(`✅ ${smartZones[currentZoneIndex].points.length} pontos na zona atual`);
   });
 
   document.getElementById('btn-next-zone')?.addEventListener('click', () => {
-    if (!smartZones.length) return;
+    console.log('▶️ Botão PRÓXIMA clicado');
+
+    if (!smartZones.length) {
+      console.error('❌ Nenhuma zona disponível');
+      return;
+    }
+
     syncFormToCurrentZone();
+
+    const oldIndex = currentZoneIndex;
+
     if (currentZoneIndex < smartZones.length - 1) {
       currentZoneIndex++;
-      selectedZoneIndex = currentZoneIndex;
-      updateZoneCounter();
-      loadZoneMetaIntoForm(currentZoneIndex);
-      drawSafeZoneCanvas();
-      renderZoneList();
+    } else {
+      currentZoneIndex = 0;
+    }
+
+    console.log(`📍 Zona ${oldIndex} → ${currentZoneIndex} (${smartZones[currentZoneIndex].name})`);
+
+    selectedZoneIndex = currentZoneIndex;
+    updateZoneCounter();
+    loadZoneMetaIntoForm(currentZoneIndex);
+
+    // 🔥 CRÍTICO: Redesenha imediatamente
+    drawSafeZoneCanvas();
+
+    renderZoneList();
+
+    console.log(`✅ ${smartZones[currentZoneIndex].points.length} pontos na zona atual`);
+  });
+
+
+  document.getElementById('btn-reload-zones')?.addEventListener('click', async () => {
+    if (!confirm('Recarregar zonas do servidor? Edições não salvas serão perdidas.')) return;
+
+    console.log('🔄 Recarregando zonas do backend...');
+
+    try {
+      const res = await fetch('/api/stats', { cache: 'no-store' });
+      const data = await res.json();
+
+      if (Array.isArray(data.zones) && data.zones.length) {
+        smartZones = data.zones.map(z => ({
+          name: z.name || `Zona ${(z.index ?? 0) + 1}`,
+          mode: (z.mode || 'GENERIC').toUpperCase(),
+          points: Array.isArray(z.points) ? z.points : []
+        }));
+
+        currentZoneIndex = 0;
+        selectedZoneIndex = 0;
+
+        updateZoneCounter();
+        loadZoneMetaIntoForm(0);
+        renderZoneList();
+        resizeSafeZoneCanvas();
+
+        alert(`✅ ${smartZones.length} zona(s) recarregada(s)`);
+      } else {
+        alert('⚠️ Nenhuma zona encontrada no servidor');
+      }
+    } catch (e) {
+      console.error('Erro ao recarregar:', e);
+      alert('Erro ao recarregar zonas');
     }
   });
 
+
   document.getElementById('btn-new-zone')?.addEventListener('click', () => {
     syncFormToCurrentZone();
-    const idx = smartZones.length + 1;
-    smartZones.push({
-      name: `Zona ${idx}`,
+
+    const newZone = {
+      name: `Zona ${smartZones.length + 1}`,
       mode: 'GENERIC',
       points: []
-    });
+    };
+
+    smartZones.push(newZone);
     currentZoneIndex = smartZones.length - 1;
     selectedZoneIndex = currentZoneIndex;
+
     updateZoneCounter();
     loadZoneMetaIntoForm(currentZoneIndex);
     drawSafeZoneCanvas();
@@ -1327,21 +1465,37 @@
       alert('Nenhuma zona para remover.');
       return;
     }
+
     if (smartZones.length === 1) {
-      alert('Não é possível remover a única zona. Crie outra antes de remover esta.');
+      alert('Não é possível remover a única zona.');
       return;
     }
-    if (confirm('Remover zona atual?')) {
-      smartZones.splice(currentZoneIndex, 1);
-      if (currentZoneIndex >= smartZones.length) {
-        currentZoneIndex = smartZones.length - 1;
-      }
-      selectedZoneIndex = currentZoneIndex;
-      updateZoneCounter();
-      loadZoneMetaIntoForm(currentZoneIndex);
-      drawSafeZoneCanvas();
-      renderZoneList();
+
+    if (!confirm(`Remover "${smartZones[currentZoneIndex].name}"?`)) return;
+
+    smartZones.splice(currentZoneIndex, 1);
+
+    if (currentZoneIndex >= smartZones.length) {
+      currentZoneIndex = smartZones.length - 1;
     }
+
+    selectedZoneIndex = currentZoneIndex;
+    updateZoneCounter();
+    loadZoneMetaIntoForm(currentZoneIndex);
+    drawSafeZoneCanvas();
+    renderZoneList();
+  });
+
+  document.getElementById('zone-name-input')?.addEventListener('input', (evt) => {
+    if (!smartZones.length || currentZoneIndex >= smartZones.length) return;
+    smartZones[currentZoneIndex].name = evt.target.value || `Zona ${currentZoneIndex + 1}`;
+    renderZoneList();
+  });
+
+  document.getElementById('zone-mode-input')?.addEventListener('change', (evt) => {
+    if (!smartZones.length || currentZoneIndex >= smartZones.length) return;
+    smartZones[currentZoneIndex].mode = evt.target.value.toUpperCase();
+    renderZoneList();
   });
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -1355,6 +1509,7 @@
       alert('Defina pelo menos uma zona com 3 ou mais pontos.');
       return;
     }
+
     syncFormToCurrentZone();
 
     const zonesPayload = smartZones
@@ -1387,12 +1542,12 @@
 
       alert('Safe zones salvas com sucesso.');
       closeSafeZoneModal();
+
       smartZones = data.zones || zonesPayload;
       selectedZoneIndex = 0;
       currentZoneIndex = 0;
       renderZoneList();
       fetchAndUpdateStats();
-
     } catch (e) {
       console.error('Erro ao salvar safe zones:', e);
       alert('Erro ao salvar safe zones.');

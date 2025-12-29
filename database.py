@@ -61,11 +61,11 @@ def init_db():
     # Configurações padrão
     default_settings = {
         # YOLO
-        "conf_thresh": "0.85",
+        "conf_thresh": "0.87",
         "model_path": r"yolo_models\yolov8n.pt",
 
         ## performance / resize
-        "target_width": "1280",
+        "target_width": "960",
         "frame_step": "1",
 
         # zona / alertas
@@ -79,15 +79,15 @@ def init_db():
         "source": "0",
         
         # parâmetros da câmera
-        "cam_width": "1280",
-        "cam_height": "720",
-        "cam_fps": "60",
+        "cam_width": "960",
+        "cam_height": "640",
+        "cam_fps": "20",
 
         # tracker
         "tracker": "botsort.yaml",
 
         # parâmetros de zona (novos)
-        "zone_empty_timeout": "10.0",
+        "zone_empty_timeout": "15.0",
         "zone_full_timeout": "20.0",
         "zone_full_threshold": "5",
 

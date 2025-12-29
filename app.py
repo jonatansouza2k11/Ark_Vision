@@ -1947,36 +1947,36 @@ if __name__ == "__main__":
         print("   Instale com: pip install psutil\n")
     
     # Teste rápido do audit logger
-    print("\n🧪 Testing audit logger...")
-    audit_logger.log_action("admin", "SYSTEM_START", "Testing audit system", "127.0.0.1")
-    audit_logger.log_action("admin", "TEST_ACTION", "Second test entry", "127.0.0.1")
+    #print("\n🧪 Testing audit logger...")
+    #audit_logger.log_action("admin", "SYSTEM_START", "Testing audit system", "127.0.0.1")
+    #audit_logger.log_action("admin", "TEST_ACTION", "Second test entry", "127.0.0.1")
     
     # Verifica integridade
-    is_valid, errors = audit_logger.verify_integrity()
-    if is_valid:
-        print("✅ Audit log integrity: OK")
-    else:
-        print(f"❌ Audit log integrity: FAILED ({len(errors)} errors)")
-        for error in errors:
-            print(f"   {error}")
+    #is_valid, errors = audit_logger.verify_integrity()
+    #if is_valid:
+    #    print("✅ Audit log integrity: OK")
+    #else:
+    #    print(f"❌ Audit log integrity: FAILED ({len(errors)} errors)")
+    #    for error in errors:
+    #        print(f"   {error}")
     
-    print("\n")
+    #print("\n")
     
     # ✨ NOVO: Inicia o scheduler de backup automático
-    print("🔄 Initializing backup scheduler...")
-    try:
-        from schedule_backup import init_scheduler
-        backup_scheduler = init_scheduler(app, backup_time="02:00")
-        print("✅ Backup scheduler started (daily at 02:00 AM)")
-        app.logger.info("✅ Automatic backup scheduler running (daily at 02:00)")
-    except ImportError as e:
-        print(f"⚠️  Backup scheduler disabled: schedule_backup.py not found")
-        app.logger.warning(f"⚠️ schedule_backup.py not found: {e}")
-    except Exception as e:
-        print(f"⚠️  Backup scheduler disabled: {e}")
-        app.logger.error(f"❌ Failed to start backup scheduler: {e}", exc_info=True)
+    #print("🔄 Initializing backup scheduler...")
+    #try:
+    #    from schedule_backup import init_scheduler
+    #    backup_scheduler = init_scheduler(app, backup_time="02:00")
+    #    print("✅ Backup scheduler started (daily at 02:00 AM)")
+    #    app.logger.info("✅ Automatic backup scheduler running (daily at 02:00)")
+    #except ImportError as e:
+    #    print(f"⚠️  Backup scheduler disabled: schedule_backup.py not found")
+    #    app.logger.warning(f"⚠️ schedule_backup.py not found: {e}")
+    #except Exception as e:
+    #    print(f"⚠️  Backup scheduler disabled: {e}")
+    #    app.logger.error(f"❌ Failed to start backup scheduler: {e}", exc_info=True)
     
-    print("\n")
+    #print("\n")
     
     # Inicia o servidor Flask
     app.run(
