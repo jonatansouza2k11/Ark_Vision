@@ -1,7 +1,7 @@
 ╔════════════════════════════════════════════════════════════════════════════╗
 ║                                                                            ║
-║                    📤 GUIA: UPLOAD PARA GITHUB                            ║
-║                     ARK YOLO - Sistema de Monitoramento                   ║
+║                    📤 GUIA: UPLOAD PARA GITHUB                             ║
+║                     ARK YOLO - Sistema de Monitoramento                    ║
 ║                                                                            ║
 ╚════════════════════════════════════════════════════════════════════════════╝
 
@@ -47,7 +47,7 @@ OPCAO 3: Manual (Qualquer OS)
       git add .env.example
 
 3. Faça commit:
-   git commit -m "Audit Logger adicionado ao projeto"
+   git commit -m "Backup Logger adicionado ao projeto"
 
 4. Faça push:
    git push -u origin main

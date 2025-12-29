@@ -1787,6 +1787,87 @@ def diagnostics():
         )
 
 
+@app.route("/admin/backup", methods=["GET", "POST"])
+@admin_required
+def admin_backup():
+    """
+    ✨ NOVO: Interface web para gerenciar backups.
+    
+    Permite:
+    - Executar backup manual
+    - Ver estatísticas
+    - Verificar integridade
+    - Baixar backups
+    """
+    from backup_logs import LogBackupManager
+    
+    manager = LogBackupManager()
+    
+    if request.method == "POST":
+        action = request.form.get("action")
+        username = session.get("user", {}).get("username", "admin")
+        
+        if action == "backup":
+            app.logger.info(f"📦 Manual backup triggered by {username}")
+            backups = manager.backup_all_logs()
+            flash(f"✅ Backup concluído: {len(backups)} arquivo(s)", "success")
+            
+        elif action == "verify":
+            app.logger.info(f"🔍 Integrity check triggered by {username}")
+            total, valid, invalid = manager.verify_backup_integrity()
+            
+            if len(invalid) == 0:
+                flash(f"✅ Integridade OK: {valid}/{total} backups válidos", "success")
+            else:
+                flash(f"⚠️ Problemas encontrados: {len(invalid)} backups inválidos", "warning")
+        
+        elif action == "cleanup_dry":
+            app.logger.info(f"🗑️ Cleanup simulation by {username}")
+            removed = manager.cleanup_old_backups(dry_run=True)
+            flash(f"ℹ️ Simulação: {len(removed)} arquivo(s) seriam removidos", "info")
+        
+        elif action == "cleanup_real":
+            app.logger.warning(f"🗑️ REAL cleanup triggered by {username}")
+            removed = manager.cleanup_old_backups(dry_run=False)
+            flash(f"✅ Limpeza concluída: {len(removed)} arquivo(s) removidos", "success")
+            
+            # Log de auditoria
+            audit_logger.log_action(
+                user=username,
+                action="BACKUP_CLEANUP",
+                details=f"Removed {len(removed)} old backup files",
+                ip_address=request.remote_addr
+            )
+    
+    # GET: Mostra estatísticas
+    stats = manager.get_backup_statistics()
+    
+    # Lista backups recentes
+    recent_backups = []
+    for backup_file in sorted(
+        manager.ARCHIVE_DIR.rglob('*.gz'),
+        key=lambda x: x.stat().st_mtime,
+        reverse=True
+    )[:20]:  # Últimos 20
+        mtime = datetime.fromtimestamp(backup_file.stat().st_mtime)
+        size_kb = backup_file.stat().st_size / 1024
+        
+        recent_backups.append({
+            'filename': backup_file.name,
+            'path': str(backup_file.relative_to(manager.ARCHIVE_DIR)),
+            'date': mtime.strftime('%Y-%m-%d %H:%M'),
+            'size_kb': round(size_kb, 1)
+        })
+    
+    return render_template(
+        "admin_backup.html",
+        active="backup",
+        stats=stats,
+        recent_backups=recent_backups
+    )
+
+
+
 # ==========================================================
 # Error Handlers
 # ==========================================================
@@ -1865,7 +1946,6 @@ if __name__ == "__main__":
         print("\n⚠️  psutil não instalado - métricas de memória desabilitadas")
         print("   Instale com: pip install psutil\n")
     
-
     # Teste rápido do audit logger
     print("\n🧪 Testing audit logger...")
     audit_logger.log_action("admin", "SYSTEM_START", "Testing audit system", "127.0.0.1")
@@ -1881,8 +1961,23 @@ if __name__ == "__main__":
             print(f"   {error}")
     
     print("\n")
-
-
+    
+    # ✨ NOVO: Inicia o scheduler de backup automático
+    print("🔄 Initializing backup scheduler...")
+    try:
+        from schedule_backup import init_scheduler
+        backup_scheduler = init_scheduler(app, backup_time="02:00")
+        print("✅ Backup scheduler started (daily at 02:00 AM)")
+        app.logger.info("✅ Automatic backup scheduler running (daily at 02:00)")
+    except ImportError as e:
+        print(f"⚠️  Backup scheduler disabled: schedule_backup.py not found")
+        app.logger.warning(f"⚠️ schedule_backup.py not found: {e}")
+    except Exception as e:
+        print(f"⚠️  Backup scheduler disabled: {e}")
+        app.logger.error(f"❌ Failed to start backup scheduler: {e}", exc_info=True)
+    
+    print("\n")
+    
     # Inicia o servidor Flask
     app.run(
         host=config.FLASK_HOST,
@@ -1890,3 +1985,4 @@ if __name__ == "__main__":
         debug=config.FLASK_DEBUG,
         threaded=True
     )
+
