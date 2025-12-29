@@ -1067,95 +1067,152 @@
     return -1;
   }
 
-  function drawSafeZoneCanvas() {
-    const canvas = document.getElementById('safe-zone-canvas');
-    if (!canvas) {
-      console.error('❌ Canvas não encontrado!');
-      return;
-    }
-
-    const ctx = canvas.getContext('2d');
-    const w = canvas.width;
-    const h = canvas.height;
-
-    // Verifica dimensões do canvas
-    if (w === 0 || h === 0) {
-      console.warn('⚠️ Canvas sem dimensões! Redimensionando...');
-      resizeSafeZoneCanvas();
-      return;
-    }
-
-    // Limpa canvas
-    ctx.clearRect(0, 0, w, h);
-
-    if (!smartZones || !smartZones.length) {
-      console.log('ℹ️ Nenhuma zona para desenhar');
-      return;
-    }
-
-    console.log(`🎨 Desenhando ${smartZones.length} zonas (atual: ${currentZoneIndex})`);
-
-    // Desenha TODAS as zonas
-    smartZones.forEach((zone, zIdx) => {
-      if (!zone || !Array.isArray(zone.points)) {
-        console.warn(`⚠️ Zona ${zIdx} sem pontos válidos`);
+    // ============================================================
+    // DESENHAR TODAS AS ZONAS NO CANVAS
+    // ============================================================
+    function drawSafeZoneCanvas() {
+      const canvas = document.getElementById('safeZoneCanvas');
+      if (!canvas) {
+        console.warn('⚠️ Canvas #safeZoneCanvas não encontrado');
         return;
       }
 
-      const isCurrent = (zIdx === currentZoneIndex);
-      const pointsCount = zone.points.length;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
 
-      // Desenha polígono (mesmo com < 3 pontos para visualizar)
-      if (pointsCount >= 2) {
-        ctx.strokeStyle = isCurrent ? '#22d3ee' : '#6b7280'; // Ciano/Cinza
-        ctx.lineWidth = isCurrent ? 4 : 2;
-        ctx.setLineDash(isCurrent ? [] : [8, 4]);
+      // ✅ LIMPA O CANVAS COMPLETAMENTE ANTES DE REDESENHAR
+      ctx.clearRect(0, 0, w, h);
 
-        ctx.beginPath();
-        zone.points.forEach((p, i) => {
-          const x = p[0] * w;
-          const y = p[1] * h;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        });
+      console.log(`🎨 Redesenhando ${smartZones.length} zona(s) no canvas...`);
 
-        if (pointsCount >= 3) {
-          ctx.closePath();
+      // Desenha TODAS as zonas
+      smartZones.forEach((zone, zoneIdx) => {
+        const pts = zone.points;
+        if (!pts || pts.length < 3) {
+          console.warn(`⚠️ Zona ${zoneIdx} tem menos de 3 pontos, pulando...`);
+          return;
         }
 
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
+        // Cores diferentes por zona
+        const colors = [
+          'rgba(0,255,0,0.2)',    // Verde
+          'rgba(0,150,255,0.2)',  // Azul
+          'rgba(255,200,0,0.2)',  // Amarelo
+          'rgba(255,0,255,0.2)',  // Magenta
+          'rgba(0,255,255,0.2)'   // Ciano
+        ];
+        const strokeColors = [
+          'rgba(0,255,0,0.9)',
+          'rgba(0,150,255,0.9)',
+          'rgba(255,200,0,0.9)',
+          'rgba(255,0,255,0.9)',
+          'rgba(0,255,255,0.9)'
+        ];
 
-      // Desenha PONTOS editáveis (APENAS zona atual)
-      if (isCurrent) {
-        zone.points.forEach((p, idx) => {
-          const x = p[0] * w;
-          const y = p[1] * h;
+        const fillColor = colors[zoneIdx % colors.length];
+        const strokeColor = strokeColors[zoneIdx % strokeColors.length];
 
-          // Círculo amarelo GRANDE e VISÍVEL
-          ctx.beginPath();
-          ctx.fillStyle = '#facc15'; // Amarelo
-          ctx.arc(x, y, 12, 0, Math.PI * 2); // Raio 12px
-          ctx.fill();
+        // Desenha polígono preenchido
+        ctx.fillStyle = fillColor;
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
 
-          // Borda preta ESPESSA
-          ctx.strokeStyle = '#000000';
-          ctx.lineWidth = 3;
-          ctx.stroke();
-
-          // Número do ponto
-          ctx.fillStyle = '#000000';
-          ctx.font = 'bold 14px Arial';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText((idx + 1).toString(), x, y);
+        pts.forEach((p, i) => {
+          const x = p * w;
+          const y = p * h;
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
         });
 
-        console.log(`✅ Desenhou ${pointsCount} pontos editáveis na zona ${zIdx} (${zone.name})`);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Desenha pontos de controle
+        ctx.fillStyle = 'white';
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 2;
+
+        pts.forEach((p) => {
+          const x = p * w;
+          const y = p * h;
+          ctx.beginPath();
+          ctx.arc(x, y, 6, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.stroke();
+        });
+
+        // Label da zona
+        if (pts.length > 0) {
+          const firstPt = pts;
+          const x = firstPt * w;
+          const y = firstPt * h;
+
+          ctx.fillStyle = 'white';
+          ctx.strokeStyle = 'black';
+          ctx.lineWidth = 3;
+          ctx.font = 'bold 14px Arial';
+
+          const label = zone.name || `Zona ${zoneIdx + 1}`;
+          ctx.strokeText(label, x + 10, y - 10);
+          ctx.fillText(label, x + 10, y - 10);
+        }
+
+        console.log(`✅ Zona ${zoneIdx} desenhada: ${zone.name || 'Sem nome'} (${pts.length} pontos)`);
+      });
+    }
+
+      // ============================================================
+      // CARREGAR ZONAS DO BACKEND (MELHORADO)
+      // ============================================================
+      async function loadZonesFromBackend() {
+        try {
+          const resp = await fetch('/api/stats');
+          const data = await resp.json();
+
+          // ✅ Verifica se há zonas salvas
+          const rawZones = data.safe_zone;
+
+          if (!rawZones || !Array.isArray(rawZones) || rawZones.length === 0) {
+            console.log('ℹ️ Nenhuma zona encontrada no backend');
+            smartZones = [];
+            drawSafeZoneCanvas();
+            return;
+          }
+
+          console.log('📥 Zonas carregadas do backend:', rawZones);
+
+          // Reconstrói smartZones com metadados
+          smartZones = rawZones.map((zoneData, idx) => {
+            if (typeof zoneData === 'object' && zoneData.points) {
+              // Formato novo (com metadados)
+              return {
+                name: zoneData.name || `Zona ${idx + 1}`,
+                mode: zoneData.mode || 'GENERIC',
+                points: zoneData.points
+              };
+            } else if (Array.isArray(zoneData)) {
+              // Formato antigo (só pontos)
+              return {
+                name: `Zona ${idx + 1}`,
+                mode: 'GENERIC',
+                points: zoneData
+              };
+            }
+          }).filter(Boolean); // Remove zonas inválidas
+
+          console.log(`✅ ${smartZones.length} zona(s) carregada(s) com sucesso`);
+          drawSafeZoneCanvas();
+
+        } catch (err) {
+          console.error('❌ Erro ao carregar zonas:', err);
+        }
       }
-    });
-  }
 
 
   function resizeSafeZoneCanvas() {
@@ -1504,55 +1561,49 @@
     renderZoneList();
   });
 
-  async function saveSafeZones() {
-    if (!smartZones.length) {
-      alert('Defina pelo menos uma zona com 3 ou mais pontos.');
-      return;
-    }
-
-    syncFormToCurrentZone();
-
-    const zonesPayload = smartZones
-      .filter(z => Array.isArray(z.points) && z.points.length >= 3)
-      .map((z, i) => ({
-        name: z.name && z.name.trim() ? z.name.trim() : `Zona ${i + 1}`,
-        mode: (z.mode || 'GENERIC').toUpperCase(),
-        points: z.points
-      }));
-
-    if (!zonesPayload.length) {
-      alert('Defina pelo menos uma zona com 3 ou mais pontos.');
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/safe_zone', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ zones: zonesPayload })
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        console.error('Erro ao salvar safe zones:', data);
-        alert(data.error || 'Erro ao salvar safe zones');
+    // ============================================================
+    // SALVAR ZONAS NO BACKEND (CORRIGIDO)
+    // ============================================================
+    async function saveSafeZones() {
+      if (smartZones.length === 0) {
+        alert('⚠️ Nenhuma zona para salvar. Desenhe ao menos uma zona primeiro.');
         return;
       }
 
-      alert('Safe zones salvas com sucesso.');
-      closeSafeZoneModal();
+      // ✅ ENVIA TODAS AS ZONAS NO FORMATO CORRETO
+      const payload = {
+        zones: smartZones.map((zone, idx) => ({
+          name: zone.name || `Zona ${idx + 1}`,
+          mode: zone.mode || 'GENERIC',
+          points: zone.points
+        }))
+      };
 
-      smartZones = data.zones || zonesPayload;
-      selectedZoneIndex = 0;
-      currentZoneIndex = 0;
-      renderZoneList();
-      fetchAndUpdateStats();
-    } catch (e) {
-      console.error('Erro ao salvar safe zones:', e);
-      alert('Erro ao salvar safe zones.');
+      console.log('💾 Salvando zonas:', payload);
+
+      try {
+        const resp = await fetch('/api/safe_zone', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await resp.json();
+
+        if (data.success) {
+          console.log('✅ Zonas salvas com sucesso:', data);
+          alert(`✅ ${smartZones.length} zona(s) salva(s) com sucesso!
+Visualização disponível em Configurações.`);
+        } else {
+          console.error('❌ Erro ao salvar zonas:', data.error);
+          alert('❌ Erro ao salvar: ' + (data.error || 'Erro desconhecido'));
+        }
+      } catch (err) {
+        console.error('❌ Erro na requisição:', err);
+        alert('❌ Erro ao salvar zonas: ' + err.message);
+      }
     }
-  }
+
 </script>
 
 {% endblock %}
