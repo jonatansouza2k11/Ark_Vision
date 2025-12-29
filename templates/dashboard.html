@@ -886,8 +886,8 @@
   }
 
 
-  //fetchAndUpdateStats();
-  //setInterval(fetchAndUpdateStats, 2000);
+  fetchAndUpdateStats();
+  //setInterval(fetchAndUpdateStats, 5000);
 
 
   // ===============================
@@ -1067,13 +1067,17 @@
     return -1;
   }
 
+
+  // ============================================================
+  // DESENHAR TODAS AS ZONAS NO CANVAS
+  // ============================================================
   // ============================================================
   // DESENHAR TODAS AS ZONAS NO CANVAS
   // ============================================================
   function drawSafeZoneCanvas() {
     const canvas = document.getElementById('safe-zone-canvas');
     if (!canvas) {
-      console.warn('⚠️ Canvas #safeZoneCanvas não encontrado');
+      console.warn('⚠️ Canvas não encontrado');
       return;
     }
 
@@ -1081,20 +1085,27 @@
     const w = canvas.width;
     const h = canvas.height;
 
-    // ✅ LIMPA O CANVAS COMPLETAMENTE ANTES DE REDESENHAR
+    // Limpa canvas
     ctx.clearRect(0, 0, w, h);
 
-    console.log(`🎨 Redesenhando ${smartZones.length} zona(s) no canvas...`);
+    if (w === 0 || h === 0) {
+      console.warn('⚠️ Canvas 0x0');
+      return;
+    }
+
+    console.log(`🎨 Redesenhando ${smartZones.length} zona(s) - Selecionada: ${currentZoneIndex}`);
 
     // Desenha TODAS as zonas
-    smartZones.forEach((zone, zoneIdx) => {
+    smartZones.forEach((zone, zIdx) => {
       const pts = zone.points;
-      if (!pts || pts.length < 3) {
-        console.warn(`⚠️ Zona ${zoneIdx} tem menos de 3 pontos, pulando...`);
-        return;
+
+      if (!pts || !Array.isArray(pts) || pts.length < 1) {
+        return; // Pula zonas vazias
       }
 
-      // Cores diferentes por zona
+      const isCurrent = zIdx === currentZoneIndex;
+
+      // Cores por zona
       const colors = [
         'rgba(0,255,0,0.2)',    // Verde
         'rgba(0,150,255,0.2)',  // Azul
@@ -1110,109 +1121,150 @@
         'rgba(0,255,255,0.9)'
       ];
 
-      const fillColor = colors[zoneIdx % colors.length];
-      const strokeColor = strokeColors[zoneIdx % strokeColors.length];
+      // ✅ Zona ATUAL: ciano brilhante | Outras: cor da paleta
+      const strokeColor = isCurrent ? '#22d3ee' : strokeColors[zIdx % strokeColors.length];
+      const fillColor = isCurrent ? 'rgba(34, 211, 238, 0.1)' : colors[zIdx % colors.length];
 
-      // Desenha polígono preenchido
-      ctx.fillStyle = fillColor;
-      ctx.strokeStyle = strokeColor;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-
-      pts.forEach((p, i) => {
-        const x = p * w;
-        const y = p * h;
-        if (i === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      });
-
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-
-      // Desenha pontos de controle
-      ctx.fillStyle = 'white';
-      ctx.strokeStyle = 'black';
-      ctx.lineWidth = 2;
-
-      pts.forEach((p) => {
-        const x = p * w;
-        const y = p * h;
+      // Desenha polígono
+      if (pts.length >= 2) {
+        ctx.fillStyle = fillColor;
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = isCurrent ? 3 : 2; // Linha mais grossa se atual
+        ctx.setLineDash(isCurrent ? [] : [5, 5]); // Sólida se atual, tracejada se não
         ctx.beginPath();
-        ctx.arc(x, y, 6, 0, 2 * Math.PI);
-        ctx.fill();
+
+        pts.forEach((p, i) => {
+          const x = p[0] * w;
+          const y = p[1] * h;
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        });
+
+        // Fecha polígono se tiver 3+ pontos
+        if (pts.length >= 3) {
+          ctx.closePath();
+          ctx.fill();
+        }
+
         ctx.stroke();
-      });
+        ctx.setLineDash([]); // Reset
+      }
+
+      // ✅ Desenha PONTOS EDITÁVEIS apenas na zona ATUAL
+      if (isCurrent && pts.length > 0) {
+        pts.forEach((p, idx) => {
+          const x = p[0] * w;
+          const y = p[1] * h;
+
+          // Círculo amarelo grande
+          ctx.beginPath();
+          ctx.fillStyle = '#facc15'; // Amarelo
+          ctx.arc(x, y, 10, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Borda preta
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          // Número do ponto
+          ctx.fillStyle = '#000000';
+          ctx.font = 'bold 12px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText((idx + 1).toString(), x, y);
+        });
+
+        console.log(`✅ Zona ${zIdx} (${zone.name}) SELECIONADA - ${pts.length} pontos editáveis`);
+      } else if (pts.length > 0) {
+        console.log(`⚪ Zona ${zIdx} (${zone.name}) visível - ${pts.length} pontos`);
+      }
 
       // Label da zona
       if (pts.length > 0) {
-        const firstPt = pts;
-        const x = firstPt * w;
-        const y = firstPt * h;
+        const firstPt = pts[0];
+        const x = firstPt[0] * w;
+        const y = firstPt[1] * h;
 
-        ctx.fillStyle = 'white';
-        ctx.strokeStyle = 'black';
+        ctx.fillStyle = isCurrent ? '#facc15' : '#ffffff';
+        ctx.strokeStyle = '#000000';
         ctx.lineWidth = 3;
         ctx.font = 'bold 14px Arial';
 
-        const label = zone.name || `Zona ${zoneIdx + 1}`;
+        const label = zone.name || `Zona ${zIdx + 1}`;
         ctx.strokeText(label, x + 10, y - 10);
         ctx.fillText(label, x + 10, y - 10);
       }
-
-      console.log(`✅ Zona ${zoneIdx} desenhada: ${zone.name || 'Sem nome'} (${pts.length} pontos)`);
     });
   }
 
+
+
   // ============================================================
-  // CARREGAR ZONAS DO BACKEND (FUNÇÃO NOVA)
+  // CARREGAR ZONAS DO BACKEND
   // ============================================================
   async function loadZonesFromBackend() {
     try {
+      console.log('📥 Carregando zonas...');
       const resp = await fetch('/api/stats');
-      const data = await resp.json();
 
-      // ✅ Verifica se há zonas salvas
+      if (!resp.ok) return;
+
+      const data = await resp.json();
       const rawZones = data.safe_zone;
 
+      console.log('📦 Dados:', rawZones);
+
       if (!rawZones || !Array.isArray(rawZones) || rawZones.length === 0) {
-        console.log('ℹ️ Nenhuma zona encontrada no backend');
-        smartZones = [];
-        drawSafeZoneCanvas();
+        console.log('ℹ️ Nenhuma zona');
         return;
       }
 
-      console.log('📥 Zonas carregadas do backend:', rawZones);
+      const firstItem = rawZones[0];
 
-      // Reconstrói smartZones com metadados
-      smartZones = rawZones.map((zoneData, idx) => {
-        if (typeof zoneData === 'object' && zoneData.points) {
-          // Formato novo (com metadados)
-          return {
-            name: zoneData.name || `Zona ${idx + 1}`,
-            mode: zoneData.mode || 'GENERIC',
-            points: zoneData.points
-          };
-        } else if (Array.isArray(zoneData)) {
-          // Formato antigo (só pontos)
-          return {
-            name: `Zona ${idx + 1}`,
-            mode: 'GENERIC',
-            points: zoneData
-          };
-        }
-      }).filter(Boolean); // Remove zonas inválidas
+      // ✅ Formato RICO: [{name, mode, points}, ...]
+      if (typeof firstItem === 'object' && firstItem !== null && !Array.isArray(firstItem)) {
+        console.log('✅ Formato RICO detectado');
+        smartZones = rawZones.map(z => ({
+          name: z.name || 'Zona sem nome',
+          mode: z.mode || 'GENERIC',
+          points: Array.isArray(z.points) ? z.points : []
+        }));
+      }
+      // ⚠️ Formato ANTIGO: [[[x,y],...]] - CONVERTE para RICO
+      else if (Array.isArray(firstItem)) {
+        console.log('⚠️ Formato ANTIGO detectado - convertendo para RICO...');
+        smartZones = rawZones.map((polygon, i) => ({
+          name: `Zona ${i + 1}`,
+          mode: 'GENERIC',
+          points: Array.isArray(polygon) ? polygon : []
+        }));
 
-      console.log(`✅ ${smartZones.length} zona(s) carregada(s) com sucesso`);
+        // ✅ SALVA de volta no formato RICO
+        console.log('📤 Salvando conversão no formato RICO...');
+        await saveSafeZones();
+      }
+
+      console.log(`✅ ${smartZones.length} zona(s) carregada(s)`);
+
+      currentZoneIndex = 0;
+      selectedZoneIndex = 0;
+
+      updateZoneCounter();
+      loadZoneMetaIntoForm(0);
+      renderZoneList();
       drawSafeZoneCanvas();
 
     } catch (err) {
-      console.error('❌ Erro ao carregar zonas:', err);
+      console.error('❌ Erro:', err);
     }
   }
+
+
+
 
   // ============================================================
   // EVENT LISTENER: ABRIR MODAL SAFE ZONE MAP (NOVO)
@@ -1267,35 +1319,51 @@
     renderZoneList();
   }
 
+
   function loadZoneIntoModal(idx) {
-    console.log(`🔄 Carregando zona ${idx} no modal`);
+    if (idx < 0 || idx >= smartZones.length) return;
 
-    if (idx < 0 || idx >= smartZones.length) {
-      console.error(`❌ Índice inválido: ${idx}`);
-      return;
-    }
-
-    // Salva metadados da zona anterior
     syncFormToCurrentZone();
-
-    // Troca para nova zona
     currentZoneIndex = idx;
     selectedZoneIndex = idx;
 
-    // Atualiza interface
     updateZoneCounter();
     loadZoneMetaIntoForm(idx);
-
-    // 🔥 CORREÇÃO: Redesenha canvas
-    setTimeout(() => {
-      resizeSafeZoneCanvas(); // Redimensiona ANTES de desenhar
-      console.log(`✅ Zona ${idx} (${smartZones[idx].name}) carregada com ${smartZones[idx].points.length} pontos`);
-    }, 50);
-
     renderZoneList();
+    drawSafeZoneCanvas();
     highlightZoneOnMiniMap();
   }
 
+  /*
+    function loadZoneIntoModal(idx) {
+      console.log(`🔄 Carregando zona ${idx} no modal`);
+  
+      if (idx < 0 || idx >= smartZones.length) {
+        console.error(`❌ Índice inválido: ${idx}`);
+        return;
+      }
+  
+      // Salva metadados da zona anterior
+      syncFormToCurrentZone();
+  
+      // Troca para nova zona
+      currentZoneIndex = idx;
+      selectedZoneIndex = idx;
+  
+      // Atualiza interface
+      updateZoneCounter();
+      loadZoneMetaIntoForm(idx);
+  
+      // 🔥 CORREÇÃO: Redesenha canvas
+      setTimeout(() => {
+        resizeSafeZoneCanvas(); // Redimensiona ANTES de desenhar
+        console.log(`✅ Zona ${idx} (${smartZones[idx].name}) carregada com ${smartZones[idx].points.length} pontos`);
+      }, 50);
+  
+      renderZoneList();
+      highlightZoneOnMiniMap();
+    }
+  */
 
 
   function openSafeZoneModal() {
@@ -1474,6 +1542,14 @@
 
 
   document.getElementById('btn-reload-zones')?.addEventListener('click', async () => {
+    if (!confirm('🔄 Recarregar zonas do servidor?')) return;
+
+    await loadZonesFromBackend();
+    alert('✅ Zonas recarregadas!');
+  });
+
+  /*
+  document.getElementById('btn-reload-zones')?.addEventListener('click', async () => {
     if (!confirm('Recarregar zonas do servidor? Edições não salvas serão perdidas.')) return;
 
     console.log('🔄 Recarregando zonas do backend...');
@@ -1506,27 +1582,127 @@
       alert('Erro ao recarregar zonas');
     }
   });
-
+*/
 
   document.getElementById('btn-new-zone')?.addEventListener('click', () => {
+    console.log('➕ Criando nova zona...');
+
+    // Sincroniza zona atual antes de criar nova
     syncFormToCurrentZone();
 
+    // Cria nova zona vazia
     const newZone = {
       name: `Zona ${smartZones.length + 1}`,
       mode: 'GENERIC',
-      points: []
+      points: []  // Vazio - usuário vai desenhar
     };
 
     smartZones.push(newZone);
     currentZoneIndex = smartZones.length - 1;
     selectedZoneIndex = currentZoneIndex;
 
+    console.log(`✅ Nova zona criada: ${newZone.name} (índice ${currentZoneIndex})`);
+    console.log(`📊 Total de zonas agora: ${smartZones.length}`);
+
+    // Atualiza interface
     updateZoneCounter();
     loadZoneMetaIntoForm(currentZoneIndex);
-    drawSafeZoneCanvas();
     renderZoneList();
+
+    // Redesenha canvas
+    drawSafeZoneCanvas();
+
+    // Feedback visual
+    alert(`✅ ${newZone.name} criada!\n\nClique no canvas para adicionar pontos.`);
   });
 
+
+
+  document.getElementById('btn-delete-zone')?.addEventListener('click', async () => {
+    if (!smartZones.length) {
+      alert('❌ Nenhuma zona.');
+      return;
+    }
+
+    const zoneName = smartZones[currentZoneIndex].name || `Zona ${currentZoneIndex + 1}`;
+
+    if (!confirm(`🗑️ Remover "${zoneName}"?`)) return;
+
+    // Remove da lista local
+    smartZones.splice(currentZoneIndex, 1);
+
+    // Ajusta índice
+    if (currentZoneIndex >= smartZones.length) {
+      currentZoneIndex = smartZones.length - 1;
+    }
+    if (currentZoneIndex < 0) {
+      currentZoneIndex = -1;
+    }
+
+    selectedZoneIndex = currentZoneIndex;
+
+    // ✅ SALVA IMEDIATAMENTE NO BANCO
+    if (smartZones.length > 0) {
+      // Filtra zonas válidas (3+ pontos)
+      const validZones = smartZones.filter(z =>
+        Array.isArray(z.points) && z.points.length >= 3
+      );
+
+      if (validZones.length > 0) {
+        const payload = {
+          zones: validZones.map(z => ({
+            name: z.name || 'Zona',
+            mode: z.mode || 'GENERIC',
+            points: z.points
+          }))
+        };
+
+        try {
+          const resp = await fetch('/api/safe_zone', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await resp.json();
+
+          if (data.success) {
+            console.log('✅ Zona removida e banco atualizado');
+            await fetchAndUpdateStats(); // Atualiza mini-mapa
+          } else {
+            console.error('❌ Erro ao salvar:', data.error);
+          }
+        } catch (err) {
+          console.error('❌ Erro:', err);
+        }
+      }
+    } else {
+      // ✅ Se não sobrou nenhuma zona, limpa o banco
+      try {
+        await fetch('/api/safe_zone', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ zones: [] })
+        });
+        console.log('✅ Todas as zonas removidas do banco');
+        await fetchAndUpdateStats();
+      } catch (err) {
+        console.error('❌ Erro:', err);
+      }
+    }
+
+    // Atualiza interface
+    updateZoneCounter();
+    if (currentZoneIndex >= 0) {
+      loadZoneMetaIntoForm(currentZoneIndex);
+    }
+    renderZoneList();
+    drawSafeZoneCanvas();
+  });
+
+
+
+  /*
   document.getElementById('btn-delete-zone')?.addEventListener('click', () => {
     if (!smartZones.length) {
       alert('Nenhuma zona para remover.');
@@ -1552,6 +1728,7 @@
     drawSafeZoneCanvas();
     renderZoneList();
   });
+*/
 
   document.getElementById('zone-name-input')?.addEventListener('input', (evt) => {
     if (!smartZones.length || currentZoneIndex >= smartZones.length) return;
@@ -1576,20 +1753,70 @@
   // ============================================================
   async function saveSafeZones() {
     if (smartZones.length === 0) {
-      alert('⚠️ Nenhuma zona para salvar. Desenhe ao menos uma zona primeiro.');
+      alert('⚠️ Nenhuma zona para salvar.');
       return;
     }
 
-    // ✅ ENVIA TODAS AS ZONAS NO FORMATO CORRETO
-    const payload = {
-      zones: smartZones.map((zone, idx) => ({
-        name: zone.name || `Zona ${idx + 1}`,
-        mode: zone.mode || 'GENERIC',
-        points: zone.points
-      }))
-    };
+    syncFormToCurrentZone();
 
-    console.log('💾 Salvando zonas:', payload);
+    // ✅ Filtra apenas zonas com 3+ pontos
+    const validZones = smartZones.filter(z =>
+      Array.isArray(z.points) && z.points.length >= 3
+    );
+
+    if (validZones.length === 0) {
+      alert('⚠️ Adicione pelo menos 3 pontos em uma zona.');
+      return;
+    }
+
+    // ✅ Carrega zonas existentes do backend
+    let existingZones = [];
+    try {
+      const res = await fetch('/api/stats');
+      const data = await res.json();
+      const rawZones = data.safe_zone;
+
+      if (Array.isArray(rawZones) && rawZones.length > 0) {
+        const firstItem = rawZones[0];
+
+        // Formato RICO
+        if (typeof firstItem === 'object' && !Array.isArray(firstItem)) {
+          existingZones = rawZones.map(z => ({
+            name: z.name || 'Zona',
+            mode: z.mode || 'GENERIC',
+            points: z.points || []
+          }));
+        }
+        // Formato ANTIGO - converte
+        else if (Array.isArray(firstItem)) {
+          existingZones = rawZones.map((poly, i) => ({
+            name: `Zona ${i + 1}`,
+            mode: 'GENERIC',
+            points: poly
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ Erro ao carregar zonas existentes:', err);
+    }
+
+    // ✅ MESCLA: zonas existentes + novas zonas válidas
+    const mergedZones = [...existingZones, ...validZones];
+
+    // Remove duplicatas pelo nome
+    const uniqueZones = [];
+    const seenNames = new Set();
+
+    for (const zone of mergedZones) {
+      if (!seenNames.has(zone.name)) {
+        seenNames.add(zone.name);
+        uniqueZones.push(zone);
+      }
+    }
+
+    const payload = { zones: uniqueZones };
+
+    console.log('💾 Salvando (mesclado):', payload);
 
     try {
       const resp = await fetch('/api/safe_zone', {
@@ -1601,17 +1828,20 @@
       const data = await resp.json();
 
       if (data.success) {
-        console.log('✅ Zonas salvas com sucesso:', data);
-        alert(`✅ ${smartZones.length} zona(s) salva(s) com sucesso! Visualização disponível em Configurações.`);
+        console.log('✅ Salvo!');
+        alert(`✅ ${validZones.length} nova(s) zona(s) adicionada(s)!`);
+
+        await fetchAndUpdateStats();
+        closeSafeZoneModal();
       } else {
-        console.error('❌ Erro ao salvar zonas:', data.error);
-        alert('❌ Erro ao salvar: ' + (data.error || 'Erro desconhecido'));
+        alert('❌ Erro: ' + data.error);
       }
     } catch (err) {
-      console.error('❌ Erro na requisição:', err);
-      alert('❌ Erro ao salvar zonas: ' + err.message);
+      alert('❌ Erro: ' + err.message);
     }
   }
+
+
 
   // ============================================================
   // VALIDAÇÃO: Verifica se elementos existem
