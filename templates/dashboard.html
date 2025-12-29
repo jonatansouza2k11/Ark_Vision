@@ -1071,7 +1071,7 @@
   // DESENHAR TODAS AS ZONAS NO CANVAS
   // ============================================================
   function drawSafeZoneCanvas() {
-    const canvas = document.getElementById('safeZoneCanvas');
+    const canvas = document.getElementById('safe-zone-canvas');
     if (!canvas) {
       console.warn('⚠️ Canvas #safeZoneCanvas não encontrado');
       return;
@@ -1602,8 +1602,7 @@
 
       if (data.success) {
         console.log('✅ Zonas salvas com sucesso:', data);
-        alert(`✅ ${smartZones.length} zona(s) salva(s) com sucesso!
-Visualização disponível em Configurações.`);
+        alert(`✅ ${smartZones.length} zona(s) salva(s) com sucesso! Visualização disponível em Configurações.`);
       } else {
         console.error('❌ Erro ao salvar zonas:', data.error);
         alert('❌ Erro ao salvar: ' + (data.error || 'Erro desconhecido'));
@@ -1613,6 +1612,34 @@ Visualização disponível em Configurações.`);
       alert('❌ Erro ao salvar zonas: ' + err.message);
     }
   }
+
+  // ============================================================
+  // VALIDAÇÃO: Verifica se elementos existem
+  // ============================================================
+  document.addEventListener('DOMContentLoaded', () => {
+    const elementos = {
+      'Modal': 'safe-zone-modal',
+      'Canvas': 'safe-zone-canvas',
+      'Video': 'safe-zone-video',
+      'Input Nome': 'zone-name-input',
+      'Select Modo': 'zone-mode-input',
+      'Botão Nova Zona': 'btn-new-zone',
+      'Botão Remover': 'btn-delete-zone',
+      'Botão Anterior': 'btn-prev-zone',
+      'Botão Próxima': 'btn-next-zone'
+    };
+
+    console.log('🔍 Validando elementos do modal:');
+    for (const [nome, id] of Object.entries(elementos)) {
+      const el = document.getElementById(id);
+      if (el) {
+        console.log(`✅ ${nome} (#${id}): ENCONTRADO`);
+      } else {
+        console.error(`❌ ${nome} (#${id}): NÃO ENCONTRADO`);
+      }
+    }
+  });
+
 
 </script>
 
