@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from fastapi_app.core.database import SessionLocal
 from fastapi_app.models.setting import Setting
 from fastapi_app.models.user import User
-from werkzeug.security import generate_password_hash
+from fastapi_app.core.security import get_password_hash  # ← IMPORTAR DAQUI!
 
 
 def seed_default_settings(db: Session):
@@ -65,19 +65,20 @@ def seed_default_settings(db: Session):
 
 
 def seed_admin_user(db: Session):
-    """Cria usuário admin padrão"""
+    """Cria usuário admin padrão com senha hash bcrypt"""
     
     existing = db.query(User).filter(User.username == "admin").first()
     if not existing:
         admin = User(
             username="admin",
             email="admin@example.com",
-            password_hash=generate_password_hash("admin123"),
+            password_hash=get_password_hash("admin123"),  # ← USAR BCRYPT HASH!
             role="admin"
         )
         db.add(admin)
         db.commit()
         print("✅ Admin user criado (username: admin, password: admin123)")
+        print(f"   Hash bcrypt: {admin.password_hash[:50]}...")
     else:
         print("ℹ️  Admin user já existe")
 

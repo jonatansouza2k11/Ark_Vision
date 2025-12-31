@@ -17,6 +17,9 @@ import uvicorn
 # Importar configurações
 from fastapi_app.core.config import settings, validate_settings, print_settings
 
+# ⚡ ADICIONAR: Importar routers da API v1
+from fastapi_app.api.v1 import api_router
+
 
 # ============================================
 # LIFESPAN: Gerencia startup/shutdown
@@ -108,7 +111,15 @@ app.add_middleware(
 
 
 # ============================================
-# ROTAS BÁSICAS (vamos expandir depois)
+# ⚡ INCLUIR ROUTERS DA API V1
+# ============================================
+
+# API v1 - Todos os endpoints (/api/v1/...)
+app.include_router(api_router, prefix="/api/v1")
+
+
+# ============================================
+# ROTAS BÁSICAS
 # ============================================
 
 @app.get("/", tags=["Root"])
@@ -124,7 +135,13 @@ async def root():
         "status": "online",
         "docs": "/docs",
         "redoc": "/redoc",
-        "health": "/health"
+        "health": "/health",
+        "endpoints": {
+            "auth": "/api/v1/auth",
+            "users": "/api/v1/users",
+            "alerts": "/api/v1/alerts",
+            "settings": "/api/v1/settings"
+        }
     }
 
 
@@ -144,6 +161,7 @@ async def health_check():
     return {
         "status": "healthy",
         "environment": settings.ENVIRONMENT,
+        "database": "postgresql" if settings.DATABASE_URL.startswith('postgresql') else "sqlite",
         "version": "2.0.0"
     }
 
@@ -156,12 +174,23 @@ async def info():
     Returns:
         dict: Configurações não-sensíveis
     """
+    # Detectar nome do banco
+    if settings.DATABASE_URL.startswith('postgresql'):
+        db_name = settings.DATABASE_URL.split('/')[-1]
+    else:
+        db_name = settings.DATABASE_PATH
+    
     return {
         "environment": settings.ENVIRONMENT,
         "debug": settings.DEBUG,
         "yolo_model": settings.YOLO_MODEL_PATH,
         "video_source": settings.VIDEO_SOURCE,
-        "database": settings.DATABASE_URL.split("///")[-1],  # Só o nome do arquivo
+        "database": db_name,
+        "camera": {
+            "width": settings.CAM_WIDTH,
+            "height": settings.CAM_HEIGHT,
+            "fps": settings.CAM_FPS
+        }
     }
 
 
