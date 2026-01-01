@@ -1,0 +1,66 @@
+[
+  {
+    "id": 5,
+    "name": "Zona Teste 1",
+    "points": [
+      [
+        100.0,
+        100.0
+      ],
+      [
+        500.0,
+        100.0
+      ],
+      [
+        500.0,
+        400.0
+      ],
+      [
+        100.0,
+        400.0
+      ]
+    ],
+    "mode": "GENERIC",
+    "empty_timeout": 5.0,
+    "full_timeout": 10.0,
+    "empty_threshold": 0,
+    "full_threshold": 3,
+    "enabled": true,
+    "active": true,
+    "created_at": "2026-01-01T11:58:49.581037",
+    "updated_at": "2026-01-01T11:58:49.581037",
+    "deleted_at": null
+  },
+  {
+    "id": 2,
+    "name": "Zona Teste 1",
+    "points": [
+      [
+        100.0,
+        100.0
+      ],
+      [
+        500.0,
+        100.0
+      ],
+      [
+        500.0,
+        400.0
+      ],
+      [
+        100.0,
+        400.0
+      ]
+    ],
+    "mode": "GENERIC",
+    "empty_timeout": 5.0,
+    "full_timeout": 10.0,
+    "empty_threshold": 0,
+    "full_threshold": 3,
+    "enabled": true,
+    "active": true,
+    "created_at": "2026-01-01T12:22:38.851050",
+    "updated_at": "2026-01-01T12:22:38.851050",
+    "deleted_at": null
+  }
+]

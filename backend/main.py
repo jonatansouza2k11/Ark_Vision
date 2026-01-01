@@ -4,11 +4,13 @@ FastAPI Application - Computer Vision Monitoring System
 RAG-Ready Architecture
 """
 
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
 import sys
+
 
 # Setup logging
 logging.basicConfig(
@@ -17,6 +19,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("uvicorn")
 
+
 # Imports locais
 from config import settings
 import database
@@ -24,11 +27,14 @@ from middleware.security import setup_middleware
 from dependencies import limiter
 from slowapi.errors import RateLimitExceeded
 
+
 # Import routers
 from api.auth import router as auth_router
 from api.users import router as users_router 
 from api.settings import router as settings_router  
-from api.admin import router as admin_router  
+from api.admin import router as admin_router
+from api.zones import router as zones_router
+from api.alerts import router as alerts_router
 
 # ============================================
 # LIFESPAN EVENTS (startup/shutdown)
@@ -79,6 +85,7 @@ async def lifespan(app: FastAPI):
     logger.info("👋 Goodbye!")
     logger.info("=" * 70)
 
+
 # ============================================
 # CREATE FASTAPI APP
 # ============================================
@@ -111,13 +118,16 @@ app = FastAPI(
     redoc_url="/redoc" if settings.DEBUG else None,
 )
 
+
 # ============================================
 # SETUP MIDDLEWARE & RATE LIMITER
 # ============================================
 setup_middleware(app) #para testar
 
+
 # ✅ Register rate limiter
 app.state.limiter = limiter
+
 
 # Rate limit exception handler
 @app.exception_handler(RateLimitExceeded)
@@ -131,13 +141,17 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
         }
     )
 
+
 # ============================================
 # INCLUDE ROUTERS
 # ============================================
 app.include_router(auth_router)
 app.include_router(users_router)  
 app.include_router(settings_router)  
-app.include_router(admin_router) 
+app.include_router(admin_router)
+app.include_router(zones_router)
+app.include_router(alerts_router) 
+
 # ============================================
 # ROOT ENDPOINT
 # ============================================
@@ -155,12 +169,13 @@ async def root():
             "JWT Authentication",
             "YOLO Detection",
             "Object Tracking",
-            "Smart Zones",
+            "Smart Zones",  # ✨ Feature ativa agora!
             "Real-time Alerts",
             "Audit Logging",
             "RAG-Ready Architecture"
         ]
     }
+
 
 # ============================================
 # HEALTH CHECK
@@ -188,6 +203,7 @@ async def health_check():
         health_status["status"] = "degraded"
     
     return health_status
+
 
 # ============================================
 # MAIN (para debug com python main.py)

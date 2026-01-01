@@ -176,7 +176,15 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore"
     )
-    
+
+    # ============================================
+    # PUBLIC BASE_DIR (para uso em outros módulos)
+    # ============================================
+    @property
+    def BASE_DIR(self) -> Path:
+        """Diretório base do projeto"""
+        return Path(__file__).resolve().parent.parent
+        
     # ============================================
     # COMPUTED PROPERTIES
     # ============================================
