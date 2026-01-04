@@ -162,6 +162,7 @@ class UserUpdateComplete(BaseModel):
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     email: Optional[EmailStr] = None
     full_name: Optional[str] = Field(None, max_length=100)
+    password: Optional[str] = Field(None, min_length=6)
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
 
@@ -286,6 +287,89 @@ async def get_all_users(
             detail=f"Erro ao listar usuários: {str(e)}"
         )
 
+
+# ============================================================================
+# v3.0 ENDPOINTS - EXPORT/IMPORT (NEW)
+# ============================================================================
+@router.get("/export", summary="📤 Exporta usuários")
+async def export_users(
+    current_user: dict = Depends(get_current_admin_user),
+    format: str = "json"  # ✅ Parâmetro DEPOIS do Depends!
+):
+    """
+    ➕ NEW v3.0: Exporta usuários em JSON ou CSV
+    
+    Query Parameters:
+    - format: "json" ou "csv" (default: "json")
+    """
+    try:
+        logger.info(f"📤 Exporting users in format: {format}")
+        
+        # Valida formato
+        if format not in ["json", "csv"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid format '{format}'. Use 'json' or 'csv'"
+            )
+        
+        users = await database.get_all_users()
+        logger.info(f"📊 Retrieved {len(users)} users for export")
+        
+        # Remove sensitive data
+        export_users = []
+        for user in users:
+            export_user = {
+                "id": user.get("id"),
+                "username": user.get("username"),
+                "email": user.get("email"),
+                "role": user.get("role"),
+                "is_active": user.get("is_active"),
+                "created_at": user.get("created_at")
+            }
+            export_users.append(export_user)
+        
+        if format == "json":
+            export_data = {
+                "exported_at": datetime.now().isoformat(),
+                "exported_by": current_user.get("username"),
+                "count": len(export_users),
+                "users": export_users
+            }
+            
+            logger.info(f"✅ Exporting {len(export_users)} users as JSON")
+            return JSONResponse(content=export_data)
+        
+        else:  # CSV
+            output = io.StringIO()
+            
+            if export_users:
+                fieldnames = list(export_users[0].keys())
+                writer = csv.DictWriter(output, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(export_users)
+            
+            output.seek(0)
+            
+            logger.info(f"✅ Exporting {len(export_users)} users as CSV")
+            return StreamingResponse(
+                iter([output.getvalue()]),
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename=users_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                }
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error exporting users: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao exportar usuários: {str(e)}"
+        )
+    
 
 @router.get("/{user_id}", response_model=UserResponse, summary="🔍 Obtém usuário por ID")
 async def get_user(
@@ -733,21 +817,32 @@ async def bulk_delete_users(
 
 
 # ============================================================================
-# v3.0 ENDPOINTS - USER MANAGEMENT (NEW)
+# v3.0 ENDPOINTS - USER MANAGEMENT (FIXED)
 # ============================================================================
-@router.put("/{user_id}", response_model=UserResponse, summary="Atualiza usuário completo")
+@router.put("/{user_id}", response_model=UserResponse, summary="✏️ Atualiza usuário completo")
 async def update_user_complete(
     user_id: int,
     user_update: UserUpdateComplete,
     request: Request,
     current_user: dict = Depends(get_current_admin_user)
 ):
-    """NEW v3.0: Atualiza informações completas do usuário"""
+    """
+    ➕ NEW v3.0: Atualiza informações completas do usuário
+    🔥 v3.2: Sincronização automática is_active ↔ account_status
+    
+    **Campos atualizáveis:**
+    - username
+    - email
+    - full_name
+    - password (opcional)
+    - role
+    - is_active (sincroniza com account_status)
+    """
     try:
-        # Validate user exists
+        # ✅ Validate user exists
         user = await validate_user_exists(user_id)
         
-        # Validate username if changing
+        # ✅ Validate username if changing
         if user_update.username and user_update.username != user.get("username"):
             if not await check_username_available(user_update.username, user_id):
                 raise HTTPException(
@@ -755,7 +850,7 @@ async def update_user_complete(
                     detail="Username already exists"
                 )
         
-        # Validate email if changing
+        # ✅ Validate email if changing
         if user_update.email and user_update.email != user.get("email"):
             if not await check_email_available(user_update.email, user_id):
                 raise HTTPException(
@@ -763,56 +858,214 @@ async def update_user_complete(
                     detail="Email already exists"
                 )
         
-        # ✅ CORREÇÃO: Preparar dados para atualização
+        # ========================================================================
+        # 🔥 v3.2: PREPARAR DADOS COM SINCRONIZAÇÃO AUTOMÁTICA
+        # ========================================================================
+        
         update_data = {}
         
         if user_update.username is not None:
             update_data["username"] = user_update.username
+        
         if user_update.email is not None:
             update_data["email"] = user_update.email
-        if user_update.fullname is not None:
-            update_data["fullname"] = user_update.fullname
+        
+        if user_update.full_name is not None:
+            update_data["full_name"] = user_update.full_name
+        
         if user_update.role is not None:
             update_data["role"] = user_update.role.value  # Enum to string
+        
+        # ========================================================================
+        # 🔥 v3.2: SINCRONIZAÇÃO is_active ↔ account_status
+        # ========================================================================
+        
         if user_update.is_active is not None:
-            update_data["isactive"] = user_update.is_active
+            is_active_value = user_update.is_active
+            current_account_status = user.get("account_status", "active")
+            
+            # Adiciona is_active ao update
+            update_data["is_active"] = is_active_value
+            
+            # REGRA 1: is_active = False → account_status = "inactive"
+            if not is_active_value:
+                update_data["account_status"] = "inactive"
+                logger.info(
+                    f"🔥 Auto-sync: is_active=False → account_status='inactive' "
+                    f"for user {user['username']}"
+                )
+            
+            # REGRA 2: is_active = True + status "inactive" → account_status = "active"
+            elif is_active_value and current_account_status == "inactive":
+                update_data["account_status"] = "active"
+                logger.info(
+                    f"🔥 Auto-sync: is_active=True → account_status='active' "
+                    f"for user {user['username']}"
+                )
+            
+            # REGRA 3: Preserva locked/suspended/pending (não sobrescreve)
+            # → Nenhuma ação necessária
         
-        # ✅ CORREÇÃO: Se tem nova senha, fazer hash
-        if hasattr(user_update, 'password') and user_update.password:
-            from dependencies import get_password_hash
-            update_data["passwordhash"] = get_password_hash(user_update.password)
+        # ========================================================================
+        # 🔑 SE TEM NOVA SENHA, FAZER HASH
+        # ========================================================================
         
-        # ✅ CORREÇÃO: Chamar database.update_user()
+        if user_update.password:
+            logger.info(f"🔑 Updating password for user ID {user_id}")
+            update_data["password_hash"] = get_password_hash(user_update.password)
+        
+        # ========================================================================
+        # 📝 ATUALIZAR NO BANCO DE DADOS
+        # ========================================================================
+        
         if update_data:
+            logger.info(f"📝 Updating user {user_id} with fields: {list(update_data.keys())}")
+            
+            # 🔧 CORREÇÃO: Usar **update_data (kwargs unpacking)
             success = await database.update_user(user_id, **update_data)
+            
             if not success:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to update user"
                 )
         
-        # Log action
+        # ✅ Log action
         await database.log_system_action(
             action="user_updated",
             username=current_user["username"],
-            reason=f"Updated user {user.get('username')}",
-            ipaddress=request.client.host if request else None
+            reason=f"Updated user {user['username']}",
+            ip_address=request.client.host if request.client else None
         )
         
-        logger.info(f"✅ Admin {current_user['username']} updated user {user.get('username')}")
+        logger.info(f"✅ Admin {current_user['username']} updated user {user['username']}")
         
-        # ✅ CORREÇÃO: Return updated user
-        return await validate_user_exists(user_id)
+        # ✅ Return updated user
+        updated_user = await validate_user_exists(user_id)
+        return updated_user
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating user: {e}")
+        logger.error(f"❌ Error updating user: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erro ao atualizar usuário: {str(e)}"
         )
+
+
+
+@router.post("/{user_id}/reset-password", summary="🔑 Reset senha do usuário")
+async def reset_user_password(
+    user_id: int,
+    password_reset: PasswordResetRequest,
+    request: Request,
+    current_user: dict = Depends(get_current_admin_user)
+):
+    """
+    ➕ NEW v3.0: Reseta senha do usuário
+    """
+    try:
+        user = await validate_user_exists(user_id)
+        
+        # Hash new password
+        password_hash = get_password_hash(password_reset.new_password)
+        
+        # ✅ CORRIGIDO: Usar update_user() ao invés da função inexistente
+        success = await database.update_user(user_id, password_hash=password_hash)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update password"
+            )
+        
+        # Log action
+        await database.log_system_action(
+            action="user_password_reset",
+            username=current_user["username"],
+            reason=f"Reset password for user: {user.get('username')}",
+            ip_address=request.client.host if request.client else None
+        )
+        
+        logger.info(f"✅ Admin {current_user['username']} reset password for: {user.get('username')}")
+        
+        return {
+            "message": "Password reset successfully",
+            "user_id": user_id,
+            "username": user.get("username"),
+            "force_change_on_login": password_reset.force_change_on_login
+        }
     
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error resetting password: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao resetar senha: {str(e)}"
+        )
+
+
+@router.patch("/{user_id}/status", summary="🔄 Atualiza status da conta")
+async def update_user_status(
+    user_id: int,
+    status_update: UserStatusUpdate,
+    request: Request,
+    current_user: dict = Depends(get_current_admin_user)
+):
+    """
+    ➕ NEW v3.0: Ativa/desativa/suspende conta do usuário
+    """
+    try:
+        user = await validate_user_exists(user_id)
+        
+        # Can't change own status
+        if current_user["id"] == user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot change your own status"
+            )
+        
+        # ✅ CORRIGIDO: Usar update_user() com campo account_status
+        success = await database.update_user(
+            user_id,
+            account_status=status_update.status.value
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update status"
+            )
+        
+        # Log action
+        await database.log_system_action(
+            action="user_status_updated",
+            username=current_user["username"],
+            reason=f"Changed {user.get('username')} status to {status_update.status.value}: {status_update.reason}",
+            ip_address=request.client.host if request.client else None
+        )
+        
+        logger.info(f"✅ Admin {current_user['username']} changed {user.get('username')} status to: {status_update.status.value}")
+        
+        return {
+            "message": "User status updated successfully",
+            "user_id": user_id,
+            "username": user.get("username"),
+            "new_status": status_update.status.value
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error updating user status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao atualizar status: {str(e)}"
+        )    
 
 
 @router.post("/{user_id}/reset-password", summary="🔑 Reset senha do usuário")
@@ -1002,62 +1255,82 @@ async def get_user_statistics(
 # ============================================================================
 # v3.0 ENDPOINTS - EXPORT/IMPORT (NEW)
 # ============================================================================
-
-@router.get("/export", summary="📤 Exporta usuários")
+@router.get("/export", summary="📤 Exporta usuários (CSV)")
 async def export_users(
-    format: ExportFormat = Query(default=ExportFormat.JSON),
-    current_user: dict = Depends(get_current_admin_user)
+    current_user: dict = Depends(get_current_admin_user),
+    # format: str = "csv"  # ✅ Removido - sempre CSV
 ):
     """
-    ➕ NEW v3.0: Exporta usuários em JSON ou CSV
+    ➕ NEW v3.0: Exporta usuários em formato CSV
+    
+    ❌ JSON export desabilitado - sem utilidade para cliente
     """
     try:
+        logger.info(f"📤 Exporting users as CSV")
+        
         users = await database.get_all_users()
+        logger.info(f"📊 Retrieved {len(users)} users for export")
         
         # Remove sensitive data
         export_users = []
         for user in users:
+            # ✅ Converte datetime se necessário
+            created_at = user.get("created_at")
+            if isinstance(created_at, datetime):
+                created_at = created_at.strftime('%Y-%m-%d %H:%M:%S')
+            
             export_user = {
                 "id": user.get("id"),
                 "username": user.get("username"),
                 "email": user.get("email"),
                 "role": user.get("role"),
                 "is_active": user.get("is_active"),
-                "created_at": user.get("created_at")
+                "created_at": created_at
             }
             export_users.append(export_user)
         
-        if format == ExportFormat.JSON:
-            export_data = {
-                "exported_at": datetime.now().isoformat(),
-                "exported_by": current_user.get("username"),
-                "count": len(export_users),
-                "users": export_users
-            }
-            
-            return JSONResponse(content=export_data)
+        # ✅ Sempre retorna CSV
+        output = io.StringIO()
         
-        else:  # CSV
-            output = io.StringIO()
-            
-            if export_users:
-                fieldnames = list(export_users[0].keys())
-                writer = csv.DictWriter(output, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(export_users)
-            
-            output.seek(0)
-            
-            return StreamingResponse(
-                iter([output.getvalue()]),
-                media_type="text/csv",
-                headers={
-                    "Content-Disposition": f"attachment; filename=users_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-                }
-            )
+        if export_users:
+            fieldnames = list(export_users[0].keys())
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(export_users)
+        
+        output.seek(0)
+        
+        logger.info(f"✅ Exported {len(export_users)} users as CSV")
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename=users_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            }
+        )
+        
+        # ========================================================================
+        # ❌ JSON EXPORT - COMENTADO (sem utilidade para cliente)
+        # ========================================================================
+        # if format == "json":
+        #     export_data = {
+        #         "exported_at": datetime.now().isoformat(),
+        #         "exported_by": current_user.get("username"),
+        #         "count": len(export_users),
+        #         "users": export_users
+        #     }
+        #     
+        #     export_data_serialized = serialize_datetime(export_data)
+        #     logger.info(f"✅ Exporting {len(export_users)} users as JSON")
+        #     return JSONResponse(content=export_data_serialized)
+        # ========================================================================
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error exporting users: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erro ao exportar usuários: {str(e)}"

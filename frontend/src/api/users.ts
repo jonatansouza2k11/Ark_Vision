@@ -440,25 +440,29 @@ const getStatistics = async (): Promise<UserStatistics> => {
 // v3.0 NEW ENDPOINTS - EXPORT / IMPORT ➕
 // ============================================================================
 
-
 /**
- * ➕ NEW v3.0: Exporta usuários (JSON ou CSV)
+ * ➕ NEW v3.0: Exporta usuários (JSON ou CSV) No moemento somente CSV no frontend
  * Endpoint: GET /api/v1/users/export
  */
 const exportUsers = async (format: ExportFormat = ExportFormat.JSON): Promise<Blob> => {
+    // ✅ Extrai o valor string do enum de forma explícita
+    const formatParam = format === ExportFormat.JSON ? 'json' : 'csv';
+
+    console.log(`📤 Exporting users as ${formatParam.toUpperCase()}...`);
+
     const response = await fetch(
-        `${API_URL}/api/v1/users/export?format=${format}`,
+        `${API_URL}/api/v1/users/export?format=${formatParam}`,
         {
             headers: getAuthHeaders(),
         }
     );
 
-
     if (!response.ok) {
+        console.error(`❌ Export failed with status ${response.status}`);
         await handleApiError(response);
     }
 
-
+    console.log(`✅ Export successful! Content-Type: ${response.headers.get('content-type')}`);
     return response.blob();
 };
 

@@ -32,7 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
-from fastapi.security import HTTPBearer, OAuth2PasswordRequestForm  # ✅ CORRIGIDO
+from fastapi.security import HTTPBearer, OAuth2PasswordRequestForm
 from typing import Optional, List, Dict, Any, Tuple 
 from datetime import timedelta, datetime
 import logging
@@ -238,7 +238,6 @@ async def register(
 # ============================================================================
 # v1.0 LOGIN (Enhanced) - ✅ CORRIGIDO PARA OAUTH2
 # ============================================================================
-
 @router.post(
     "/login",
     response_model=Token,
@@ -248,85 +247,109 @@ async def register(
 @limiter.limit("10/minute")
 async def login(
     request: Request,
-    form_data: OAuth2PasswordRequestForm = Depends()  # ✅ CORRIGIDO
+    form_data: OAuth2PasswordRequestForm = Depends()
 ):
     """
-    ✅ Faz login e retorna token JWT (v1.0 compatible + v3.0 enhanced)
-    
-    Aceita form-urlencoded (OAuth2 padrão):
-    - **username**: Nome de usuário
-    - **password**: Senha
-    
-    Retorna:
-    - **access_token**: Token JWT
-    - **token_type**: Tipo do token (bearer)
+    ✅ Faz login e retorna token JWT
     """
-    # ✅ v1.0: Autentica usuário
-    user = await authenticate_user(form_data.username, form_data.password)  # ✅ CORRIGIDO
+    # 🔍 LOG DE DEBUG - ADICIONAR ISSO
+    logger.info("=" * 70)
+    logger.info(f"🔐 LOGIN ATTEMPT")
+    logger.info(f"Username: {form_data.username}")
+    logger.info(f"Password length: {len(form_data.password)}")
+    logger.info(f"Client IP: {request.client.host if request.client else 'unknown'}")
+    logger.info("=" * 70)
     
-    if not user:
-        # ✅ v1.0: Log tentativa falhada
-        await database.log_system_action(
-            action="login_failed",
-            username=form_data.username,  # ✅ CORRIGIDO
-            reason="Invalid credentials",
-            ip_address=request.client.host if request.client else None
+    try:
+        # ✅ v1.0: Autentica usuário
+        logger.info(f"🔍 Calling authenticate_user...")
+        user = await authenticate_user(form_data.username, form_data.password)
+        
+        logger.info(f"🔍 authenticate_user returned: {user is not None}")
+        
+        if not user:
+            logger.warning(f"❌ Authentication failed for: {form_data.username}")
+            # ✅ v1.0: Log tentativa falhada
+            await database.log_system_action(
+                action="login_failed",
+                username=form_data.username,
+                reason="Invalid credentials",
+                ip_address=request.client.host if request.client else None
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        logger.info(f"✅ User authenticated: {user['username']}")
+        
+        # ➕ NEW v3.0: Check account status
+        if user.get("account_status") and user.get("account_status") != "active":
+            logger.warning(f"❌ Account inactive: {user['username']} - Status: {user.get('account_status')}")
+            await database.log_system_action(
+                action="login_blocked",
+                username=user["username"],
+                reason=f"Account status: {user.get('account_status')}",
+                ip_address=request.client.host if request.client else None
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Account is {user.get('account_status')}. Please contact support."
+            )
+        
+        # ✅ v1.0: Cria token JWT
+        logger.info(f"🔍 Creating JWT token...")
+        access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={
+                "sub": user["username"],
+                "role": user["role"]
+            },
+            expires_delta=access_token_expires
         )
         
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    # ➕ NEW v3.0: Check account status (if field exists)
-    if user.get("account_status") and user.get("account_status") != "active":
+        logger.info(f"✅ Token created: {access_token[:20]}...")
+        
+        # ✅ v1.0: Log login bem-sucedido
         await database.log_system_action(
-            action="login_blocked",
+            action="login_success",
             username=user["username"],
-            reason=f"Account status: {user.get('account_status')}",
+            reason="User logged in successfully",
             ip_address=request.client.host if request.client else None
         )
         
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Account is {user.get('account_status')}. Please contact support."
+        # ➕ NEW v3.0: Log activity
+        await log_user_activity(
+            user_id=user["id"],
+            action="login",
+            request=request,
+            details={"login_method": "password"}
         )
-    
-    # ✅ v1.0: Cria token JWT
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    
-    access_token = create_access_token(
-        data={
-            "sub": user["username"],
-            "role": user["role"] 
-        },
-        expires_delta=access_token_expires
-    )
-    
-    # ✅ v1.0: Log login bem-sucedido
-    await database.log_system_action(
-        action="login_success",
-        username=user["username"],
-        reason="User logged in successfully",
-        ip_address=request.client.host if request.client else None
-    )
-    
-    # ➕ NEW v3.0: Log activity
-    await log_user_activity(
-        user_id=user["id"],
-        action="login",
-        request=request,
-        details={"login_method": "password"}
-    )
-    
-    logger.info(f"✅ User logged in: {user['username']}")
-    
-    # ✅ v1.0 response format (OAuth2 compatible)
-    return {
-        "access_token": access_token,
-        "token_type": "bearer"
-    }
+        
+        logger.info(f"✅ LOGIN SUCCESS: {user['username']}")
+        logger.info("=" * 70)
+        
+        # ✅ v1.0 response format (OAuth2 compatible)
+        return {
+            "access_token": access_token,
+            "token_type": "bearer"
+        }
+        
+    except HTTPException as he:
+        logger.error(f"❌ HTTPException: {he.status_code} - {he.detail}")
+        raise
+    except Exception as e:
+        logger.error(f"❌ UNEXPECTED ERROR in login endpoint")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error message: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error during login: {str(e)}"
+        )
+
 
 
 # ============================================================================

@@ -394,6 +394,7 @@ class UserResponse(UserBase):
     
     # ➕ NEW v3.0 fields
     account_status: AccountStatus = AccountStatus.ACTIVE
+    is_active: bool = True  # ✅ v3.1: ADICIONADO COMO ATRIBUTO!
     full_name: Optional[str] = None
     phone: Optional[str] = None
     email_verified: bool = False
@@ -403,7 +404,7 @@ class UserResponse(UserBase):
     locked_until: Optional[datetime] = None
     permissions: List[str] = Field(default_factory=list)
     preferences: Optional[Dict[str, Any]] = None
-    
+
     model_config = ConfigDict(
         from_attributes=True,
         json_schema_extra={
@@ -412,6 +413,8 @@ class UserResponse(UserBase):
                 "username": "admin",  # 🔧 v3.1: Now works fine!
                 "email": "admin@example.com",
                 "role": "admin",
+                "account_status": "active",
+                "is_active": True,  # ✅ v3.1: Incluído no exemplo!
                 "created_at": "2024-01-01T12:00:00",
                 "last_login": "2024-01-02T10:30:00",
                 "account_status": "active",
@@ -431,7 +434,7 @@ class UserResponse(UserBase):
     
     def is_active(self) -> bool:
         """➕ NEW: Check if account is active"""
-        return self.account_status == AccountStatus.ACTIVE
+        return self.is_active and self.account_status == AccountStatus.ACTIVE
     
     def is_locked(self) -> bool:
         """➕ NEW: Check if account is locked"""

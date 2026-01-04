@@ -269,15 +269,12 @@ export default function Users() {
   // EXPORT
   // ============================================================================
 
-  const handleExport = async (format: 'json' | 'csv') => {
+  const handleExport = async () => {
     try {
       setIsExporting(true);
-      await usersApi.exportAndDownload(format as ExportFormat);
-      showToast(
-        `✅ Usuários exportados com sucesso em formato ${format.toUpperCase()}!`,
-        'success',
-        4000
-      );
+      // ✅ Sempre exporta como CSV (JSON desabilitado)
+      await usersApi.exportAndDownload('csv' as ExportFormat);
+      showToast('✅ Usuários exportados com sucesso!', 'success', 4000);
     } catch (error) {
       console.error('Erro ao exportar usuários:', error);
       showToast('❌ Erro ao exportar usuários', 'error', 4000);
@@ -285,6 +282,7 @@ export default function Users() {
       setIsExporting(false);
     }
   };
+  
 
   // ============================================================================
   // RENDER
@@ -340,17 +338,9 @@ export default function Users() {
                   <Download className="w-4 h-4" />
                   {isExporting ? 'Exportando...' : 'Exportar'}
                 </button>
-
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
                   <button
-                    onClick={() => handleExport('json')}
-                    disabled={isExporting}
-                    className="w-full px-4 py-2 text-left hover:bg-gray-50 rounded-t-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    📄 Exportar JSON
-                  </button>
-                  <button
-                    onClick={() => handleExport('csv')}
+                    onClick={() => handleExport()}
                     disabled={isExporting}
                     className="w-full px-4 py-2 text-left hover:bg-gray-50 rounded-b-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
