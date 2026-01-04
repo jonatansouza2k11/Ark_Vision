@@ -1,0 +1,368 @@
+# ============================================
+# 🐍 PYTHON
+# ============================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# celery beat schedule file
+celerybeat-schedule
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+cv_env/
+cvenv/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# ============================================
+# 🎯 NODE.JS / FRONTEND
+# ============================================
+# Dependencies
+node_modules/
+jspm_packages/
+bower_components/
+
+# Production builds
+dist/
+build/
+.next/
+.nuxt/
+out/
+
+# Testing
+.nyc_output
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Misc
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+out
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+public
+
+# vuepress build output
+.vuepress/dist
+
+# Serverless directories
+.serverless/
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# ============================================
+# 🤖 YOLO / AI MODELS
+# ============================================
+# YOLO Model files (.pt, .onnx, etc.)
+*.pt
+*.pth
+*.weights
+*.onnx
+*.engine
+*.trt
+*.bin
+
+# Exceto modelos base necessários (descomente se quiser versioná-los)
+# !yolo_models/yolo11n.pt
+# !yolo_models/yolov8n.pt
+
+# Training outputs
+runs/
+wandb/
+checkpoints/
+weights/
+results/
+
+# ============================================
+# 📁 ARQUIVOS TEMPORÁRIOS E BACKUP
+# ============================================
+# Backups
+*.bak
+*.backup
+*_backup.*
+*_old.*
+*copy.*
+*Copy.*
+backup_*/
+templates_backup/
+templatesbackup/
+
+# Logs
+logs/
+*.log
+*.log.*
+log_*.txt
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+estrutura_*.txt
+extensoes.txt
+
+# ============================================
+# 🖼️ MEDIA / UPLOADS
+# ============================================
+# Upload directories (ajuste conforme necessário)
+uploads/
+static/uploads/
+media/
+
+# Video / Image test files
+test_videos/
+test_images/
+sample_data/
+
+# Exceto assets necessários
+!static/img/.gitkeep
+!static/css/
+!static/js/
+
+# ============================================
+# 🔒 SECRETS / SENSITIVE DATA
+# ============================================
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+.env.test
+
+# Secrets
+secrets.json
+config.json
+credentials.json
+*.pem
+*.key
+*.cert
+*.crt
+
+# ============================================
+# 🖥️ OS SPECIFIC
+# ============================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ============================================
+# 🔧 CONFIGURAÇÕES LOCAIS
+# ============================================
+# Config overrides
+config.local.py
+config.override.py
+settings.local.py
+
+# ============================================
+# 📊 OUTROS
+# ============================================
+# Coverage reports
+htmlcov/
+.coverage
+
+# Documentation builds
+docs/_build/
+
+# Compiled files
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Archives
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# ============================================
+# ✅ ARQUIVOS IMPORTANTES (SEMPRE INCLUIR)
+# ============================================
+# Force include important files
+!.gitignore
+!README.md
+!requirements.txt
+!package.json
+!docker-compose.yml
+!Dockerfile
+!.env.example
+
+# ============================================
+# 📝 NOTAS
+# ============================================
+# Este .gitignore foi gerado automaticamente
+# Data: 2026-01-04
+# Projeto: YOLO Dashboard (Backend Flask + Frontend React)

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Ark - Computer Vision{% endblock %}</title>
+
+  <!-- Tailwind CSS Compilado -->
+  <link rel="stylesheet" href="/static/css/output.css">
+
+  {% block extrahead %}{% endblock %}
+</head>
+
+<body class="bg-dark-bg text-white min-h-screen">
+  {% include "sidebar.html" %}
+
+  <div class="lg:ml-64">
+    {% block pagecontent %}{% endblock %}
+  </div>
+</body>
+
+</html>

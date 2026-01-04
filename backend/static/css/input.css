@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom utilities */
+@layer utilities {
+    .card-hover {
+        @apply transition-all duration-200 ease-in-out;
+    }
+
+    .card-hover:hover {
+        @apply -translate-y-0.5 shadow-xl;
+    }
+
+    .glow-blue {
+        box-shadow: 0 0 25px rgba(59, 130, 246, 0.4);
+    }
+}
+
+/* Scrollbar customizado */
+@layer base {
+    ::-webkit-scrollbar {
+        @apply w-2 h-2;
+    }
+
+    ::-webkit-scrollbar-track {
+        @apply bg-dark-bg;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        @apply bg-dark-border rounded;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        @apply bg-accent-blue;
+    }
+}
+
+/* Animações */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.2s ease-in;
+}

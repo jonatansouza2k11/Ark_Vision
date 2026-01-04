@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Ark{% endblock %}
+
+{% block pagecontent %}
+<div class="min-h-screen p-6">
+  <div class="max-w-7xl mx-auto">
+
+    <!-- Header -->
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold mb-2">Dashboard</h1>
+      <p class="text-gray-400">Monitoramento em tempo real</p>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+
+      <!-- In Zone -->
+      <div class="bg-dark-card p-6 rounded-xl border border-dark-border">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-gray-400 text-sm">Na Zona</span>
+          <span class="text-2xl">✅</span>
+        </div>
+        <p class="text-3xl font-bold" id="statInzone">0</p>
+      </div>
+
+      <!-- Out Zone -->
+      <div class="bg-dark-card p-6 rounded-xl border border-dark-border">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-gray-400 text-sm">Fora da Zona</span>
+          <span class="text-2xl">🚫</span>
+        </div>
+        <p class="text-3xl font-bold text-red-400" id="statOutzone">0</p>
+      </div>
+
+      <!-- Total Alerts -->
+      <div class="bg-dark-card p-6 rounded-xl border border-dark-border">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-gray-400 text-sm">Alertas Totais</span>
+          <span class="text-2xl">🚨</span>
+        </div>
+        <p class="text-3xl font-bold text-yellow-400" id="statAlerts">0</p>
+      </div>
+
+      <!-- FPS -->
+      <div class="bg-dark-card p-6 rounded-xl border border-dark-border">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-gray-400 text-sm">FPS</span>
+          <span class="text-2xl">⚡</span>
+        </div>
+        <p class="text-3xl font-bold text-accent-cyan" id="statFps">0.0</p>
+      </div>
+
+    </div>
+
+    <!-- Video Stream & Controls -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+
+      <!-- Video Stream -->
+      <div class="lg:col-span-2 bg-dark-card rounded-xl border border-dark-border overflow-hidden">
+
+        <!-- Stream Header -->
+        <div class="p-4 border-b border-dark-border flex items-center justify-between">
+          <div>
+            <h2 class="font-semibold">Stream ao Vivo</h2>
+            <p class="text-sm text-gray-400" id="streamSource">Câmera Principal</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse" id="streamIndicator"></span>
+            <span class="text-sm text-gray-400" id="streamStatus">Carregando...</span>
+          </div>
+        </div>
+
+        <!-- Video Container -->
+        <div class="relative bg-black aspect-video flex items-center justify-center">
+          <img id="videoStream" src="/video_feed" alt="YOLO Stream" class="w-full h-full object-contain"
+            onerror="handleStreamError()" />
+
+          <!-- Placeholder quando stream está parado -->
+          <div id="streamPlaceholder" class="absolute inset-0 flex items-center justify-center text-gray-500 hidden">
+            <div class="text-center">
+              <span class="text-6xl mb-4 block">📹</span>
+              <p class="text-xl font-semibold mb-2">Stream Indisponível</p>
+              <p class="text-sm mb-4">Inicie o sistema YOLO para visualizar</p>
+              <button onclick="startStream()" class="px-6 py-2 bg-accent-blue hover:bg-blue-600 rounded-lg transition">
+                ▶️ Iniciar Stream
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="space-y-4">
+
+        <!-- System Info -->
+        <div class="bg-dark-card p-4 rounded-xl border border-dark-border">
+          <h3 class="font-semibold mb-3">Informações do Sistema</h3>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-gray-400">Modelo</span>
+              <span id="infoModel">YOLOv8</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">Detecções</span>
+              <span id="infoDetections">0</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">Status</span>
+              <span class="text-yellow-400" id="infoStatus">Aguardando</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="bg-dark-card p-4 rounded-xl border border-dark-border">
+          <h3 class="font-semibold mb-3">Controles</h3>
+          <div class="space-y-2">
+            <button id="btnStart" onclick="startStream()"
+              class="w-full px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition">
+              ▶️ Iniciar
+            </button>
+            <button id="btnPause" onclick="pauseStream()"
+              class="hidden w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg transition">
+              ⏸️ Pausar
+            </button>
+            <button id="btnStop" onclick="stopStream()"
+              class="hidden w-full px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition">
+              ⏹️ Parar
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="bg-dark-card p-4 rounded-xl border border-dark-border">
+          <h3 class="font-semibold mb-3">Ações Rápidas</h3>
+          <div class="space-y-2">
+            <a href="/settings"
+              class="block w-full px-4 py-2 bg-accent-blue hover:bg-blue-600 rounded-lg transition text-center">
+              ⚙️ Configurações
+            </a>
+            <a href="/logs"
+              class="block w-full px-4 py-2 bg-dark-bg hover:bg-gray-700 rounded-lg transition text-center">
+              📋 Ver Logs
+            </a>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Recent Alerts -->
+    <div class="bg-dark-card rounded-xl border border-dark-border p-6">
+      <h2 class="text-xl font-semibold mb-4">Alertas Recentes</h2>
+      <div id="recentAlerts" class="space-y-2">
+        <p class="text-gray-400 text-sm">Nenhum alerta recente</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // ============================================
+  // ESTADO GLOBAL
+  // ============================================
+  // Estados possíveis: stopped, running, paused
+  let currentState = 'stopped';
+
+  // ============================================
+  // HANDLE STREAM ERROR
+  // ============================================
+  function handleStreamError() {
+    const videoStream = document.getElementById('videoStream');
+    const placeholder = document.getElementById('streamPlaceholder');
+    const indicator = document.getElementById('streamIndicator');
+    const statusText = document.getElementById('streamStatus');
+
+    videoStream.classList.add('hidden');
+    placeholder.classList.remove('hidden');
+    indicator.className = 'w-2 h-2 bg-red-500 rounded-full';
+    statusText.textContent = 'Parado';
+    currentState = 'stopped';
+    updateButtons();
+  }
+
+  // ============================================
+  // UPDATE BUTTON VISIBILITY
+  // ============================================
+  function updateButtons() {
+    const btnStart = document.getElementById('btnStart');
+    const btnPause = document.getElementById('btnPause');
+    const btnStop = document.getElementById('btnStop');
+
+    // Esconder todos primeiro
+    btnStart.classList.add('hidden');
+    btnPause.classList.add('hidden');
+    btnStop.classList.add('hidden');
+
+    if (currentState === 'stopped') {
+      // ✅ Estado: STOPPED → Mostra só [Iniciar]
+      btnStart.classList.remove('hidden');
+      btnStart.innerHTML = '▶️ Iniciar';
+    } else if (currentState === 'running') {
+      // ✅ Estado: RUNNING → Mostra [Pausar] e [Parar]
+      btnPause.classList.remove('hidden');
+      btnStop.classList.remove('hidden');
+      btnPause.innerHTML = '⏸️ Pausar';
+    } else if (currentState === 'paused') {
+      // ✅ Estado: PAUSED → Mostra [Retomar] e [Parar]
+      btnPause.classList.remove('hidden');
+      btnStop.classList.remove('hidden');
+      btnPause.innerHTML = '▶️ Retomar';
+    }
+  }
+
+  // ============================================
+  // START STREAM
+  // ============================================
+  async function startStream() {
+    try {
+      const response = await fetch('/stream/start', { method: 'POST' });
+      const data = await response.json();
+
+      if (response.ok) {
+        // Reload stream image
+        const videoStream = document.getElementById('videoStream');
+        const placeholder = document.getElementById('streamPlaceholder');
+
+        videoStream.src = '/video_feed?' + new Date().getTime();
+        videoStream.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+
+        currentState = 'running';
+        updateStreamStatus('running');
+        updateButtons();
+        //fetchStats();
+      }
+    } catch (error) {
+      console.error('Erro ao iniciar stream:', error);
+    }
+  }
+
+  // ============================================
+  // PAUSE/RESUME STREAM (TOGGLE)
+  // ============================================
+  async function pauseStream() {
+    try {
+      const response = await fetch('/stream/pause', { method: 'POST' });
+      const data = await response.json();
+
+      if (response.ok) {
+        // Data retorna {status: "paused" ou "running"}
+        currentState = data.status;
+        updateStreamStatus(data.status);
+        updateButtons();
+        //fetchStats();
+      }
+    } catch (error) {
+      console.error('Erro ao pausar/retomar stream:', error);
+    }
+  }
+
+  // ============================================
+  // STOP STREAM
+  // ============================================
+  async function stopStream() {
+    try {
+      const response = await fetch('/stream/stop', { method: 'POST' });
+      const data = await response.json();
+
+      if (response.ok) {
+        const videoStream = document.getElementById('videoStream');
+        const placeholder = document.getElementById('streamPlaceholder');
+
+        videoStream.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+
+        currentState = 'stopped';
+        updateStreamStatus('stopped');
+        updateButtons();
+        //fetchStats();
+      }
+    } catch (error) {
+      console.error('Erro ao parar stream:', error);
+    }
+  }
+
+  // ============================================
+  // UPDATE STREAM STATUS INDICATOR
+  // ============================================
+  function updateStreamStatus(status) {
+    const indicator = document.getElementById('streamIndicator');
+    const statusText = document.getElementById('streamStatus');
+    const infoStatus = document.getElementById('infoStatus');
+
+    if (status === 'running') {
+      indicator.className = 'w-2 h-2 bg-green-500 rounded-full animate-pulse';
+      statusText.textContent = 'Rodando';
+      infoStatus.textContent = 'Rodando';
+      infoStatus.className = 'text-green-400';
+    } else if (status === 'paused') {
+      indicator.className = 'w-2 h-2 bg-yellow-500 rounded-full';
+      statusText.textContent = 'Pausado';
+      infoStatus.textContent = 'Pausado';
+      infoStatus.className = 'text-yellow-400';
+    } else {
+      indicator.className = 'w-2 h-2 bg-red-500 rounded-full';
+      statusText.textContent = 'Parado';
+      infoStatus.textContent = 'Parado';
+      infoStatus.className = 'text-red-400';
+    }
+  }
+
+  // ============================================
+  // FETCH STATS FROM API
+  // ============================================
+  async function fetchStats() {
+    try {
+      const response = await fetch('/stream/status');
+      if (!response.ok) {
+        console.log('Stream status não disponível ainda');
+        return;
+      }
+
+      const data = await response.json();
+
+      // Update stats cards
+      document.getElementById('statInzone').textContent = data.inzone || 0;
+      document.getElementById('statOutzone').textContent = data.outzone || 0;
+      document.getElementById('statAlerts').textContent = data.detectedcount || 0;
+      document.getElementById('statFps').textContent = (data.fpsavg || 0).toFixed(1);
+      document.getElementById('infoDetections').textContent = data.detectedcount || 0;
+
+      // ✅ CORREÇÃO: Só atualiza estado se mudou (evita re-render desnecessário)
+      if (data.systemstatus && data.systemstatus !== currentState) {
+        console.log(`🔄 Estado mudou: ${currentState} → ${data.systemstatus}`);
+        currentState = data.systemstatus;
+        updateStreamStatus(data.systemstatus);
+        updateButtons();
+      }
+
+      // Update model name
+      if (data.preset) {
+        document.getElementById('infoModel').textContent = 'YOLOv8 (' + data.preset + ')';
+      }
+
+      // Update recent alerts (se disponível no futuro)
+      if (data.recentalerts && data.recentalerts.length > 0) {
+        const alertsHtml = data.recentalerts.slice(0, 5).map(alert => `
+          <div class="flex items-center gap-3 p-3 bg-dark-bg rounded-lg">
+            <span class="text-2xl">${alert.type === 'intrusion' ? '🚨' : '⚠️'}</span>
+            <div class="flex-1">
+              <p class="text-sm font-semibold">${alert.message}</p>
+              <p class="text-xs text-gray-400">${new Date(alert.timestamp).toLocaleString()}</p>
+            </div>
+          </div>
+        `).join('');
+        document.getElementById('recentAlerts').innerHTML = alertsHtml;
+      }
+    } catch (error) {
+      console.error('Erro ao buscar stats:', error);
+    }
+  }
+
+  // ============================================
+  // ✅ INICIALIZAÇÃO DO DASHBOARD
+  // ============================================
+  async function initializeDashboard() {
+    console.log('🚀 Inicializando dashboard...');
+
+    // ✅ Busca estado inicial da API (await garante que completa antes)
+    await fetchStats();
+
+    // ✅ Atualiza botões baseado no estado recebido
+    updateButtons();
+
+    console.log(`✅ Dashboard inicializado no estado: ${currentState}`);
+  }
+
+  // ============================================
+  // ✅ EXECUÇÃO: Inicializa quando página carrega
+  // ============================================
+  initializeDashboard();
+
+  // Atualiza stats a cada 5 segundos
+  setInterval(fetchStats, 5000);
+</script>
+
+{% endblock pagecontent %}

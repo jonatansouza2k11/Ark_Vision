@@ -1,0 +1,108 @@
+/* ============================================================================
+   ARK CV - CUSTOM STYLES
+   Variáveis de cores customizadas para o tema dark
+============================================================================ */
+
+:root {
+    /* Dark Theme Colors */
+    --dark-bg: #0f172a;
+    /* slate-900 */
+    --dark-card: #1e293b;
+    /* slate-800 */
+    --dark-border: #334155;
+    /* slate-700 */
+
+    /* Accent Colors */
+    --accent-blue: #3b82f6;
+    /* blue-500 */
+    --accent-cyan: #06b6d4;
+    /* cyan-500 */
+}
+
+/* Background Colors */
+.bg-dark-bg {
+    background-color: var(--dark-bg);
+}
+
+.bg-dark-card {
+    background-color: var(--dark-card);
+}
+
+/* Border Colors */
+.border-dark-border {
+    border-color: var(--dark-border);
+}
+
+/* Text Colors */
+.text-accent-blue {
+    color: var(--accent-blue);
+}
+
+.text-accent-cyan {
+    color: var(--accent-cyan);
+}
+
+/* Hover States */
+.hover\:bg-dark-bg:hover {
+    background-color: var(--dark-bg);
+}
+
+.hover\:border-accent-blue:hover {
+    border-color: var(--accent-blue);
+}
+
+/* Focus States */
+.focus\:ring-accent-blue:focus {
+    --tw-ring-color: var(--accent-blue);
+}
+
+/* Glow Effects */
+.glow-blue {
+    box-shadow: 0 0 25px rgba(59, 130, 246, 0.4);
+}
+
+/* Card Hover Effect */
+.card-hover {
+    transition: all 0.2s ease-in-out;
+}
+
+.card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Scrollbar customizado */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--dark-bg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--dark-border);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-blue);
+}
+
+/* Animações */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.2s ease-in;
+}
