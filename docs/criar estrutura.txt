@@ -1,1 +1,0 @@
-﻿tree /F /A > docs/estrutura_projeto.txt
