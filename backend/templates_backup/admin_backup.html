@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Backup de Logs - ARK YOLO{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>📦 Gerenciamento de Backups</h2>
+    <p class="text-muted">Sistema de backup automático de logs com compliance ANVISA/FDA</p>
+
+    <hr>
+
+    <!-- Estatísticas -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h5>{{ stats.total_backups }}</h5>
+                    <small>Total de Backups</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h5>{{ stats.total_size_mb }} MB</h5>
+                    <small>Espaço Usado</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h5>5 anos</h5>
+                    <small>Retenção</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card {{ 'bg-success' if stats.retention_compliant else 'bg-warning' }} text-white">
+                <div class="card-body">
+                    <h5>{{ '✅ Sim' if stats.retention_compliant else '⚠️ Não' }}</h5>
+                    <small>Compliant</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ações -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>⚙️ Ações de Backup</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" class="d-inline">
+                <input type="hidden" name="action" value="backup">
+                <button type="submit" class="btn btn-primary">
+                    📦 Executar Backup Agora
+                </button>
+            </form>
+
+            <form method="POST" class="d-inline">
+                <input type="hidden" name="action" value="verify">
+                <button type="submit" class="btn btn-info">
+                    🔍 Verificar Integridade
+                </button>
+            </form>
+
+            <form method="POST" class="d-inline">
+                <input type="hidden" name="action" value="cleanup_dry">
+                <button type="submit" class="btn btn-warning">
+                    🗑️ Simular Limpeza
+                </button>
+            </form>
+
+            <form method="POST" class="d-inline"
+                onsubmit="return confirm('⚠️ Confirma remoção de backups antigos? Esta ação não pode ser desfeita!');">
+                <input type="hidden" name="action" value="cleanup_real">
+                <button type="submit" class="btn btn-danger">
+                    🗑️ Executar Limpeza Real
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Backups Recentes -->
+    <div class="card">
+        <div class="card-header">
+            <h5>📋 Backups Recentes (últimos 20)</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead>
+                        <tr>
+                            <th>Arquivo</th>
+                            <th>Data</th>
+                            <th>Tamanho</th>
+                            <th>Caminho</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for backup in recent_backups %}
+                        <tr>
+                            <td>de>{{ backup.filename }}</code></td>
+                            <td>{{ backup.date }}</td>
+                            <td>{{ backup.size_kb }} KB</td>
+                            <td><small class="text-muted">{{ backup.path }}</small></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-info mt-4">
+        <strong>ℹ️ Informações:</strong>
+        <ul class="mb-0">
+            <li>Backups são comprimidos com gzip (economia média de 80%)</li>
+            <li>Arquivos são protegidos contra alteração (read-only)</li>
+            <li>Retenção de 5 anos conforme ANVISA/FDA</li>
+            <li>Metadata em JSON para cada backup</li>
+            <li>Organize backups mensalmente em: de>logs/archive/YYYY-MM/</code></li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

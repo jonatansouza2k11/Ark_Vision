@@ -16,7 +16,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from yolo import YOLOVisionSystem, get_memory_usage_mb, _load_zones_rich_from_db
+from backend.yolo import YOLOVisionSystem, get_memory_usage_mb, _load_zones_rich_from_db
 import config as app_config
 
 

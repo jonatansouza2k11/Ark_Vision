@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+
+{% block title %}Configurações - Ark{% endblock %}
+
+{% block pagecontent %}
+<div class="min-h-screen p-6">
+  <div class="max-w-7xl mx-auto">
+    <!-- Header -->
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold mb-2">Configurações</h1>
+      <p class="text-gray-400">Configure o sistema YOLO e zonas de detecção</p>
+    </div>
+
+    <!-- Success/Error Messages -->
+    <div id="successMsg" class="hidden mb-4 p-4 bg-green-900 text-green-100 rounded-lg">
+      Configurações salvas com sucesso!
+    </div>
+    <div id="errorMsg" class="hidden mb-4 p-4 bg-red-900 text-red-100 rounded-lg">
+      Erro ao salvar configurações
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Left Column - Settings Form -->
+      <div class="lg:col-span-2 space-y-6">
+        <!-- YOLO Configuration -->
+        <div class="bg-dark-card rounded-xl border border-dark-border p-6">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+            <span>🤖</span>
+            Configuração YOLO
+          </h2>
+
+          <form id="yoloForm" class="space-y-4">
+            <!-- Model Selection -->
+            <div>
+              <label class="block text-sm font-medium mb-2">Modelo YOLO</label>
+              <select name="model_path"
+                class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+                {% if available_models %}
+                {% for model in available_models %}
+                <option value="{{ model }}" {% if config.model_path==model %}selected{% endif %}>
+                  {{ model.split('/')[-1] }}
+                </option>
+                {% endfor %}
+                {% else %}
+                <option value="backend/yolo_models/yolov8n.pt">yolov8n.pt</option>
+                {% endif %}
+              </select>
+            </div>
+
+            <!-- Confidence Threshold -->
+            <div>
+              <label class="block text-sm font-medium mb-2">
+                Confiança Mínima: <span id="confValue">{{ config.conf_thresh }}</span>
+              </label>
+              <input type="range" name="conf_thresh" min="0.1" max="0.95" step="0.05" value="{{ config.conf_thresh }}"
+                class="w-full" oninput="document.getElementById('confValue').textContent = this.value">
+            </div>
+
+            <!-- Tracker -->
+            <div>
+              <label class="block text-sm font-medium mb-2">Algoritmo de Tracking</label>
+              <select name="tracker"
+                class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+                <option value="botsort.yaml" {% if config.tracker=='botsort.yaml' %}selected{% endif %}>BoT-SORT
+                </option>
+                <option value="bytetrack.yaml" {% if config.tracker=='bytetrack.yaml' %}selected{% endif %}>ByteTrack
+                </option>
+              </select>
+            </div>
+
+            <!-- Grid Layout for Numeric Fields -->
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium mb-2">Largura do Frame</label>
+                <input type="number" name="target_width" value="{{ config.target_width }}"
+                  class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-2">Frame Step</label>
+                <input type="number" name="frame_step" value="{{ config.frame_step }}"
+                  class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+              </div>
+            </div>
+
+            <button type="submit"
+              class="w-full px-6 py-3 bg-accent-blue hover:bg-blue-600 rounded-lg font-semibold transition">
+              💾 Salvar Configurações YOLO
+            </button>
+          </form>
+        </div>
+
+        <!-- Camera Configuration -->
+        <div class="bg-dark-card rounded-xl border border-dark-border p-6">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+            <span>📹</span>
+            Configuração da Câmera
+          </h2>
+
+          <form id="cameraForm" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium mb-2">Fonte de Vídeo</label>
+              <input type="text" name="source" value="{{ config.source }}" placeholder="0, 1, rtsp://..., video.mp4"
+                class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+              <p class="text-xs text-gray-400 mt-1">0 = webcam, 1 = câmera USB, RTSP URL, ou caminho do vídeo</p>
+            </div>
+
+            <div class="grid grid-cols-3 gap-4">
+              <div>
+                <label class="block text-sm font-medium mb-2">Largura</label>
+                <input type="number" name="cam_width" value="{{ config.cam_width }}"
+                  class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-2">Altura</label>
+                <input type="number" name="cam_height" value="{{ config.cam_height }}"
+                  class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-2">FPS</label>
+                <input type="number" name="cam_fps" value="{{ config.cam_fps }}"
+                  class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+              </div>
+            </div>
+
+            <button type="submit"
+              class="w-full px-6 py-3 bg-accent-blue hover:bg-blue-600 rounded-lg font-semibold transition">
+              💾 Salvar Configurações da Câmera
+            </button>
+          </form>
+        </div>
+
+        <!-- Alert Configuration -->
+        <div class="bg-dark-card rounded-xl border border-dark-border p-6">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+            <span>⚠️</span>
+            Configuração de Alertas
+          </h2>
+
+          <form id="alertForm" class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium mb-2">Cooldown de E-mail (s)</label>
+                <input type="number" name="email_cooldown" value="{{ config.email_cooldown }}"
+                  class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-2">Tempo Máx. Fora (s)</label>
+                <input type="number" name="max_out_time" value="{{ config.max_out_time }}" step="0.1"
+                  class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium mb-2">Buffer de Vídeo (s)</label>
+                <input type="number" name="buffer_seconds" value="{{ config.buffer_seconds }}" step="0.1"
+                  class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-2">Zona Vazia Timeout (s)</label>
+                <input type="number" name="zone_empty_timeout" value="{{ config.zone_empty_timeout }}" step="0.1"
+                  class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+              </div>
+            </div>
+
+            <button type="submit"
+              class="w-full px-6 py-3 bg-accent-blue hover:bg-blue-600 rounded-lg font-semibold transition">
+              💾 Salvar Configurações de Alertas
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Right Column - Zones & Quick Info -->
+      <div class="space-y-6">
+        <!-- Active Zones -->
+        <div class="bg-dark-card rounded-xl border border-dark-border p-6">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+            <span>🎯</span>
+            Zonas Ativas
+          </h2>
+
+          {% if zones_meta and zones_meta|length > 0 %}
+          <div class="space-y-3">
+            {% for zone in zones_meta %}
+            <div class="p-3 bg-dark-bg rounded-lg border border-dark-border">
+              <div class="flex items-center justify-between mb-2">
+                <span class="font-semibold">{{ zone.name }}</span>
+                <span class="text-xs px-2 py-1 bg-accent-blue rounded">{{ zone.zone_type }}</span>
+              </div>
+              <p class="text-xs text-gray-400">
+                {{ zone.points|length }} pontos •
+                {% if zone.enabled %}
+                <span class="text-green-400">Ativa</span>
+                {% else %}
+                <span class="text-red-400">Inativa</span>
+                {% endif %}
+              </p>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="text-gray-400 text-sm">Nenhuma zona configurada</p>
+          {% endif %}
+
+          <button
+            class="w-full mt-4 px-4 py-2 bg-dark-bg hover:bg-gray-700 border border-dark-border rounded-lg transition text-sm">
+            ➕ Adicionar Nova Zona
+          </button>
+        </div>
+
+        <!-- System Status -->
+        <div class="bg-dark-card rounded-xl border border-dark-border p-6">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+            <span>📊</span>
+            Status do Sistema
+          </h2>
+
+          <div class="space-y-3 text-sm">
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400">API</span>
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                Online
+              </span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400">Banco de Dados</span>
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                Conectado
+              </span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400">Detecção YOLO</span>
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                Configurado
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="bg-dark-card rounded-xl border border-dark-border p-6">
+          <h2 class="text-xl font-semibold mb-4">Ações Rápidas</h2>
+          <div class="space-y-2">
+            <a href="/diagnostics"
+              class="block w-full px-4 py-2 bg-dark-bg hover:bg-gray-700 rounded-lg transition text-center text-sm">
+              🔍 Diagnóstico do Banco
+            </a>
+            <a href="/docs" target="_blank"
+              class="block w-full px-4 py-2 bg-dark-bg hover:bg-gray-700 rounded-lg transition text-center text-sm">
+              📚 Documentação da API
+            </a>
+            <a href="/"
+              class="block w-full px-4 py-2 bg-accent-blue hover:bg-blue-600 rounded-lg transition text-center text-sm">
+              📊 Voltar ao Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Form submissions
+  document.getElementById('yoloForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData);
+
+    // TODO: Enviar para API
+    console.log('YOLO Config:', data);
+    showSuccess();
+  });
+
+  document.getElementById('cameraForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData);
+
+    // TODO: Enviar para API
+    console.log('Camera Config:', data);
+    showSuccess();
+  });
+
+  document.getElementById('alertForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData);
+
+    // TODO: Enviar para API
+    console.log('Alert Config:', data);
+    showSuccess();
+  });
+
+  function showSuccess() {
+    const msg = document.getElementById('successMsg');
+    msg.classList.remove('hidden');
+    setTimeout(() => msg.classList.add('hidden'), 3000);
+  }
+
+  function showError() {
+    const msg = document.getElementById('errorMsg');
+    msg.classList.remove('hidden');
+    setTimeout(() => msg.classList.add('hidden'), 3000);
+  }
+</script>
+{% endblock %}

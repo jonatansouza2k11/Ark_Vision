@@ -21,24 +21,37 @@ export default function Login() {
         setLoading(true);
 
         try {
-            // ✅ Envia JSON ao invés de FormData
+            // ✅ Criar URLSearchParams
+            const loginData = new URLSearchParams();
+            loginData.append('username', formData.username);
+            loginData.append('password', formData.password);
+
+            // 🔍 DEBUG: Log do que está sendo enviado
+            console.log('📤 Sending login request:', {
+                username: formData.username,
+                password: formData.password.replace(/./g, '*'), // Ocultar senha
+                body: loginData.toString(),
+            });
+
             const response = await fetch('http://localhost:8000/api/v1/auth/login', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',  // ✅ IMPORTANTE!
+                    'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: JSON.stringify({
-                    username: formData.username,
-                    password: formData.password,
-                }),
+                body: loginData,
             });
+
+            // 🔍 DEBUG: Log da resposta
+            console.log('📥 Response status:', response.status);
 
             if (!response.ok) {
                 const errorData = await response.json();
+                console.error('❌ Error response:', errorData);
                 throw new Error(errorData.detail || 'Credenciais inválidas');
             }
 
             const data = await response.json();
+            console.log('✅ Login successful:', data);
 
             // Buscar dados do usuário
             const userResponse = await fetch('http://localhost:8000/api/v1/auth/me', {
@@ -52,6 +65,7 @@ export default function Login() {
             }
 
             const userData = await userResponse.json();
+            console.log('✅ User data:', userData);
 
             // Salvar no store
             login(userData, data.access_token);
@@ -59,12 +73,12 @@ export default function Login() {
             // Navegar para dashboard
             navigate('/');
         } catch (err) {
+            console.error('❌ Login error:', err);
             setError(err instanceof Error ? err.message : 'Erro ao fazer login');
         } finally {
             setLoading(false);
         }
     };
-
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">

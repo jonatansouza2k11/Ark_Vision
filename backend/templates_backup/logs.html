@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}Histórico - Ark{% endblock %}
+
+{% block pagecontent %}
+<div class="min-h-screen p-6">
+  <div class="max-w-7xl mx-auto">
+    <!-- Header -->
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold mb-2">Histórico de Alertas</h1>
+      <p class="text-gray-400">Logs de detecções e ações do sistema</p>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-dark-card rounded-xl border border-dark-border p-4 mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div>
+          <label class="block text-sm font-medium mb-2">Tipo de Alerta</label>
+          <select
+            class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+            <option value="all">Todos</option>
+            <option value="intrusion">Intrusão</option>
+            <option value="zone_violation">Violação de Zona</option>
+            <option value="system">Sistema</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-2">Data Início</label>
+          <input type="date"
+            class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-2">Data Fim</label>
+          <input type="date"
+            class="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg focus:ring-2 focus:ring-accent-blue">
+        </div>
+
+        <div class="flex items-end">
+          <button class="w-full px-4 py-2 bg-accent-blue hover:bg-blue-600 rounded-lg transition">
+            🔍 Filtrar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Summary -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-dark-card p-4 rounded-xl border border-dark-border">
+        <p class="text-gray-400 text-sm mb-1">Total de Alertas</p>
+        <p class="text-2xl font-bold">{{ alerts|length if alerts else 0 }}</p>
+      </div>
+      <div class="bg-dark-card p-4 rounded-xl border border-dark-border">
+        <p class="text-gray-400 text-sm mb-1">Hoje</p>
+        <p class="text-2xl font-bold">0</p>
+      </div>
+      <div class="bg-dark-card p-4 rounded-xl border border-dark-border">
+        <p class="text-gray-400 text-sm mb-1">Esta Semana</p>
+        <p class="text-2xl font-bold">0</p>
+      </div>
+      <div class="bg-dark-card p-4 rounded-xl border border-dark-border">
+        <p class="text-gray-400 text-sm mb-1">Este Mês</p>
+        <p class="text-2xl font-bold">0</p>
+      </div>
+    </div>
+
+    <!-- Alerts Table -->
+    <div class="bg-dark-card rounded-xl border border-dark-border overflow-hidden">
+      <div class="p-4 border-b border-dark-border">
+        <h2 class="font-semibold">Alertas Registrados</h2>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="bg-dark-bg">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Data/Hora</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Tipo</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Mensagem</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Zona</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Ações</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-dark-border">
+            {% if alerts and alerts|length > 0 %}
+            {% for alert in alerts %}
+            <tr class="hover:bg-dark-bg transition">
+              <td class="px-6 py-4 text-sm">
+                {{ alert.timestamp.strftime('%d/%m/%Y %H:%M:%S') if alert.timestamp else 'N/A' }}
+              </td>
+              <td class="px-6 py-4">
+                <span class="px-2 py-1 text-xs rounded-full 
+                                        {% if alert.alert_type == 'intrusion' %}bg-red-900 text-red-100
+                                        {% elif alert.alert_type == 'zone_violation' %}bg-yellow-900 text-yellow-100
+                                        {% else %}bg-blue-900 text-blue-100{% endif %}">
+                  {{ alert.alert_type }}
+                </span>
+              </td>
+              <td class="px-6 py-4 text-sm">{{ alert.message }}</td>
+              <td class="px-6 py-4 text-sm text-gray-400">{{ alert.zone_name or 'N/A' }}</td>
+              <td class="px-6 py-4">
+                <button class="text-accent-blue hover:text-blue-400 text-sm">
+                  👁️ Ver Vídeo
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr>
+              <td colspan="5" class="px-6 py-8 text-center text-gray-400">
+                <div class="flex flex-col items-center gap-2">
+                  <span class="text-4xl">📋</span>
+                  <p>Nenhum alerta registrado</p>
+                  <p class="text-sm">Alertas aparecerão aqui quando o sistema detectar eventos</p>
+                </div>
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div class="p-4 border-t border-dark-border flex items-center justify-between">
+        <p class="text-sm text-gray-400">Mostrando 0 de 0 alertas</p>
+        <div class="flex gap-2">
+          <button class="px-3 py-1 bg-dark-bg hover:bg-gray-700 rounded border border-dark-border transition text-sm"
+            disabled>
+            ← Anterior
+          </button>
+          <button class="px-3 py-1 bg-dark-bg hover:bg-gray-700 rounded border border-dark-border transition text-sm"
+            disabled>
+            Próximo →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- System Actions Log -->
+    <div class="mt-6 bg-dark-card rounded-xl border border-dark-border">
+      <div class="p-4 border-b border-dark-border">
+        <h2 class="font-semibold">Log de Ações do Sistema</h2>
+      </div>
+      <div class="p-6">
+        {% if systemactions and systemactions|length > 0 %}
+        <div class="space-y-2">
+          {% for action in systemactions %}
+          <div class="flex items-start gap-3 p-3 bg-dark-bg rounded-lg">
+            <span class="text-xl">📝</span>
+            <div class="flex-1">
+              <p class="text-sm">{{ action.message }}</p>
+              <p class="text-xs text-gray-400">{{ action.timestamp.strftime('%d/%m/%Y %H:%M:%S') }}</p>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-gray-400 text-sm text-center py-4">Nenhuma ação registrada</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -73,7 +73,7 @@ async def create_admin_user():
         print("=" * 70)
         print()
         print("🚀 Agora você pode fazer login no sistema!")
-        print(f"   Frontend: http://localhost:5173")
+        print(f"   Frontend: http://localhost:3000")
         print(f"   API: http://localhost:8000/docs")
         print("=" * 70)
     else:

@@ -145,3 +145,65 @@ export interface DashboardData {
     stats: DashboardStats;
     recent_activities: Activity[];
 }
+
+// ============================================================================
+// STREAM STATUS - Resposta da API /stream/status (Backend Python - snake_case)
+// ============================================================================
+export interface YOLOStats {
+    // Status do Sistema (snake_case - vem do Python)
+    system_status: 'stopped' | 'running' | 'paused';
+    stream_active: boolean;
+    paused: boolean;
+
+    // Zonas (dados em tempo real)
+    in_zone: number;
+    out_zone: number;
+
+    // Detecções e Performance
+    detected_count: number;
+
+    // ✅ FPS - Adicionado para corrigir os erros
+    fps?: number;          // FPS atual/instantâneo
+    fps_inst?: number;     // FPS instantâneo (alternativa)
+    fps_avg?: number;      // FPS médio
+
+    // Memória e Performance
+    memory_mb?: number;
+    peak_memory_mb?: number;
+    frame_count?: number;
+
+    // Modelo
+    preset?: string;
+    model?: string;
+
+    // Zonas detalhadas (opcional)
+    zones?: Array<{
+        index: number;
+        name: string;
+        mode: string;
+        count: number;
+        empty_for: number | null;
+        full_for: number | null;
+        state: string;
+    }>;
+
+    // Alertas Recentes (opcional)
+    recent_alerts?: AlertRecent[];
+}
+
+export interface AlertRecent {
+    type: 'intrusion' | 'warning' | 'info';
+    message: string;
+    timestamp: string;
+    zone_id?: string;
+    person_id?: number;
+}
+
+
+export interface AlertRecent {
+    type: 'intrusion' | 'warning' | 'info';
+    message: string;
+    timestamp: string;
+    zone_id?: string;
+    person_id?: number;
+}

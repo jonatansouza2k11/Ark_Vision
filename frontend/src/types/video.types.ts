@@ -1,3 +1,4 @@
+
 export interface VideoStatus {
     system_status: 'running' | 'paused' | 'stopped';
     stream_active: boolean;

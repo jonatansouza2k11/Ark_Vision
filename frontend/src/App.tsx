@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
+import Settings from './pages/Settings'; // ✅ NOVO
+import Logs from './pages/Logs'; // ✅ NOVO
 import NotFound from './pages/NotFound';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuthStore } from './store/authStore';
@@ -66,6 +68,25 @@ function App() {
           element={
             <ProtectedRoute adminOnly>
               <Users />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ NOVAS ROTAS */}
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <Settings />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/logs"
+          element={
+            <ProtectedRoute>
+              <Logs />
             </ProtectedRoute>
           }
         />

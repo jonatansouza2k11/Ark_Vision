@@ -10,22 +10,6 @@ from typing import Optional
 from pydantic import ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# ============================================
-# 🐛 DEBUG: Verificar caminho do .env
-# ============================================
-#from pathlib import Path
-#_BASE_DIR = Path(__file__).resolve().parent.parent
-#_ENV_FILE = _BASE_DIR / ".env"
-#print(f"🔍 DEBUG: Procurando .env em: {_ENV_FILE}")
-#print(f"🔍 DEBUG: Arquivo existe? {_ENV_FILE.exists()}")
-#if _ENV_FILE.exists():
-#    print(f"🔍 DEBUG: Primeiras 5 linhas do .env:")
-#    with open(_ENV_FILE, 'r', encoding='utf-8') as f:
-#        for i, line in enumerate(f):
-#            if i >= 5:
-#                break
-#            print(f"   {line.rstrip()}")
-#print("=" * 70)
 
 class Settings(BaseSettings):
     """Configurações validadas com Pydantic"""

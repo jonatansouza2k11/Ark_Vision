@@ -1,7 +1,7 @@
 // src/components/layout/MainLayout.tsx
 import { ReactNode, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, LogOut, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, Menu, X, Settings, FileText } from 'lucide-react'; // ✅ Adiciona Settings, FileText
 import { useAuthStore } from '../../store/authStore';
 
 interface MainLayoutProps {
@@ -21,8 +21,11 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
   const isActive = (path: string) => location.pathname === path;
 
+  // ✅ ATUALIZADO: adiciona Settings e Logs
   const navLinks = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/settings', icon: Settings, label: 'Configurações' }, // ✅ NOVO
+    { path: '/logs', icon: FileText, label: 'Logs' }, // ✅ NOVO
     { path: '/users', icon: Users, label: 'Usuários', adminOnly: true },
   ];
 
@@ -53,11 +56,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
                     <Link
                       key={link.path}
                       to={link.path}
-                      className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                        isActive(link.path)
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'text-gray-700 hover:text-blue-600 hover:bg-blue-50'
-                      }`}
+                      className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${isActive(link.path)
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'text-gray-700 hover:text-blue-600 hover:bg-blue-50'
+                        }`}
                     >
                       <Icon className="w-4 h-4" />
                       {link.label}
@@ -118,11 +120,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
                     key={link.path}
                     to={link.path}
                     onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
-                      isActive(link.path)
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-700 hover:bg-gray-50'
-                    }`}
+                    className={`flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${isActive(link.path)
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                      }`}
                   >
                     <Icon className="w-5 h-5" />
                     {link.label}

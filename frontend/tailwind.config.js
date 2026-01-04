@@ -1,6 +1,5 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-    darkMode: ["class"],
     content: [
         "./index.html",
         "./src/**/*.{js,ts,jsx,tsx}",
@@ -8,23 +7,26 @@ export default {
     theme: {
         extend: {
             colors: {
-                primary: {
-                    50: '#f0f9ff',
-                    100: '#e0f2fe',
-                    200: '#bae6fd',
-                    300: '#7dd3fc',
-                    400: '#38bdf8',
-                    500: '#0ea5e9',
-                    600: '#0284c7',
-                    700: '#0369a1',
-                    800: '#075985',
-                    900: '#0c4a6e',
-                },
+                'dark-bg': '#0a0a0a',
+                'dark-card': '#1a1a1a',
+                'dark-border': '#2a2a2a',
+                'accent-cyan': '#00D9FF',
+                'accent-blue': '#3B82F6',
+                'accent-purple': '#8B5CF6',
             },
-            borderRadius: {
-                lg: "0.5rem",
-                md: "0.375rem",
-                sm: "0.25rem",
+            animation: {
+                'slide-in': 'slideIn 0.3s ease-out',
+                'slide-out': 'slideOut 0.3s ease-out',
+            },
+            keyframes: {
+                slideIn: {
+                    '0%': { transform: 'translateX(400px)', opacity: '0' },
+                    '100%': { transform: 'translateX(0)', opacity: '1' },
+                },
+                slideOut: {
+                    '0%': { transform: 'translateX(0)', opacity: '1' },
+                    '100%': { transform: 'translateX(400px)', opacity: '0' },
+                },
             },
         },
     },

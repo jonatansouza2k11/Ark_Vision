@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block title %}Diagnóstico - Ark{% endblock %}
+
+{% block pagecontent %}
+<div class="min-h-screen p-6">
+  <div class="max-w-7xl mx-auto">
+    <!-- Header -->
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold mb-2">Diagnóstico do Sistema</h1>
+      <p class="text-gray-400">Informações técnicas e status do banco de dados</p>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex gap-4 mb-6">
+      <button onclick="location.reload()" class="px-6 py-3 bg-accent-blue hover:bg-blue-600 rounded-lg transition">
+        🔄 Atualizar Diagnóstico
+      </button>
+      <button class="px-6 py-3 bg-dark-card hover:bg-gray-700 border border-dark-border rounded-lg transition">
+        💾 Exportar Relatório
+      </button>
+    </div>
+
+    <!-- Overall Status -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-dark-card p-6 rounded-xl border border-dark-border">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-gray-400 text-sm">Status Geral</span>
+          <span class="text-2xl">
+            {% if results.status == 'success' %}✅{% else %}❌{% endif %}
+          </span>
+        </div>
+        <p class="text-xl font-bold">
+          {% if results.status == 'success' %}Saudável{% else %}Com Problemas{% endif %}
+        </p>
+      </div>
+
+      <div class="bg-dark-card p-6 rounded-xl border border-dark-border">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-gray-400 text-sm">Usuários</span>
+          <span class="text-2xl">👥</span>
+        </div>
+        <p class="text-3xl font-bold">{{ results.data.users }}</p>
+      </div>
+
+      <div class="bg-dark-card p-6 rounded-xl border border-dark-border">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-gray-400 text-sm">Alertas</span>
+          <span class="text-2xl">⚠️</span>
+        </div>
+        <p class="text-3xl font-bold">{{ results.data.alerts }}</p>
+      </div>
+
+      <div class="bg-dark-card p-6 rounded-xl border border-dark-border">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-gray-400 text-sm">Logs</span>
+          <span class="text-2xl">📋</span>
+        </div>
+        <p class="text-3xl font-bold">{{ results.data.logs }}</p>
+      </div>
+    </div>
+
+    <!-- Database Tables -->
+    <div class="bg-dark-card rounded-xl border border-dark-border mb-6">
+      <div class="p-4 border-b border-dark-border">
+        <h2 class="font-semibold flex items-center gap-2">
+          <span>🗄️</span>
+          Tabelas do Banco de Dados
+        </h2>
+      </div>
+      <div class="p-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {% if results.tables %}
+          {% for table_name, count in results.tables.items() %}
+          <div class="p-4 bg-dark-bg rounded-lg border border-dark-border">
+            <div class="flex items-center justify-between mb-2">
+              <span class="font-medium">{{ table_name }}</span>
+              <span class="text-accent-cyan font-bold">{{ count }}</span>
+            </div>
+            <p class="text-xs text-gray-400">registros</p>
+          </div>
+          {% endfor %}
+          {% else %}
+          <p class="text-gray-400 col-span-3">Nenhuma tabela encontrada</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- YOLO Configuration -->
+    <div class="bg-dark-card rounded-xl border border-dark-border mb-6">
+      <div class="p-4 border-b border-dark-border">
+        <h2 class="font-semibold flex items-center gap-2">
+          <span>🤖</span>
+          Configuração YOLO
+        </h2>
+      </div>
+      <div class="p-6">
+        {% if results.yolo %}
+        <div class="grid grid-cols-2 gap-4">
+          {% for key, value in results.yolo.items() %}
+          <div class="flex justify-between p-3 bg-dark-bg rounded">
+            <span class="text-gray-400">{{ key }}:</span>
+            <span class="font-mono text-sm">{{ value }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-gray-400">Nenhuma configuração YOLO encontrada</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Zones Configuration -->
+    <div class="bg-dark-card rounded-xl border border-dark-border mb-6">
+      <div class="p-4 border-b border-dark-border">
+        <h2 class="font-semibold flex items-center gap-2">
+          <span>🎯</span>
+          Zonas Configuradas
+        </h2>
+      </div>
+      <div class="p-6">
+        {% if results.zone %}
+        <div class="space-y-3">
+          {% for zone_id, zone_info in results.zone.items() %}
+          <div class="p-4 bg-dark-bg rounded-lg border border-dark-border">
+            <div class="flex items-center justify-between mb-2">
+              <span class="font-medium">{{ zone_info.name }}</span>
+              <span class="text-xs px-2 py-1 bg-accent-blue rounded">{{ zone_info.type }}</span>
+            </div>
+            <p class="text-sm text-gray-400">
+              {{ zone_info.points|length }} pontos •
+              {% if zone_info.enabled %}
+              <span class="text-green-400">Ativa</span>
+              {% else %}
+              <span class="text-red-400">Inativa</span>
+              {% endif %}
+            </p>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-gray-400">Nenhuma zona configurada</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- System Information -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Camera Settings -->
+      <div class="bg-dark-card rounded-xl border border-dark-border">
+        <div class="p-4 border-b border-dark-border">
+          <h2 class="font-semibold flex items-center gap-2">
+            <span>📹</span>
+            Configuração da Câmera
+          </h2>
+        </div>
+        <div class="p-6">
+          {% if results.camera %}
+          <div class="space-y-2">
+            {% for key, value in results.camera.items() %}
+            <div class="flex justify-between p-2 bg-dark-bg rounded">
+              <span class="text-gray-400">{{ key }}:</span>
+              <span class="font-mono text-sm">{{ value }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="text-gray-400">Nenhuma configuração de câmera</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Email Settings -->
+      <div class="bg-dark-card rounded-xl border border-dark-border">
+        <div class="p-4 border-b border-dark-border">
+          <h2 class="font-semibold flex items-center gap-2">
+            <span>📧</span>
+            Configuração de E-mail
+          </h2>
+        </div>
+        <div class="p-6">
+          {% if results.email %}
+          <div class="space-y-2">
+            {% for key, value in results.email.items() %}
+            <div class="flex justify-between p-2 bg-dark-bg rounded">
+              <span class="text-gray-400">{{ key }}:</span>
+              <span class="font-mono text-sm">
+                {% if 'password' in key.lower() %}••••••••{% else %}{{ value }}{% endif %}
+              </span>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="text-gray-400">Nenhuma configuração de e-mail</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin Users -->
+    {% if results.admin %}
+    <div class="mt-6 bg-dark-card rounded-xl border border-dark-border">
+      <div class="p-4 border-b border-dark-border">
+        <h2 class="font-semibold flex items-center gap-2">
+          <span>👑</span>
+          Administradores
+        </h2>
+      </div>
+      <div class="p-6">
+        <div class="space-y-2">
+          {% for admin in results.admin %}
+          <div class="flex items-center gap-3 p-3 bg-dark-bg rounded-lg">
+            <div class="w-10 h-10 rounded-full bg-accent-blue flex items-center justify-center font-bold">
+              {{ admin.username[0].upper() }}
+            </div>
+            <div class="flex-1">
+              <p class="font-medium">{{ admin.username }}</p>
+              <p class="text-xs text-gray-400">{{ admin.email }}</p>
+            </div>
+            <span class="text-xs px-2 py-1 bg-green-900 text-green-100 rounded">Admin</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,7 +1,8 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import { ApiError } from '../types/api.types'; // ← MUDOU AQUI
+import { ApiError } from '../types/api.types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+// ✅ CORRIGIDO: Sem /api/v1 no fallback
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const api: AxiosInstance = axios.create({
     baseURL: API_URL,

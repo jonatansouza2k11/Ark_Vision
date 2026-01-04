@@ -1,0 +1,132 @@
+<!-- Sidebar -->
+<aside class="fixed top-0 left-0 h-screen w-64 bg-dark-card border-r border-dark-border z-50 hidden lg:block">
+  <div class="flex flex-col h-full p-6">
+    <!-- Logo -->
+    <div class="flex items-center gap-3 mb-8">
+      <div class="w-10 h-10 rounded-xl bg-accent-blue flex items-center justify-center text-xl font-bold shadow-lg">
+        A
+      </div>
+      <div>
+        <h1 class="text-xl font-bold">Ark</h1>
+        <p class="text-xs text-gray-400">Computer Vision</p>
+      </div>
+    </div>
+
+    <!-- Menu -->
+    <nav class="flex-1 space-y-2">
+      <a href="/"
+        class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-dark-bg transition {{ 'bg-dark-bg border-l-4 border-accent-blue' if request.url.path == '/' else '' }}">
+        <span class="text-xl">📊</span>
+        <span>Dashboard</span>
+      </a>
+
+      <a href="/settings"
+        class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-dark-bg transition {{ 'bg-dark-bg border-l-4 border-accent-blue' if request.url.path == '/settings' else '' }}">
+        <span class="text-xl">⚙️</span>
+        <span>Configurações</span>
+      </a>
+
+      <a href="/logs"
+        class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-dark-bg transition {{ 'bg-dark-bg border-l-4 border-accent-blue' if request.url.path == '/logs' else '' }}">
+        <span class="text-xl">📋</span>
+        <span>Histórico</span>
+      </a>
+
+      <a href="/diagnostics"
+        class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-dark-bg transition {{ 'bg-dark-bg border-l-4 border-accent-blue' if request.url.path == '/diagnostics' else '' }}">
+        <span class="text-xl">🔍</span>
+        <span>Diagnóstico</span>
+      </a>
+
+      <div class="border-t border-dark-border my-4"></div>
+
+      <a href="/docs" target="_blank"
+        class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-dark-bg transition text-gray-400 hover:text-white">
+        <span class="text-xl">📚</span>
+        <span>API Docs</span>
+      </a>
+    </nav>
+
+    <!-- User Info -->
+    <div class="mt-auto pt-4 border-t border-dark-border">
+      <div class="flex items-center gap-3 px-4 py-3 bg-dark-bg rounded-lg">
+        <div class="w-8 h-8 rounded-full bg-accent-cyan flex items-center justify-center font-bold text-sm">
+          {{ user.username[0].upper() if user else 'A' }}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold truncate">{{ user.username if user else 'Admin' }}</p>
+          <p class="text-xs text-gray-400">{{ user.role if user else 'admin' }}</p>
+        </div>
+        <a href="/auth/login" class="text-gray-400 hover:text-red-400 transition" title="Logout">
+          <span class="text-lg">🚪</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- Mobile Menu Button -->
+<div class="lg:hidden fixed top-4 left-4 z-50">
+  <button id="menuBtn" class="w-12 h-12 bg-dark-card rounded-xl flex items-center justify-center shadow-lg">
+    <span class="text-2xl">☰</span>
+  </button>
+</div>
+
+<!-- Mobile Sidebar Overlay -->
+<div id="mobileMenu" class="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40 hidden">
+  <aside
+    class="fixed top-0 left-0 h-screen w-64 bg-dark-card border-r border-dark-border transform -translate-x-full transition-transform"
+    id="mobileSidebar">
+    <!-- Same content as desktop sidebar -->
+    <div class="flex flex-col h-full p-6">
+      <div class="flex items-center gap-3 mb-8">
+        <div class="w-10 h-10 rounded-xl bg-accent-blue flex items-center justify-center text-xl font-bold shadow-lg">
+          A
+        </div>
+        <div>
+          <h1 class="text-xl font-bold">Ark</h1>
+          <p class="text-xs text-gray-400">Computer Vision</p>
+        </div>
+      </div>
+      <nav class="flex-1 space-y-2">
+        <a href="/" class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-dark-bg transition">
+          <span class="text-xl">📊</span>
+          <span>Dashboard</span>
+        </a>
+        <a href="/settings" class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-dark-bg transition">
+          <span class="text-xl">⚙️</span>
+          <span>Configurações</span>
+        </a>
+        <a href="/logs" class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-dark-bg transition">
+          <span class="text-xl">📋</span>
+          <span>Histórico</span>
+        </a>
+        <a href="/diagnostics" class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-dark-bg transition">
+          <span class="text-xl">🔍</span>
+          <span>Diagnóstico</span>
+        </a>
+      </nav>
+    </div>
+  </aside>
+</div>
+
+<script>
+  // Mobile menu toggle
+  const menuBtn = document.getElementById('menuBtn');
+  const mobileMenu = document.getElementById('mobileMenu');
+  const mobileSidebar = document.getElementById('mobileSidebar');
+
+  if (menuBtn && mobileMenu && mobileSidebar) {
+    menuBtn.addEventListener('click', () => {
+      mobileMenu.classList.toggle('hidden');
+      mobileSidebar.classList.toggle('-translate-x-full');
+    });
+
+    mobileMenu.addEventListener('click', (e) => {
+      if (e.target === mobileMenu) {
+        mobileMenu.classList.add('hidden');
+        mobileSidebar.classList.add('-translate-x-full');
+      }
+    });
+  }
+</script>

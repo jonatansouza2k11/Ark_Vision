@@ -1,4 +1,6 @@
-# Python
+# ============================================
+# PYTHON
+# ============================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -7,33 +9,163 @@ __pycache__/
 env/
 venv/
 cv_env/
+*.egg-info/
+dist/
+build/
 
-# IDE
+# ============================================
+# IDE / EDITORS
+# ============================================
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
+.project
+.pydevproject
 
-# Database
+# ============================================
+# DATABASE
+# ============================================
 *.db
 *.sqlite
 *.sqlite3
+*.db-journal
 
-# Alerts
-alertas/
+# Migrations (opcional - remova se quiser versionar)
+# alembic/versions/*.py
 
-# Logs
+# ============================================
+# FASTAPI / BACKEND
+# ============================================
+# Logs do sistema
 logs/
 *.log
 *.log.*
 
-# Environment
-.env
-.env.local
+# Sessões
+sessions/
 
+# Cache
+.cache/
+.pytest_cache/
+
+# ============================================
+# YOLO / COMPUTER VISION
+# ============================================
 # Models (grandes demais para Git)
 yolo_models/*.pt
+yolo_models/*.onnx
+yolo_models/*.engine
 !yolo_models/.gitkeep
+!yolo_models/README.md
 
-# OS
+# Outputs de detecção
+runs/
+outputs/
+detections/
+
+# ============================================
+# ALERTS / MONITORING
+# ============================================
+# Alertas salvos localmente
+alertas/
+alerts_backup/
+
+# Snapshots de alertas
+snapshots/
+snapshots_*.jpg
+snapshots_*.png
+
+# Videos de evidência
+videos/
+videos_*.mp4
+videos_*.avi
+
+# ============================================
+# DATA / JSON
+# ============================================
+# JSON gerados automaticamente (opcional - pode versionar)
+data/zones.json
+data/alerts_history.json
+data/stats_*.json
+
+# Backups
+data/backups/
+*.backup
+*.bak
+
+# ============================================
+# ENVIRONMENT / SECRETS
+# ============================================
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# Secrets
+secrets/
+*.pem
+*.key
+*.crt
+
+# ============================================
+# OS SPECIFIC
+# ============================================
 .DS_Store
 Thumbs.db
+desktop.ini
+*.tmp
+
+# ============================================
+# JUPYTER / NOTEBOOKS
+# ============================================
+.ipynb_checkpoints/
+*.ipynb
+
+# ============================================
+# TESTS / COVERAGE
+# ============================================
+.coverage
+htmlcov/
+.pytest_cache/
+test_*.db
+
+# ============================================
+# DOCKER (se usar no futuro)
+# ============================================
+*.dockerignore
+docker-compose.override.yml
+
+# ============================================
+# UPLOADS / TEMP
+# ============================================
+uploads/
+temp/
+tmp/
+*.tmp
+
+# ============================================
+# FRONTEND (se adicionar dashboard)
+# ============================================
+node_modules/
+.next/
+out/
+.nuxt/
+dist/
+build/
+
+# ============================================
+# DOCUMENTATION
+# ============================================
+docs/_build/
+site/
+
+# ============================================
+# MISC
+# ============================================
+.sass-cache/
+*.swp
+*.swo
+*~
