@@ -58,14 +58,16 @@ dmypy.json
 .env
 .env.*
 !.env.example
-.venv/
+.venv311/
+.venv*/
 venv/
+venv*/
 ENV/
 env/
 env.bak/
 venv.bak/
-cv_env/
-cvenv/
+*.pyc
+
 
 # Flask / Django
 instance/
