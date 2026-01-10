@@ -486,6 +486,150 @@ async def list_all_settings_detailed(
         )
 
 
+# ============================================
+# ✅ v3.1: NOVO - Available YOLO Models
+# ⚠️ DEVE ESTAR ANTES DA ROTA GENÉRICA /{key}
+# ============================================
+class YOLOModelInfo(BaseModel):
+    """Informações detalhadas de um modelo YOLO"""
+    filename: str = Field(..., description="Nome do arquivo .pt")
+    path: str = Field(..., description="Caminho relativo ao modelo")
+    type: str = Field(..., description="Tipo do modelo (YOLO v8, v9, v10, v11)")
+    variant: str = Field(..., description="Variante (Nano, Small, Medium, Large, XLarge)")
+    size_mb: float = Field(..., description="Tamanho do arquivo em MB")
+
+class AvailableModelsResponse(BaseModel):
+    """Resposta da listagem de modelos YOLO disponíveis"""
+    models: List[YOLOModelInfo] = Field(default_factory=list, description="Lista de modelos disponíveis")
+    current: str = Field(..., description="Nome do modelo atualmente configurado")
+    total: int = Field(..., description="Número total de modelos disponíveis")
+    message: Optional[str] = Field(None, description="Mensagem informativa (apenas em caso de erro/aviso)")
+
+
+# ============================================
+# ✅ v3.2: ATUALIZADO - Available YOLO Models (.pt + .engine)
+# ⚠️ DEVE ESTAR ANTES DA ROTA GENÉRICA /{key}
+# ============================================
+@router.get("/available-models", response_model=AvailableModelsResponse, summary="🤖 Lista modelos YOLO disponíveis")
+async def get_available_yolo_models(
+    current_user: dict = Depends(get_current_active_user)
+):
+    """
+    ✅ v3.2: Lista todos os modelos YOLO (.pt e .engine) disponíveis na pasta yolo_models/
+    
+    **Retorna:**
+    - `models`: Lista de modelos com detalhes (filename, path, type, variant, size_mb)
+    - `current`: Nome do modelo atualmente configurado
+    - `total`: Número total de modelos disponíveis
+    
+    **Requer:** Token JWT válido
+    """
+    try:
+        from pathlib import Path
+        from config import settings as app_config
+        
+        # 📁 Caminho da pasta de modelos
+        models_dir = app_config.BASE_DIR / "yolo_models"
+        
+        # 🔍 Verifica se o diretório existe
+        if not models_dir.exists():
+            logger.warning(f"⚠️ Models directory not found: {models_dir}")
+            return AvailableModelsResponse(
+                models=[],
+                current="none",
+                total=0,
+                message="📂 Models directory not found. Create backend/yolo_models/"
+            )
+        
+        # 🔎 Lista arquivos .pt E .engine
+        model_files = list(models_dir.glob("*.pt")) + list(models_dir.glob("*.engine"))
+        
+        if not model_files:
+            logger.warning(f"⚠️ No model files found in {models_dir}")
+            return AvailableModelsResponse(
+                models=[],
+                current="none",
+                total=0,
+                message="📭 No models found. Place YOLO models (.pt or .engine) in backend/yolo_models/"
+            )
+        
+        # 📊 Processa cada modelo encontrado
+        models = []
+        for model_file in sorted(model_files):
+            model_name = model_file.name  # Ex: yolo11n.pt ou yolo11n.engine
+            model_size = model_file.stat().st_size / (1024 * 1024)  # Converte para MB
+            name_lower = model_name.lower()
+            
+            # 🏷️ Determina o TIPO do modelo
+            if "yolo11" in name_lower or "yolov11" in name_lower:
+                model_type = "YOLO v11"
+            elif "yolo10" in name_lower or "yolov10" in name_lower:
+                model_type = "YOLO v10"
+            elif "yolo9" in name_lower or "yolov9" in name_lower:
+                model_type = "YOLO v9"
+            elif "yolo8" in name_lower or "yolov8" in name_lower:
+                model_type = "YOLO v8"
+            else:
+                model_type = "YOLO"
+            
+            # 🎯 Determina a VARIANTE (considerando .pt e .engine)
+            variant = "Unknown"
+            if "n.pt" in name_lower or "n.engine" in name_lower:
+                variant = "Nano (fastest)"
+            elif "s.pt" in name_lower or "s.engine" in name_lower:
+                variant = "Small (balanced)"
+            elif "m.pt" in name_lower or "m.engine" in name_lower:
+                variant = "Medium (accurate)"
+            elif "l.pt" in name_lower or "l.engine" in name_lower:
+                variant = "Large (very accurate)"
+            elif "x.pt" in name_lower or "x.engine" in name_lower:
+                variant = "XLarge (most accurate)"
+            
+            # 🔧 Adiciona badge de formato
+            if name_lower.endswith(".engine"):
+                variant += " [TensorRT]"
+            elif name_lower.endswith(".pt"):
+                variant += " [PyTorch]"
+            
+            # ➕ Adiciona modelo à lista
+            models.append(YOLOModelInfo(
+                filename=model_name,
+                path=f"yolo_models/{model_name}",
+                type=model_type,
+                variant=variant,
+                size_mb=round(model_size, 2)
+            ))
+        
+        # 🎯 Busca o modelo atualmente configurado
+        current_model = await database.get_setting("model_path", app_config.YOLO_MODEL_PATH)
+        
+        # 🔧 Extrai apenas o nome do arquivo
+        if current_model and "/" in current_model:
+            current_model = current_model.split("/")[-1]
+        
+        logger.info(f"✅ Found {len(models)} YOLO model(s): {[m.filename for m in models]}")
+        
+        return AvailableModelsResponse(
+            models=models,
+            current=current_model or "none",
+            total=len(models)
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Error listing YOLO models: {e}", exc_info=True)
+        return AvailableModelsResponse(
+            models=[],
+            current="none",
+            total=0,
+            message=f"❌ Error: {str(e)}"
+        )
+
+
+
+# ============================================
+# ⚠️ ROTAS GENÉRICAS - DEVEM VIR POR ÚLTIMO
+# ============================================
+
 @router.get("/{key}", summary="🔍 Obtém configuração específica")
 async def get_setting(
     key: str,
@@ -665,7 +809,7 @@ async def get_yolo_config(
 async def update_yolo_config(
     update: YOLOConfigUpdate,
     request: Request,
-    current_user: dict = Depends(get_current_admin_user)
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     ✅ v2.0: Atualiza configuração do YOLO

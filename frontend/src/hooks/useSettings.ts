@@ -1,8 +1,8 @@
 // frontend/src/hooks/useSettings.ts
 
 /**
- * useSettings Hook v4.0
- * Com validação em tempo real
+ * useSettings Hook v4.1
+ * Com validação em tempo real + correções de compatibilidade
  */
 
 import { useState, useCallback, useEffect } from 'react';
@@ -35,32 +35,32 @@ export const useSettings = (): UseSettingsReturn => {
     const parseSettings = useCallback((raw: Record<string, any>): Partial<AllSettings> => {
         return {
             // YOLO
-            model_path: raw.model_path || 'yolov8n.pt',
-            conf_thresh: parseFloat(raw.conf_thresh) || 0.87,
-            target_width: parseInt(raw.target_width) || 960,
-            frame_step: parseInt(raw.frame_step) || 1,
-            tracker: raw.tracker || 'BoT-SORT',
+            model_path: raw.model_path || raw.modelpath || 'yolov8n.pt',  // ✅ Suporta ambos os formatos
+            conf_thresh: parseFloat(raw.conf_thresh || raw.confthresh) || 0.87,
+            target_width: parseInt(raw.target_width || raw.targetwidth) || 960,
+            frame_step: parseInt(raw.frame_step || raw.framestep) || 1,
+            tracker: raw.tracker || 'botsort.yaml',  // ✅ CORRIGIDO: lowercase
             source: raw.source || '0',
-            cam_width: parseInt(raw.cam_width) || 1280,
-            cam_height: parseInt(raw.cam_height) || 720,
-            cam_fps: parseInt(raw.cam_fps) || 30,
+            cam_width: parseInt(raw.cam_width || raw.camwidth) || 1280,
+            cam_height: parseInt(raw.cam_height || raw.camheight) || 720,
+            cam_fps: parseInt(raw.cam_fps || raw.camfps) || 30,
             // Zones
-            max_out_time: parseFloat(raw.max_out_time) || 20.0,
-            email_cooldown: parseFloat(raw.email_cooldown) || 120.0,
-            zone_empty_timeout: parseFloat(raw.zone_empty_timeout) || 5.0,
-            zone_full_timeout: parseFloat(raw.zone_full_timeout) || 10.0,
-            zone_full_threshold: parseInt(raw.zone_full_threshold) || 3,
-            buffer_seconds: parseFloat(raw.buffer_seconds) || 2.0,
+            max_out_time: parseFloat(raw.max_out_time || raw.maxouttime) || 20.0,
+            email_cooldown: parseFloat(raw.email_cooldown || raw.emailcooldown) || 120.0,
+            zone_empty_timeout: parseFloat(raw.zone_empty_timeout || raw.zoneemptytimeout) || 5.0,
+            zone_full_timeout: parseFloat(raw.zone_full_timeout || raw.zonefulltimeout) || 10.0,
+            zone_full_threshold: parseInt(raw.zone_full_threshold || raw.zonefullthreshold) || 3,
+            buffer_seconds: parseFloat(raw.buffer_seconds || raw.bufferseconds) || 2.0,
             // Email
-            email_smtp_server: raw.email_smtp_server || 'smtp.gmail.com',
-            email_smtp_port: parseInt(raw.email_smtp_port) || 587,
-            email_user: raw.email_user || '',
-            email_password: raw.email_password || '',
-            email_from: raw.email_from || '',
+            email_smtp_server: raw.email_smtp_server || raw.emailsmtpserver || 'smtp.gmail.com',
+            email_smtp_port: parseInt(raw.email_smtp_port || raw.emailsmtpport) || 587,
+            email_user: raw.email_user || raw.emailuser || '',
+            email_password: raw.email_password || raw.emailpassword || '',
+            email_from: raw.email_from || raw.emailfrom || '',
             // System
-            use_cuda: raw.use_cuda === 'true' || raw.use_cuda === true,
-            verbose_logs: raw.verbose_logs === 'true' || raw.verbose_logs === true,
-            auto_restart: raw.auto_restart === 'true' || raw.auto_restart === true,
+            use_cuda: raw.use_cuda === 'true' || raw.use_cuda === true || raw.usecuda === 'true' || raw.usecuda === true,
+            verbose_logs: raw.verbose_logs === 'true' || raw.verbose_logs === true || raw.verboselogs === 'true' || raw.verboselogs === true,
+            auto_restart: raw.auto_restart === 'true' || raw.auto_restart === true || raw.autorestart === 'true' || raw.autorestart === true,
         };
     }, []);
 
@@ -120,6 +120,25 @@ export const useSettings = (): UseSettingsReturn => {
             return { valid: true };
         }
 
+        // ✅ NOVO: Validação do model_path
+        if (field === 'model_path') {
+            if (!value || value.trim() === '') {
+                return { valid: false, message: 'Selecione um modelo', level: 'error' };
+            }
+            if (!value.endsWith('.pt')) {
+                return { valid: false, message: 'Deve ser um arquivo .pt', level: 'error' };
+            }
+            return { valid: true };
+        }
+
+        // ✅ NOVO: Validação de emails
+        if (field === 'email_user' || field === 'email_from') {
+            if (value && !value.includes('@')) {
+                return { valid: false, message: 'Email inválido', level: 'error' };
+            }
+            return { valid: true };
+        }
+
         return { valid: true };
     }, []);
 
@@ -127,96 +146,125 @@ export const useSettings = (): UseSettingsReturn => {
         setLoading(true);
         setError(null);
 
-        const { data, error: apiError } = await settingsApi.getAll();
+        try {
+            const { data, error: apiError } = await settingsApi.getAll();
 
-        if (apiError) {
-            setError(apiError);
-            setSettings(null);
-            setOriginalSettings(null);
-        } else if (data) {
-            const parsed = parseSettings(data);
-            setSettings(parsed);
-            setOriginalSettings(parsed);
+            if (apiError) {
+                setError(apiError);
+                setSettings(null);
+                setOriginalSettings(null);
+            } else if (data) {
+                const parsed = parseSettings(data);
+                setSettings(parsed);
+                setOriginalSettings(parsed);
+            }
+        } catch (err) {
+            console.error('❌ Erro ao buscar configurações:', err);
+            setError('Erro ao carregar configurações');
+        } finally {
+            setLoading(false);
         }
-
-        setLoading(false);
     }, [parseSettings]);
 
     const updateSettings = useCallback(async (updates: Partial<AllSettings>): Promise<boolean> => {
         setSaving(true);
         setError(null);
 
-        const apiFormat: Record<string, any> = {};
-        Object.entries(updates).forEach(([key, value]) => {
-            if (typeof value === 'boolean') {
-                apiFormat[key] = value ? 'true' : 'false';
-            } else {
-                apiFormat[key] = String(value);
+        try {
+            const apiFormat: Record<string, any> = {};
+            Object.entries(updates).forEach(([key, value]) => {
+                if (typeof value === 'boolean') {
+                    apiFormat[key] = value ? 'true' : 'false';
+                } else {
+                    apiFormat[key] = String(value);
+                }
+            });
+
+            const { error: apiError } = await settingsApi.updateMultiple(apiFormat);
+
+            if (apiError) {
+                setError(apiError);
+                return false;
             }
-        });
 
-        const { error: apiError } = await settingsApi.updateMultiple(apiFormat);
-
-        if (apiError) {
-            setError(apiError);
-            setSaving(false);
+            await fetchSettings();
+            return true;
+        } catch (err) {
+            console.error('❌ Erro ao atualizar configurações:', err);
+            setError('Erro ao salvar configurações');
             return false;
+        } finally {
+            setSaving(false);
         }
-
-        await fetchSettings();
-        setSaving(false);
-        return true;
     }, [fetchSettings]);
 
     const updateYoloConfig = useCallback(async (config: Partial<YOLOConfig>): Promise<boolean> => {
         setSaving(true);
         setError(null);
 
-        const { error: apiError } = await settingsApi.updateYoloConfig(config);
+        try {
+            const { error: apiError } = await settingsApi.updateYoloConfig(config);
 
-        if (apiError) {
-            setError(apiError);
-            setSaving(false);
+            if (apiError) {
+                setError(apiError);
+                return false;
+            }
+
+            await fetchSettings();
+            return true;
+        } catch (err) {
+            console.error('❌ Erro ao atualizar YOLO config:', err);
+            setError('Erro ao salvar configurações YOLO');
             return false;
+        } finally {
+            setSaving(false);
         }
-
-        await fetchSettings();
-        setSaving(false);
-        return true;
     }, [fetchSettings]);
 
     const updateEmailConfig = useCallback(async (config: Partial<EmailConfig>): Promise<boolean> => {
         setSaving(true);
         setError(null);
 
-        const { error: apiError } = await settingsApi.updateEmailConfig(config);
+        try {
+            const { error: apiError } = await settingsApi.updateEmailConfig(config);
 
-        if (apiError) {
-            setError(apiError);
-            setSaving(false);
+            if (apiError) {
+                setError(apiError);
+                return false;
+            }
+
+            await fetchSettings();
+            return true;
+        } catch (err) {
+            console.error('❌ Erro ao atualizar email config:', err);
+            setError('Erro ao salvar configurações de email');
             return false;
+        } finally {
+            setSaving(false);
         }
-
-        await fetchSettings();
-        setSaving(false);
-        return true;
     }, [fetchSettings]);
 
     const resetSettings = useCallback(async (): Promise<boolean> => {
         setSaving(true);
         setError(null);
 
-        const { error: apiError } = await settingsApi.reset();
+        try {
+            const { error: apiError } = await settingsApi.reset();
 
-        if (apiError) {
-            setError(apiError);
-            setSaving(false);
+            if (apiError) {
+                setError(apiError);
+                return false;
+            }
+
+            await fetchSettings();
+            return true;
+        } catch (err) {
+            console.error('❌ Erro ao resetar configurações:', err);
+            setError('Erro ao restaurar configurações');
             return false;
+        } finally {
+            setSaving(false);
         }
-
-        await fetchSettings();
-        setSaving(false);
-        return true;
     }, [fetchSettings]);
 
     const discardChanges = useCallback(() => {

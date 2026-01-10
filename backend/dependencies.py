@@ -1,8 +1,12 @@
 """
-backend/dependencies.py - OPTIMIZED v2.0
+backend/dependencies.py - OPTIMIZED v2.1
 JWT Authentication & Dependencies
 Enhanced with caching, type safety, and clean architecture
+
+✨ v2.1 (2026-01-06):
+- ✅ CORRIGIDO: UTF-8 encoding no Limiter (evita erro com .env)
 """
+
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, Tuple
@@ -17,15 +21,19 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 import logging
 
+
 from backend.config import settings
 from backend import database
 
+
 logger = logging.getLogger("uvicorn")
+
 
 
 # ============================================
 # OTIMIZAÇÃO 1: Constants & Enums
 # ============================================
+
 
 class AuthError(str, Enum):
     """✅ Centralized auth error messages"""
@@ -38,10 +46,12 @@ class AuthError(str, Enum):
     WEAK_PASSWORD = "Password does not meet security requirements"
 
 
+
 class TokenType(str, Enum):
     """✅ Token types"""
     ACCESS = "access"
     REFRESH = "refresh"
+
 
 
 @dataclass(frozen=True)
@@ -65,14 +75,17 @@ class TokenPayload:
             return None
 
 
+
 # Password constraints
 PASSWORD_MIN_LENGTH = 8
 PASSWORD_MAX_LENGTH = 72  # bcrypt limit
 
 
+
 # ============================================
 # OTIMIZAÇÃO 2: Cached Context
 # ============================================
+
 
 @lru_cache(maxsize=1)
 def _get_pwd_context() -> CryptContext:
@@ -83,9 +96,11 @@ def _get_pwd_context() -> CryptContext:
     return CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
+
 # ============================================
 # OTIMIZAÇÃO 3: Helper Functions
 # ============================================
+
 
 def _normalize_password(password: str) -> str:
     """
@@ -102,6 +117,7 @@ def _normalize_password(password: str) -> str:
     
     # Truncate to bcrypt limit (72 bytes)
     return password.encode('utf-8')[:PASSWORD_MAX_LENGTH].decode('utf-8', errors='ignore')
+
 
 
 def _validate_password_strength(password: str) -> Tuple[bool, Optional[str]]:
@@ -127,6 +143,7 @@ def _validate_password_strength(password: str) -> Tuple[bool, Optional[str]]:
     # - Has special character
     
     return True, None
+
 
 
 def _create_jwt_payload(username: str, expires_delta: Optional[timedelta] = None) -> Dict[str, Any]:
@@ -155,6 +172,7 @@ def _create_jwt_payload(username: str, expires_delta: Optional[timedelta] = None
     }
 
 
+
 def _create_http_exception(
     status_code: int,
     detail: str,
@@ -178,9 +196,11 @@ def _create_http_exception(
     )
 
 
+
 # ============================================
 # PASSWORD HASHING
 # ============================================
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
@@ -199,6 +219,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     except Exception as e:
         logger.error(f"Password verification error: {e}")
         return False
+
 
 
 def get_password_hash(password: str) -> str:
@@ -223,11 +244,14 @@ def get_password_hash(password: str) -> str:
     return _get_pwd_context().hash(normalized)
 
 
+
 # ============================================
 # JWT TOKEN
 # ============================================
 
+
 security = HTTPBearer()
+
 
 
 def create_access_token(
@@ -268,6 +292,7 @@ def create_access_token(
         raise
 
 
+
 def decode_access_token(token: str) -> Optional[TokenPayload]:
     """
     Decodifica e valida token JWT
@@ -291,6 +316,7 @@ def decode_access_token(token: str) -> Optional[TokenPayload]:
     except JWTError as e:
         logger.warning(f"JWT decode error: {e}")
         return None
+
 
 
 def validate_token(token: str) -> Tuple[bool, Optional[str], Optional[TokenPayload]]:
@@ -330,9 +356,11 @@ def validate_token(token: str) -> Tuple[bool, Optional[str], Optional[TokenPaylo
         return False, AuthError.INVALID_TOKEN, None
 
 
+
 # ============================================
 # AUTHENTICATION DEPENDENCIES
 # ============================================
+
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
@@ -371,6 +399,7 @@ async def get_current_user(
     return user
 
 
+
 async def get_current_active_user(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
@@ -394,6 +423,7 @@ async def get_current_active_user(
         )
     
     return current_user
+
 
 
 async def get_current_admin_user(
@@ -420,9 +450,11 @@ async def get_current_admin_user(
     return current_user
 
 
+
 # ============================================
 # LOGIN FUNCTION
 # ============================================
+
 
 async def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
     """
@@ -461,9 +493,11 @@ async def authenticate_user(username: str, password: str) -> Optional[Dict[str, 
     return user
 
 
+
 # ============================================
 # OPTIONAL AUTHENTICATION
 # ============================================
+
 
 async def get_optional_current_user(request: Request) -> Optional[Dict[str, Any]]:
     """
@@ -498,16 +532,27 @@ async def get_optional_current_user(request: Request) -> Optional[Dict[str, Any]
         return None
 
 
+
 # ============================================
-# RATE LIMITING
+# RATE LIMITING (✅ CORRIGIDO v2.1)
 # ============================================
 
-limiter = Limiter(key_func=get_remote_address)
+
+# ✅ CORREÇÃO: Não carregar .env via SlowAPI
+# O Pydantic já faz isso corretamente em config.py
+# Isso evita erro de encoding com emojis no .env
+limiter = Limiter(
+    key_func=get_remote_address,
+    config_filename=None,  # ✅ Ignora .env (evita UnicodeDecodeError)
+    default_limits=["100/minute"]
+)
+
 
 
 # ============================================
 # UTILITY FUNCTIONS
 # ============================================
+
 
 def create_user_token(user: Dict[str, Any]) -> str:
     """
@@ -523,6 +568,7 @@ def create_user_token(user: Dict[str, Any]) -> str:
         data={"sub": user["username"]},
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
+
 
 
 def hash_password_safe(password: str) -> Optional[str]:
@@ -542,9 +588,11 @@ def hash_password_safe(password: str) -> Optional[str]:
         return None
 
 
+
 # ============================================
 # TEST SCRIPT
 # ============================================
+
 
 if __name__ == "__main__":
     import asyncio
@@ -552,7 +600,7 @@ if __name__ == "__main__":
     async def test_auth():
         """Testa funções de autenticação"""
         print("=" * 70)
-        print("🔐 TESTE: Autenticação JWT v2.0")
+        print("🔐 TESTE: Autenticação JWT v2.1")
         print("=" * 70)
         
         # 1. Test password hashing

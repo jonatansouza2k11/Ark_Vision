@@ -43,6 +43,7 @@ Architecture:
 - RAG-ready (vector support)
 
 ✅ v2.0 compatibility: 100%
+🔒 ADMIN-ONLY: All endpoints require admin privileges
 ============================================================================
 """
 
@@ -68,7 +69,7 @@ from psycopg_pool import AsyncConnectionPool
 from database import get_db_pool, sync_zones_to_settings
 from models.zones import ZoneCreate, ZoneUpdate, ZoneResponse
 from config import settings
-from dependencies import get_current_user, get_current_admin_user, limiter
+from dependencies import get_current_admin_user, limiter
 
 # ============================================================================
 # CONFIGURAÇÃO
@@ -153,13 +154,7 @@ ZONE_TEMPLATES = {
 
 
 # ============================================================================
-# PYDANTIC MODELS v2.0 (Compatible - from models/zones.py)
-# ============================================================================
-# ZoneCreate, ZoneUpdate, ZoneResponse já definidos em models/zones.py
-
-
-# ============================================================================
-# PYDANTIC MODELS v3.0 (NEW)
+# PYDANTIC MODELS v3.0
 # ============================================================================
 
 class ZoneSearchRequest(BaseModel):
@@ -395,7 +390,7 @@ async def sync_zones_to_json():
 
 
 # ============================================================================
-# v2.0 ENDPOINTS - ZONE CRUD (Compatible)
+# v2.0 ENDPOINTS - ZONE CRUD (ADMIN ONLY)
 # ============================================================================
 
 @router.post("", response_model=ZoneResponse, status_code=status.HTTP_201_CREATED, summary="➕ Criar nova zona")
@@ -403,13 +398,13 @@ async def sync_zones_to_json():
 async def create_zone(
     request: Request,
     zone: ZoneCreate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
     ✅ v2.0: Cria uma nova zona de detecção
     
-    **Requer:** Token JWT válido
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     async with pool.connection() as conn:
         try:
@@ -463,7 +458,7 @@ async def create_zone(
                 row = await cur.fetchone()
                 await conn.commit()
                 
-                logger.info(f"✅ Zona criada: {row['name']} (ID: {row['id']}) por {current_user.get('username')}")
+                logger.info(f"✅ Zona criada: {row['name']} (ID: {row['id']}) por {current_user.get('username')} [ADMIN]")
                 
                 zone_dict = await zone_to_dict(row)
             
@@ -488,13 +483,13 @@ async def create_zone(
 async def list_zones(
     request: Request,
     include_disabled: bool = Query(default=False),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
     ✅ v2.0: Lista todas as zonas ativas (não deletadas)
     
-    **Requer:** Token JWT válido
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     async with pool.connection() as conn:
         try:
@@ -515,7 +510,7 @@ async def list_zones(
                 await cur.execute(query)
                 rows = await cur.fetchall()
             
-            logger.info(f"📋 Listando {len(rows)} zonas para {current_user.get('username')}")
+            logger.info(f"📋 Listando {len(rows)} zonas para {current_user.get('username')} [ADMIN]")
             
             results = []
             for row in rows:
@@ -537,13 +532,13 @@ async def list_zones(
 async def get_zone(
     request: Request,
     zone_id: int,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
     ✅ v2.0: Obtém uma zona específica por ID
     
-    **Requer:** Token JWT válido
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     async with pool.connection() as conn:
         try:
@@ -567,7 +562,7 @@ async def get_zone(
                         detail=f"Zona {zone_id} não encontrada"
                     )
                 
-                logger.info(f"🔍 Zona encontrada: {row['id']} - {row['name']}")
+                logger.info(f"🔍 Zona encontrada: {row['id']} - {row['name']} [ADMIN: {current_user.get('username')}]")
                 
                 zone_dict = await zone_to_dict(row)
                 
@@ -589,13 +584,13 @@ async def update_zone(
     request: Request,
     zone_id: int,
     zone_update: ZoneUpdate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
     ✅ v2.0: Atualiza uma zona existente
     
-    **Requer:** Token JWT válido
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     async with pool.connection() as conn:
         try:
@@ -680,7 +675,7 @@ async def update_zone(
                 row = await cur.fetchone()
                 await conn.commit()
                 
-                logger.info(f"✅ Zona atualizada: {row['name']} (ID: {row['id']}) por {current_user.get('username')}")
+                logger.info(f"✅ Zona atualizada: {row['name']} (ID: {row['id']}) por {current_user.get('username')} [ADMIN]")
                 
                 zone_dict = await zone_to_dict(row)
             
@@ -705,13 +700,13 @@ async def update_zone(
 async def delete_zone(
     request: Request,
     zone_id: int,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
     ✅ v2.0: Deleta uma zona (soft delete)
     
-    **Requer:** Token JWT válido
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     async with pool.connection() as conn:
         try:
@@ -742,7 +737,7 @@ async def delete_zone(
                 )
                 
                 await conn.commit()
-                logger.info(f"🗑️ Zona deletada (soft delete): {zone_name} (ID: {zone_id}) por {current_user.get('username')}")
+                logger.info(f"🗑️ Zona deletada (soft delete): {zone_name} (ID: {zone_id}) por {current_user.get('username')} [ADMIN]")
             
             # Sync to JSON and settings
             await sync_zones_to_json()
@@ -761,17 +756,19 @@ async def delete_zone(
 
 
 # ============================================================================
-# v3.0 ENDPOINTS - SEARCH & FILTER (NEW)
+# v3.0 ENDPOINTS - SEARCH & FILTER (ADMIN ONLY)
 # ============================================================================
 
 @router.post("/search", response_model=ZoneSearchResponse, summary="🔍 Busca avançada de zonas")
 async def search_zones(
     search_params: ZoneSearchRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
     ➕ NEW v3.0: Busca avançada de zonas com filtros
+    
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     async with pool.connection() as conn:
         try:
@@ -841,7 +838,7 @@ async def search_zones(
                 zone_dict = await zone_to_dict(row)
                 zones.append(ZoneResponse(**zone_dict))
             
-            logger.info(f"🔍 {current_user.get('username')} searched zones: {len(zones)}/{total} results")
+            logger.info(f"🔍 {current_user.get('username')} [ADMIN] searched zones: {len(zones)}/{total} results")
             
             return ZoneSearchResponse(
                 zones=zones,
@@ -859,18 +856,20 @@ async def search_zones(
 
 
 # ============================================================================
-# v3.0 ENDPOINTS - BULK OPERATIONS (NEW)
+# v3.0 ENDPOINTS - BULK OPERATIONS (ADMIN ONLY)
 # ============================================================================
 
 @router.post("/bulk/create", response_model=ZoneBulkCreateResponse, summary="➕ Criar múltiplas zonas")
 async def bulk_create_zones(
     bulk_request: ZoneBulkCreateRequest,
     request: Request,
-    current_user: dict = Depends(get_current_admin_user),
+    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
     ➕ NEW v3.0: Cria múltiplas zonas em lote
+    
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     async with pool.connection() as conn:
         try:
@@ -950,7 +949,7 @@ async def bulk_create_zones(
                 await sync_zones_to_json()
                 await sync_zones_to_settings()
             
-            logger.info(f"✅ Bulk created {created_count} zones, {failed_count} failed")
+            logger.info(f"✅ Bulk created {created_count} zones, {failed_count} failed by {current_user.get('username')} [ADMIN]")
             
             return ZoneBulkCreateResponse(
                 created=created_count,
@@ -971,11 +970,13 @@ async def bulk_create_zones(
 async def bulk_delete_zones(
     bulk_request: ZoneBulkDeleteRequest,
     request: Request,
-    current_user: dict = Depends(get_current_admin_user),
+    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
     ➕ NEW v3.0: Deleta múltiplas zonas em lote
+    
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     async with pool.connection() as conn:
         try:
@@ -1021,7 +1022,7 @@ async def bulk_delete_zones(
                 await sync_zones_to_json()
                 await sync_zones_to_settings()
             
-            logger.info(f"✅ Bulk deleted {deleted_count} zones")
+            logger.info(f"✅ Bulk deleted {deleted_count} zones by {current_user.get('username')} [ADMIN]")
             
             return {
                 "deleted": deleted_count,
@@ -1038,7 +1039,7 @@ async def bulk_delete_zones(
 
 
 # ============================================================================
-# v3.0 ENDPOINTS - ZONE MANAGEMENT (NEW)
+# v3.0 ENDPOINTS - ZONE MANAGEMENT (ADMIN ONLY)
 # ============================================================================
 
 @router.post("/{zone_id}/clone", response_model=ZoneResponse, summary="📋 Clonar zona")
@@ -1046,11 +1047,13 @@ async def clone_zone(
     zone_id: int,
     clone_request: ZoneCloneRequest,
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
     ➕ NEW v3.0: Clona uma zona existente
+    
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     async with pool.connection() as conn:
         try:
@@ -1125,7 +1128,7 @@ async def clone_zone(
                 row = await cur.fetchone()
                 await conn.commit()
                 
-                logger.info(f"✅ Zona clonada: {original['name']} -> {row['name']}")
+                logger.info(f"✅ Zona clonada: {original['name']} -> {row['name']} por {current_user.get('username')} [ADMIN]")
                 
                 zone_dict = await zone_to_dict(row)
             
@@ -1148,10 +1151,12 @@ async def clone_zone(
 @router.post("/validate", response_model=PolygonValidationResponse, summary="✔️ Validar polígono")
 async def validate_polygon_endpoint(
     validation_request: PolygonValidationRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_admin_user)  # 🔒 ADMIN ONLY
 ):
     """
     ➕ NEW v3.0: Valida um polígono antes de criar/atualizar zona
+    
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     try:
         is_valid, issues = validate_polygon(validation_request.points)
@@ -1182,16 +1187,18 @@ async def validate_polygon_endpoint(
 
 
 # ============================================================================
-# v3.0 ENDPOINTS - STATISTICS & ANALYTICS (NEW)
+# v3.0 ENDPOINTS - STATISTICS & ANALYTICS (ADMIN ONLY)
 # ============================================================================
 
 @router.get("/statistics", response_model=ZoneStatistics, summary="📊 Estatísticas de zonas")
 async def get_zone_statistics(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
     ➕ NEW v3.0: Obtém estatísticas gerais de zonas
+    
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     async with pool.connection() as conn:
         try:
@@ -1212,27 +1219,21 @@ async def get_zone_statistics(
                 active_zones = (await cur.fetchone())['count']
                 
                 # By mode
-                await cur.execute("""
-                    SELECT mode, COUNT(*) as count
-                    FROM zones
-                    WHERE deleted_at IS NULL
-                    GROUP BY mode
-                """)
+                await cur.execute("SELECT mode, COUNT(*) as count FROM zones WHERE deleted_at IS NULL GROUP BY mode")
                 zones_by_mode = {row['mode']: row['count'] for row in await cur.fetchall()}
                 
-                # Calculate average area
+                # Average area
                 await cur.execute("SELECT points FROM zones WHERE deleted_at IS NULL")
                 rows = await cur.fetchall()
                 
-                total_area = 0
-                area_count = 0
+                total_area = 0.0
                 for row in rows:
                     points = json.loads(row['points']) if isinstance(row['points'], str) else row['points']
-                    if len(points) >= 3:
-                        total_area += calculate_polygon_area(points)
-                        area_count += 1
+                    total_area += calculate_polygon_area(points)
                 
-                average_area = total_area / area_count if area_count > 0 else 0
+                average_area = total_area / total_zones if total_zones > 0 else 0.0
+            
+            logger.info(f"📊 Estatísticas geradas para {current_user.get('username')} [ADMIN]")
             
             return ZoneStatistics(
                 total_zones=total_zones,
@@ -1240,9 +1241,9 @@ async def get_zone_statistics(
                 disabled_zones=disabled_zones,
                 active_zones=active_zones,
                 zones_by_mode=zones_by_mode,
-                average_area=round(average_area, 2),
-                total_detections=None,  # TODO: Track from detection logs
-                most_active_zones=[],  # TODO: Track from detection logs
+                average_area=average_area,
+                total_detections=None,  # TODO: implement
+                most_active_zones=[],   # TODO: implement
                 timestamp=datetime.now()
             )
             
@@ -1255,16 +1256,18 @@ async def get_zone_statistics(
 
 
 # ============================================================================
-# v3.0 ENDPOINTS - EXPORT/IMPORT (NEW)
+# v3.0 ENDPOINTS - EXPORT/IMPORT (ADMIN ONLY)
 # ============================================================================
 
-@router.get("/export", summary="📤 Exportar zonas")
+@router.get("/export", summary="📥 Exportar zonas")
 async def export_zones(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
     ➕ NEW v3.0: Exporta todas as zonas em JSON
+    
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     async with pool.connection() as conn:
         try:
@@ -1291,12 +1294,12 @@ async def export_zones(
             
             export_data = {
                 "exported_at": datetime.now().isoformat(),
-                "exported_by": current_user.get("username"),
+                "exported_by": current_user.get('username'),
                 "count": len(export_zones_list),
                 "zones": export_zones_list
             }
             
-            logger.info(f"📤 Exported {len(export_zones_list)} zones")
+            logger.info(f"📥 Exported {len(export_zones_list)} zones by {current_user.get('username')} [ADMIN]")
             
             return JSONResponse(content=export_data)
             
@@ -1308,20 +1311,23 @@ async def export_zones(
             )
 
 
-@router.post("/import", summary="📥 Importar zonas")
+@router.post("/import", summary="📤 Importar zonas")
 async def import_zones(
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_admin_user),
+    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
     ➕ NEW v3.0: Importa zonas de arquivo JSON
+    
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     try:
         content = await file.read()
         data = json.loads(content)
         
         zones_to_import = data.get('zones', data)
+        
         if not isinstance(zones_to_import, list):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1336,19 +1342,12 @@ async def import_zones(
             async with conn.cursor() as cur:
                 for zone_data in zones_to_import:
                     try:
-                        name = zone_data.get("name")
-                        points = zone_data.get("points")
-                        mode = zone_data.get("mode", "occupancy")
+                        name = zone_data.get('name')
+                        points = zone_data.get('points')
+                        mode = zone_data.get('mode', 'occupancy')
                         
                         if not name or not points:
                             errors.append({"zone": str(zone_data), "error": "Missing name or points"})
-                            failed_count += 1
-                            continue
-                        
-                        # Validate polygon
-                        is_valid, issues = validate_polygon(points)
-                        if not is_valid:
-                            errors.append({"name": name, "error": f"Invalid polygon: {', '.join(issues)}"})
                             failed_count += 1
                             continue
                         
@@ -1359,7 +1358,6 @@ async def import_zones(
                         )
                         
                         if await cur.fetchone():
-                            # Skip or update existing
                             errors.append({"name": name, "error": "Zone already exists (skipped)"})
                             failed_count += 1
                             continue
@@ -1377,12 +1375,12 @@ async def import_zones(
                                 name,
                                 json.dumps(points),
                                 mode,
-                                zone_data.get("empty_timeout", 30.0),
-                                zone_data.get("full_timeout", 5.0),
-                                zone_data.get("empty_threshold", 0),
-                                zone_data.get("full_threshold", 1),
-                                zone_data.get("enabled", True),
-                                zone_data.get("active", True)
+                                zone_data.get('empty_timeout', 30.0),
+                                zone_data.get('full_timeout', 5.0),
+                                zone_data.get('empty_threshold', 0),
+                                zone_data.get('full_threshold', 1),
+                                zone_data.get('enabled', True),
+                                zone_data.get('active', True)
                             )
                         )
                         
@@ -1399,7 +1397,7 @@ async def import_zones(
             await sync_zones_to_json()
             await sync_zones_to_settings()
         
-        logger.info(f"📥 Imported {imported_count} zones from {file.filename}")
+        logger.info(f"📤 Imported {imported_count} zones from {file.filename} by {current_user.get('username')} [ADMIN]")
         
         return {
             "imported": imported_count,
@@ -1422,32 +1420,37 @@ async def import_zones(
 
 
 # ============================================================================
-# v3.0 ENDPOINTS - TEMPLATES (NEW) - CORRECTED
+# v3.0 ENDPOINTS - TEMPLATES (ADMIN ONLY)
 # ============================================================================
 
-@router.get("/templates", summary="📋 Listar templates de zonas")
+@router.get("/templates", response_model=List[ZoneTemplate], summary="📑 Listar templates")
 async def list_zone_templates(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_admin_user)  # 🔒 ADMIN ONLY
 ):
     """
-    ➕ NEW v3.0: Lista templates pré-configurados de zonas
+    ➕ NEW v3.0: Lista templates de zonas disponíveis
+    
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     templates = []
+    
     for template_id, template_data in ZONE_TEMPLATES.items():
         templates.append(ZoneTemplate(
             id=template_id,
-            name=template_data["name"],
-            mode=template_data["mode"],
-            description=template_data["description"],
+            name=template_data['name'],
+            mode=template_data['mode'],
+            description=template_data['description'],
             default_settings={
-                "empty_timeout": template_data["empty_timeout"],
-                "full_timeout": template_data["full_timeout"],
-                "empty_threshold": template_data["empty_threshold"],
-                "full_threshold": template_data["full_threshold"]
+                'empty_timeout': template_data['empty_timeout'],
+                'full_timeout': template_data['full_timeout'],
+                'empty_threshold': template_data['empty_threshold'],
+                'full_threshold': template_data['full_threshold']
             }
         ))
     
-    return {"templates": templates, "count": len(templates)}
+    logger.info(f"📑 Templates listados para {current_user.get('username')} [ADMIN]")
+    
+    return templates
 
 
 @router.post("/templates/{template_name}", response_model=ZoneResponse, summary="➕ Criar zona de template")
@@ -1455,103 +1458,66 @@ async def create_zone_from_template(
     template_name: str,
     template_request: ZoneFromTemplateRequest,
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
-    ➕ NEW v3.0: Cria zona baseada em template
+    ➕ NEW v3.0: Cria uma zona a partir de um template
     
-    **Templates disponíveis:**
-    - `parking_spot`: Vaga de estacionamento
-    - `entrance`: Entrada/contagem
-    - `restricted_area`: Área restrita
+    **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
     if template_name not in ZONE_TEMPLATES:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Template '{template_name}' não encontrado. Use: {', '.join(ZONE_TEMPLATES.keys())}"
+            detail=f"Template '{template_name}' não encontrado"
         )
     
     template = ZONE_TEMPLATES[template_name]
     
-    # Create zone using template settings
-    zone_data = ZoneCreate(
+    # Create zone using template defaults
+    zone_create = ZoneCreate(
         name=template_request.zone_name,
         points=template_request.points,
-        mode=template["mode"],
-        empty_timeout=template["empty_timeout"],
-        full_timeout=template["full_timeout"],
-        empty_threshold=template["empty_threshold"],
-        full_threshold=template["full_threshold"],
+        mode=template['mode'],
+        empty_timeout=template['empty_timeout'],
+        full_timeout=template['full_timeout'],
+        empty_threshold=template['empty_threshold'],
+        full_threshold=template['full_threshold'],
         enabled=True,
         active=True
     )
     
-    # Use the create_zone endpoint logic
-    return await create_zone(
-        request=request,
-        zone=zone_data,
-        current_user=current_user,
-        pool=pool
-    )
+    logger.info(f"➕ Criando zona de template '{template_name}' por {current_user.get('username')} [ADMIN]")
+    
+    return await create_zone(request, zone_create, current_user, pool)
 
 
 # ============================================================================
-# TESTE
+# ENDPOINT SUMMARY
 # ============================================================================
 
 if __name__ == "__main__":
     print("=" * 80)
-    print("🎯 ZONES API ROUTER v3.0 - COMPLETE")
+    print("Zones API v3.0 - ADMIN ONLY MODE 🔒")
     print("=" * 80)
-    
-    print("\n✅ v2.0 ENDPOINTS (5 endpoints - 100% Compatible):")
-    print("\n📋 Basic CRUD:")
-    print("   1. POST   /api/v1/zones          - Criar nova zona")
-    print("   2. GET    /api/v1/zones          - Listar todas zonas")
-    print("   3. GET    /api/v1/zones/{id}     - Obter zona específica")
-    print("   4. PUT    /api/v1/zones/{id}     - Atualizar zona")
-    print("   5. DELETE /api/v1/zones/{id}     - Deletar zona (soft delete)")
-    
-    print("\n➕ NEW v3.0 ENDPOINTS (10 endpoints):")
-    print("\n🔍 Search & Filter:")
-    print("   6.  POST  /api/v1/zones/search   - Busca avançada")
-    
-    print("\n📦 Bulk Operations:")
-    print("   7.  POST  /api/v1/zones/bulk/create - Cria múltiplas")
-    print("   8.  POST  /api/v1/zones/bulk/delete - Deleta múltiplas")
-    
-    print("\n✏️ Zone Management:")
-    print("   9.  POST  /api/v1/zones/{id}/clone - Clona zona")
-    print("   10. POST  /api/v1/zones/validate   - Valida polígono")
-    
-    print("\n📊 Analytics:")
-    print("   11. GET   /api/v1/zones/statistics - Estatísticas gerais")
-    
-    print("\n📤 Export/Import:")
-    print("   12. GET   /api/v1/zones/export     - Exporta zonas")
-    print("   13. POST  /api/v1/zones/import     - Importa zonas")
-    
-    print("\n📋 Templates:")
-    print("   14. GET   /api/v1/zones/templates  - Lista templates")
-    print("   15. POST  /api/v1/zones/templates/{name} - Cria de template")
-    
-    print("\n🚀 v3.0 FEATURES:")
-    print("   • Advanced search with multiple filters")
-    print("   • Bulk create/delete operations")
-    print("   • Zone cloning with offset")
-    print("   • Polygon validation (area, perimeter, centroid)")
-    print("   • Comprehensive statistics")
-    print("   • Export/Import (JSON)")
-    print("   • Pre-configured templates (3 types)")
-    print("   • Real-time sync with yolo.py")
-    print("   • Soft delete support")
-    print("   • PostgreSQL + JSON fallback")
-    
-    print("\n" + "=" * 80)
-    print("✅ Zones API v3.0 COMPLETE and READY!")
     print("✅ Total endpoints: 15 (5 v2.0 + 10 v3.0)")
-    print("✅ v2.0 compatibility: 100%")
-    print("✅ Architecture: psycopg3 async + JSON sync")
-    print("✅ FIXED: Template endpoint using Pydantic model")
+    print("🔒 All endpoints require ADMIN privileges (is_superuser=True)")
+    print("=" * 80)
+    print("\nv2.0 CRUD (5 endpoints):")
+    print("  POST   /zones/          - Criar nova zona [ADMIN]")
+    print("  GET    /zones/          - Listar todas zonas [ADMIN]")
+    print("  GET    /zones/{id}      - Obter zona específica [ADMIN]")
+    print("  PUT    /zones/{id}      - Atualizar zona [ADMIN]")
+    print("  DELETE /zones/{id}      - Deletar zona [ADMIN]")
+    print("\nv3.0 NEW (10 endpoints):")
+    print("  POST   /zones/search    - Busca avançada [ADMIN]")
+    print("  POST   /zones/bulk/create - Criar múltiplas [ADMIN]")
+    print("  POST   /zones/bulk/delete - Deletar múltiplas [ADMIN]")
+    print("  POST   /zones/{id}/clone - Clonar zona [ADMIN]")
+    print("  POST   /zones/validate  - Validar polígono [ADMIN]")
+    print("  GET    /zones/statistics - Estatísticas [ADMIN]")
+    print("  GET    /zones/export    - Exportar zonas [ADMIN]")
+    print("  POST   /zones/import    - Importar zonas [ADMIN]")
+    print("  GET    /zones/templates - Listar templates [ADMIN]")
+    print("  POST   /zones/templates/{name} - Criar de template [ADMIN]")
     print("=" * 80)

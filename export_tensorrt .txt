@@ -1,0 +1,30 @@
+
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+
+python -c "import cv2; print('opencv', cv2.__version__)"
+
+yolo predict model=yolo11n.pt source='https://ultralytics.com/images/bus.jpg'
+
+
+yolo predict model=yolo11n.pt source=0
+
+yolo predict model=yolo11n.pt source="D:\caminho\video.mp4"
+
+
+yolo export model=yolo11n.pt format=engine
+
+yolo predict model=yolo11n.engine source='https://ultralytics.com/images/bus.jpg'
+
+.env:
+# YOLO MODEL CONFIG
+YOLO_MODEL_PATH=yolo_models/yolo11n.engine
+YOLO_CONF_THRESHOLD=0.87
+YOLO_TARGET_WIDTH=1280
+
+config.py:
+class Settings(BaseSettings):
+    # ...
+    YOLO_MODEL_PATH: str = "yolo_models/yolo11n.engine"
+    # ...

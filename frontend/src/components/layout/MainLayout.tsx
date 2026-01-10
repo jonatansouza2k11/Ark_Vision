@@ -42,7 +42,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
                   <span className="text-white font-bold text-sm">YD</span>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900 hidden sm:block">
-                  YOLO Dashboard
+                  Vision Dashboard
                 </h1>
               </Link>
 
@@ -170,7 +170,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
       <footer className="bg-white border-t border-gray-200 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <p className="text-center text-sm text-gray-500">
-            © 2025 YOLO Dashboard. Todos os direitos reservados.
+            © 2026 Vision Dashboard. Todos os direitos reservados.
           </p>
         </div>
       </footer>

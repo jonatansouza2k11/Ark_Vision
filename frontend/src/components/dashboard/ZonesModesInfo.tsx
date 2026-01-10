@@ -12,7 +12,7 @@ const zoneModes = [
     },
     {
         mode: 'QUEUE',
-        title: 'QUEUE (Fila / Gargalo / Tráfego)',
+        title: 'QUEUE (Fila / Gargalo / Tráfego / Fluxo)',
         icon: Activity,
         color: 'bg-yellow-500',
         description:

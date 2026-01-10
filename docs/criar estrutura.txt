@@ -1,1 +1,5 @@
-﻿tree /F /A > docs/estrutura_projeto.txt
+﻿tree backend /f /a > docs/estrutura_backend.txt
+
+tree frontend /f /a > docs/estrutura_frontend.tx
+
+tree /f /a > docs/estrutura_tudo.tx

@@ -5,14 +5,12 @@ import { useStreamControl } from '../../hooks/useStreamControl';
 import { useYOLOStream } from '../../hooks/useYOLOStream';
 
 export default function StreamControls() {
-    const { stats } = useYOLOStream(2000); // Poll a cada 2 segundos
+    const { stats } = useYOLOStream(2000, true);
     const { startStream, pauseStream, stopStream, isProcessing } = useStreamControl();
 
-    // Debounce simples (500ms)
     const [isDebouncing, setIsDebouncing] = useState(false);
     const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Limpar timer ao desmontar
     useEffect(() => {
         return () => {
             if (debounceTimerRef.current) {
@@ -21,7 +19,6 @@ export default function StreamControls() {
         };
     }, []);
 
-    // Handler com debounce
     const handleAction = (action: () => void) => {
         if (isDebouncing || isProcessing) {
             console.log('🚫 Ação bloqueada (debounce ou processando)');
@@ -31,7 +28,6 @@ export default function StreamControls() {
         setIsDebouncing(true);
         action();
 
-        // Libera após 500ms
         debounceTimerRef.current = setTimeout(() => {
             setIsDebouncing(false);
         }, 500);
@@ -57,8 +53,8 @@ export default function StreamControls() {
                         onClick={() => handleAction(startStream)}
                         disabled={isDisabled}
                         className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${isDisabled
-                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                : 'bg-green-600 text-white hover:bg-green-700'
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'bg-green-600 text-white hover:bg-green-700'
                             }`}
                     >
                         <Play className="w-4 h-4" />
@@ -72,8 +68,8 @@ export default function StreamControls() {
                         onClick={() => handleAction(pauseStream)}
                         disabled={isDisabled}
                         className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${isDisabled
-                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                : 'bg-yellow-600 text-white hover:bg-yellow-700'
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'bg-yellow-600 text-white hover:bg-yellow-700'
                             }`}
                     >
                         {isPaused ? (
@@ -96,8 +92,8 @@ export default function StreamControls() {
                         onClick={() => handleAction(stopStream)}
                         disabled={isDisabled}
                         className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${isDisabled
-                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                : 'bg-red-600 text-white hover:bg-red-700'
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'bg-red-600 text-white hover:bg-red-700'
                             }`}
                     >
                         <Square className="w-4 h-4" />
@@ -112,8 +108,8 @@ export default function StreamControls() {
                     <span className="text-gray-500">Status:</span>
                     <div className="flex items-center gap-2">
                         <div className={`w-2 h-2 rounded-full ${systemStatus === 'running' ? 'bg-green-500 animate-pulse' :
-                                systemStatus === 'paused' ? 'bg-yellow-500' :
-                                    'bg-red-500'
+                            systemStatus === 'paused' ? 'bg-yellow-500' :
+                                'bg-red-500'
                             }`} />
                         <span className="font-medium text-gray-900">
                             {systemStatus === 'running' && 'Rodando'}

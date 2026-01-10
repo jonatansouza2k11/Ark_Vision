@@ -74,7 +74,7 @@ from fastapi import Request
 # CONFIGURAÇÃO
 # ============================================================================
 
-router = APIRouter(prefix="/alerts", tags=["alerts"])
+router = APIRouter(prefix="/alerts", tags=["Alertas"])
 logger = logging.getLogger(__name__)
 
 

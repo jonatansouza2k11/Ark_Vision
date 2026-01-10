@@ -37,9 +37,9 @@ except ModuleNotFoundError:
 logger = logging.getLogger("uvicorn")
 
 # Windows fix
-if sys.platform == "win32":
-    import asyncio
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+#if sys.platform == "win32":
+#    import asyncio
+#    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 # ============================================
@@ -1286,4 +1286,4 @@ if __name__ == "__main__":
             import traceback
             traceback.print_exc()
     
-    asyncio.run(test_connection())
+#    asyncio.run(test_connection())

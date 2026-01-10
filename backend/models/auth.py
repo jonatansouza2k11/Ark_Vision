@@ -432,7 +432,7 @@ class UserResponse(UserBase):
     # NEW v3.0: Response Methods
     # ========================================================================
     
-    def is_active(self) -> bool:
+    def is_account_active(self) -> bool:
         """➕ NEW: Check if account is active"""
         return self.is_active and self.account_status == AccountStatus.ACTIVE
     
@@ -451,7 +451,7 @@ class UserResponse(UserBase):
         Returns:
             (can_login, reason_if_not)
         """
-        if not self.is_active():
+        if not self.is_account_active():
             return False, f"Account is {self.account_status.value}"
         
         if self.is_locked():
@@ -945,7 +945,7 @@ if __name__ == "__main__":
         email_verified=True
     )
     print(f"   ✅ Admin username accepted: {admin_response.username}")
-    print(f"   ✅ Is active: {admin_response.is_active()}")
+    print(f"   ✅ Is active: {admin_response.is_account_active()}")
     print(f"   ✅ Can login: {admin_response.can_login()}")
     
     # Test 3: UserCreate - reserved username validation

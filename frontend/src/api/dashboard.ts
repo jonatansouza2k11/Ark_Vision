@@ -7,83 +7,118 @@ import {
     SystemLog,
     SystemSettings,
     Activity,
+    ZonesStatisticsResponse,
 } from '../types/dashboard';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('access_token');
     return {
         'Content-Type': 'application/json',
         ...(token && { Authorization: `Bearer ${token}` }),
     };
 };
 
+async function parseJsonOrThrow<T>(response: Response, fallbackMessage: string): Promise<T> {
+    if (!response.ok) {
+        // tenta ler um erro do backend sem “quebrar” a UX
+        try {
+            const payload = await response.json();
+            const detail =
+                (payload && (payload.detail || payload.message || payload.error)) ??
+                fallbackMessage;
+            throw new Error(typeof detail === 'string' ? detail : fallbackMessage);
+        } catch {
+            throw new Error(fallbackMessage);
+        }
+    }
+    return (await response.json()) as T;
+}
+
+// Backend atual (zones.py) retorna campos como totalzones, enabledzones...
+type BackendZonesStatisticsResponse = {
+    totalzones: number;
+    enabledzones: number;
+    disabledzones: number;
+    activezones: number;
+    zonesbymode: Record<string, number>;
+    averagearea: number | null;
+    totaldetections?: number | null;
+    mostactivezones?: Array<Record<string, any>>;
+    timestamp: string;
+};
+
+function mapZonesStatisticsResponse(
+    backend: BackendZonesStatisticsResponse
+): ZonesStatisticsResponse {
+    return {
+        total_zones: backend.totalzones,
+        enabled_zones: backend.enabledzones,
+        disabled_zones: backend.disabledzones,
+        active_zones: backend.activezones,
+        zones_by_mode: backend.zonesbymode ?? {},
+        average_area: backend.averagearea ?? 0,
+        total_detections: backend.totaldetections ?? null,
+        most_active_zones: backend.mostactivezones ?? [],
+        timestamp: backend.timestamp,
+    };
+}
+
 export const dashboardApi = {
     // ==========================================
     // DASHBOARD PRINCIPAL
     // ==========================================
 
-    // Buscar todos os dados do dashboard de uma vez
     async getDashboardData(): Promise<DashboardData> {
         const response = await fetch(`${API_URL}/api/v1/dashboard`, {
             headers: getAuthHeaders(),
         });
-
-        if (!response.ok) {
-            throw new Error('Erro ao buscar dados do dashboard');
-        }
-
-        return response.json();
+        return parseJsonOrThrow<DashboardData>(response, 'Erro ao buscar dados do dashboard');
     },
 
-    // Buscar informações do sistema
     async getSystemInfo(): Promise<SystemInfo> {
         const response = await fetch(`${API_URL}/api/v1/system/info`, {
             headers: getAuthHeaders(),
         });
-
-        if (!response.ok) {
-            throw new Error('Erro ao buscar informações do sistema');
-        }
-
-        return response.json();
+        return parseJsonOrThrow<SystemInfo>(response, 'Erro ao buscar informações do sistema');
     },
 
-    // Buscar estatísticas em tempo real
     async getStats(): Promise<DashboardStats> {
         const response = await fetch(`${API_URL}/api/v1/stats`, {
             headers: getAuthHeaders(),
         });
+        return parseJsonOrThrow<DashboardStats>(response, 'Erro ao buscar estatísticas');
+    },
 
-        if (!response.ok) {
-            throw new Error('Erro ao buscar estatísticas');
-        }
+    // ==========================================
+    // ZONAS (NEW v3.0)
+    // ==========================================
 
-        return response.json();
+    async getZonesStatistics(): Promise<ZonesStatisticsResponse> {
+        const response = await fetch(`${API_URL}/api/v1/zones/statistics`, {
+            headers: getAuthHeaders(),
+        });
+
+        const backend = await parseJsonOrThrow<BackendZonesStatisticsResponse>(
+            response,
+            'Erro ao buscar estatísticas das zonas'
+        );
+
+        return mapZonesStatisticsResponse(backend);
     },
 
     // ==========================================
     // ALERTS (Tabela: alerts)
     // ==========================================
 
-    // Buscar alertas recentes
     async getAlerts(limit = 20): Promise<Alert[]> {
-        const response = await fetch(
-            `${API_URL}/api/v1/alerts/recent?limit=${limit}`,
-            {
-                headers: getAuthHeaders(),
-            }
-        );
-
-        if (!response.ok) {
-            throw new Error('Erro ao buscar alertas');
-        }
-
-        return response.json();
+        const response = await fetch(`${API_URL}/api/v1/alerts/recent?limit=${limit}`, {
+            headers: getAuthHeaders(),
+        });
+        return parseJsonOrThrow<Alert[]>(response, 'Erro ao buscar alertas');
     },
 
-    // Deletar alerta específico
     async deleteAlert(personId: number, timestamp: string): Promise<boolean> {
         const response = await fetch(`${API_URL}/api/v1/alerts`, {
             method: 'DELETE',
@@ -91,34 +126,22 @@ export const dashboardApi = {
             body: JSON.stringify({ person_id: personId, timestamp }),
         });
 
-        if (!response.ok) {
-            throw new Error('Erro ao deletar alerta');
-        }
-
-        return response.json();
+        const payload = await parseJsonOrThrow<any>(response, 'Erro ao deletar alerta');
+        // mantém compatibilidade: aceita boolean puro ou {success:true}
+        return typeof payload === 'boolean' ? payload : Boolean(payload?.success ?? true);
     },
 
     // ==========================================
     // SYSTEM LOGS (Tabela: system_logs)
     // ==========================================
 
-    // Buscar logs do sistema
     async getSystemLogs(limit = 100): Promise<SystemLog[]> {
-        const response = await fetch(
-            `${API_URL}/api/v1/system/logs?limit=${limit}`,
-            {
-                headers: getAuthHeaders(),
-            }
-        );
-
-        if (!response.ok) {
-            throw new Error('Erro ao buscar logs do sistema');
-        }
-
-        return response.json();
+        const response = await fetch(`${API_URL}/api/v1/system/logs?limit=${limit}`, {
+            headers: getAuthHeaders(),
+        });
+        return parseJsonOrThrow<SystemLog[]>(response, 'Erro ao buscar logs do sistema');
     },
 
-    // Deletar log do sistema
     async deleteSystemLog(timestamp: string): Promise<boolean> {
         const response = await fetch(`${API_URL}/api/v1/system/logs`, {
             method: 'DELETE',
@@ -126,14 +149,10 @@ export const dashboardApi = {
             body: JSON.stringify({ timestamp }),
         });
 
-        if (!response.ok) {
-            throw new Error('Erro ao deletar log');
-        }
-
-        return response.json();
+        const payload = await parseJsonOrThrow<any>(response, 'Erro ao deletar log');
+        return typeof payload === 'boolean' ? payload : Boolean(payload?.success ?? true);
     },
 
-    // Criar log de ação do sistema
     async logSystemAction(
         action: 'PAUSAR' | 'RETOMAR' | 'PARAR' | 'INICIAR',
         reason?: string
@@ -144,29 +163,20 @@ export const dashboardApi = {
             body: JSON.stringify({ action, reason }),
         });
 
-        if (!response.ok) {
-            throw new Error('Erro ao registrar ação do sistema');
-        }
+        await parseJsonOrThrow<any>(response, 'Erro ao registrar ação do sistema');
     },
 
     // ==========================================
     // SETTINGS (Tabela: settings)
     // ==========================================
 
-    // Buscar todas as configurações
     async getSettings(): Promise<SystemSettings> {
         const response = await fetch(`${API_URL}/api/v1/settings`, {
             headers: getAuthHeaders(),
         });
-
-        if (!response.ok) {
-            throw new Error('Erro ao buscar configurações');
-        }
-
-        return response.json();
+        return parseJsonOrThrow<SystemSettings>(response, 'Erro ao buscar configurações');
     },
 
-    // Atualizar configuração específica
     async updateSetting(key: string, value: string | number | boolean): Promise<void> {
         const response = await fetch(`${API_URL}/api/v1/settings/${key}`, {
             method: 'PUT',
@@ -174,12 +184,9 @@ export const dashboardApi = {
             body: JSON.stringify({ value }),
         });
 
-        if (!response.ok) {
-            throw new Error(`Erro ao atualizar configuração: ${key}`);
-        }
+        await parseJsonOrThrow<any>(response, `Erro ao atualizar configuração: ${key}`);
     },
 
-    // Atualizar múltiplas configurações de uma vez
     async updateSettings(settings: Partial<SystemSettings>): Promise<void> {
         const response = await fetch(`${API_URL}/api/v1/settings`, {
             method: 'PUT',
@@ -187,28 +194,17 @@ export const dashboardApi = {
             body: JSON.stringify(settings),
         });
 
-        if (!response.ok) {
-            throw new Error('Erro ao atualizar configurações');
-        }
+        await parseJsonOrThrow<any>(response, 'Erro ao atualizar configurações');
     },
 
     // ==========================================
     // ATIVIDADES (Combinado: alerts + system_logs)
     // ==========================================
 
-    // Buscar atividades recentes (alertas + logs)
     async getRecentActivities(limit = 10): Promise<Activity[]> {
-        const response = await fetch(
-            `${API_URL}/api/v1/activities/recent?limit=${limit}`,
-            {
-                headers: getAuthHeaders(),
-            }
-        );
-
-        if (!response.ok) {
-            throw new Error('Erro ao buscar atividades');
-        }
-
-        return response.json();
+        const response = await fetch(`${API_URL}/api/v1/activities/recent?limit=${limit}`, {
+            headers: getAuthHeaders(),
+        });
+        return parseJsonOrThrow<Activity[]>(response, 'Erro ao buscar atividades');
     },
 };

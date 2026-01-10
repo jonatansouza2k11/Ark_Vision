@@ -1068,8 +1068,11 @@ async def update_user_status(
         )    
 
 
-@router.post("/{user_id}/reset-password", summary="🔑 Reset senha do usuário")
-async def reset_user_password(
+# ========================================================================
+# ⚠️ DUPLICATE ENDPOINT DISABLED (kept to preserve comments / reference)
+# ========================================================================
+# @router.post("/{user_id}/reset-password", summary="🔑 Reset senha do usuário")
+async def reset_user_password_duplicate_disabled(
     user_id: int,
     password_reset: PasswordResetRequest,
     request: Request,
@@ -1114,8 +1117,11 @@ async def reset_user_password(
         )
 
 
-@router.patch("/{user_id}/status", summary="🔄 Atualiza status da conta")
-async def update_user_status(
+# ========================================================================
+# ⚠️ DUPLICATE ENDPOINT DISABLED (kept to preserve comments / reference)
+# ========================================================================
+# @router.patch("/{user_id}/status", summary="🔄 Atualiza status da conta")
+async def update_user_status_duplicate_disabled(
     user_id: int,
     status_update: UserStatusUpdate,
     request: Request,
@@ -1255,8 +1261,11 @@ async def get_user_statistics(
 # ============================================================================
 # v3.0 ENDPOINTS - EXPORT/IMPORT (NEW)
 # ============================================================================
-@router.get("/export", summary="📤 Exporta usuários (CSV)")
-async def export_users(
+# ========================================================================
+# ⚠️ DUPLICATE ENDPOINT DISABLED (kept to preserve comments / reference)
+# ========================================================================
+# @router.get("/export", summary="📤 Exporta usuários (CSV)")
+async def export_users_duplicate_disabled(
     current_user: dict = Depends(get_current_admin_user),
     # format: str = "csv"  # ✅ Removido - sempre CSV
 ):

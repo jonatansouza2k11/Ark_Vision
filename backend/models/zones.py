@@ -35,10 +35,16 @@ import json
 # ============================================
 
 class ZoneMode(str, Enum):
-    """✅ Zone operation modes"""
-    GENERIC = "GENERIC"  # General purpose zone
-    EMPTY = "EMPTY"      # Alert when zone is empty
-    FULL = "FULL"        # Alert when zone is full
+    """Zone detection modes v3.0"""
+    # ✅ NEW v3.0 modes (lowercase)
+    OCCUPANCY = "occupancy"      # Detecção de ocupação (vaga, área)
+    COUNTING = "counting"        # Contagem de pessoas/objetos
+    ALERT = "alert"             # Alerta de intrusão
+    TRACKING = "tracking"       # Rastreamento de movimento
+    # 🔙 Backward compatibility v2.0 (uppercase)
+    GENERIC = "GENERIC"
+    EMPTY = "EMPTY"
+    FULL = "FULL"
 
 
 class CoordinateSystem(str, Enum):

@@ -4,6 +4,10 @@
  * Settings Types v4.0 - Advanced Features
  */
 
+// ============================================================================
+// Core Configuration Interfaces
+// ============================================================================
+
 export interface YOLOConfig {
     model_path: string;
     conf_thresh: number;
@@ -43,13 +47,35 @@ export interface AllSettings extends YOLOConfig, ZoneConfig, EmailConfig, System
 
 export type SettingsTab = 'yolo' | 'zones' | 'email' | 'system';
 
+// ============================================================================
+// Update Types (Partial - for API calls)
+// ============================================================================
+
+export type YOLOConfigUpdate = Partial<YOLOConfig>;
+export type ZoneConfigUpdate = Partial<ZoneConfig>;
+export type EmailConfigUpdate = Partial<EmailConfig>;
+export type SystemConfigUpdate = Partial<SystemConfig>;
+
+// Combined update type for general settings (zones + system)
+export type GeneralSettingsUpdate = Partial<ZoneConfig & SystemConfig>;
+
+// ============================================================================
+// API Response Types
+// ============================================================================
+
 export interface ApiResponse<T> {
     data?: T;
     error?: string;
+    message?: string;
+}
+
+export interface ApiError {
+    detail: string;
+    status?: number;
 }
 
 // ============================================================================
-// NEW v4.0: Validation Types
+// Validation Types
 // ============================================================================
 
 export interface ValidationRule {
@@ -64,8 +90,15 @@ export interface FieldValidation {
     level?: 'error' | 'warning' | 'info';
 }
 
+export interface ValidationResult {
+    valid: boolean;
+    errors: ValidationRule[];
+    warnings: ValidationRule[];
+    infos: ValidationRule[];
+}
+
 // ============================================================================
-// NEW v4.0: History Types
+// History Types
 // ============================================================================
 
 export interface SettingsSnapshot {
@@ -77,8 +110,14 @@ export interface SettingsSnapshot {
     settings: Partial<AllSettings>;
 }
 
+export interface SettingsHistory {
+    snapshots: SettingsSnapshot[];
+    total: number;
+    current_page: number;
+}
+
 // ============================================================================
-// NEW v4.0: Diff Types
+// Diff Types
 // ============================================================================
 
 export interface SettingsDiff {
@@ -87,10 +126,17 @@ export interface SettingsDiff {
     oldValue: any;
     newValue: any;
     changed: boolean;
+    category?: SettingsTab;
+}
+
+export interface SettingsComparison {
+    diffs: SettingsDiff[];
+    totalChanges: number;
+    changedFields: string[];
 }
 
 // ============================================================================
-// NEW v4.0: Export Types
+// Export Types
 // ============================================================================
 
 export interface ExportData {
@@ -99,4 +145,30 @@ export interface ExportData {
     exported_by: string;
     category?: SettingsTab;
     settings: Partial<AllSettings>;
+}
+
+export type ExportFormat = 'json' | 'yaml' | 'env';
+
+export interface ExportOptions {
+    format: ExportFormat;
+    category?: SettingsTab;
+    includeDefaults?: boolean;
+}
+
+// ============================================================================
+// Settings Presets
+// ============================================================================
+
+export interface SettingsPreset {
+    id: string;
+    name: string;
+    description: string;
+    category: SettingsTab;
+    settings: Partial<AllSettings>;
+    is_default?: boolean;
+}
+
+export interface PresetList {
+    presets: SettingsPreset[];
+    total: number;
 }

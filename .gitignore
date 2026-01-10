@@ -36,76 +36,51 @@ htmlcov/
 .nox/
 .coverage
 .coverage.*
-.cache
-nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
 
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
+# Lint / typecheck caches
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.pyre/
 
 # Jupyter Notebook
-.ipynb_checkpoints
+.ipynb_checkpoints/
 
 # pyenv
 .python-version
 
-# celery beat schedule file
-celerybeat-schedule
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
+# Environments / virtualenv
 .env
-.venv
-env/
+.env.*
+!.env.example
+.venv/
 venv/
 ENV/
+env/
 env.bak/
 venv.bak/
 cv_env/
 cvenv/
 
-# Spyder project settings
-.spyderproject
-.spyproject
+# Flask / Django
+instance/
+.webassets-cache/
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
 
-# Rope project settings
-.ropeproject
+# Logs
+*.log
 
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
+# Databases
+*.db
+*.sqlite
+*.sqlite3
 
 # ============================================
 # 🎯 NODE.JS / FRONTEND
@@ -116,83 +91,39 @@ jspm_packages/
 bower_components/
 
 # Production builds
-dist/
 build/
+dist/
 .next/
 .nuxt/
 out/
 
+# Vite cache
+.vite/
+
 # Testing
-.nyc_output
+.nyc_output/
+coverage/
 
-# IDE / Editor
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Misc
+# Misc logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
 
-# Optional npm cache directory
-.npm
-
-# Optional eslint cache
+# Optional caches
+.npm/
 .eslintcache
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# parcel-bundler cache
-.cache
-.parcel-cache
-
-# Next.js build output
-.next
-out
-
-# Nuxt.js build / generate output
-.nuxt
-dist
-
-# Gatsby files
+.parcel-cache/
 .cache/
-public
 
-# vuepress build output
-.vuepress/dist
-
-# Serverless directories
-.serverless/
-
-# FuseBox cache
-.fusebox/
-
-# DynamoDB Local files
-.dynamodb/
-
-# TernJS port file
-.tern-port
-
-# Stores VSCode versions used for testing VSCode extensions
-.vscode-test
+# Build tool metadata
+*.tsbuildinfo
 
 # ============================================
 # 🤖 YOLO / AI MODELS
 # ============================================
-# YOLO Model files (.pt, .onnx, etc.)
+# Model files (.pt, .onnx, etc.)
 *.pt
 *.pth
 *.weights
@@ -200,10 +131,6 @@ public
 *.engine
 *.trt
 *.bin
-
-# Exceto modelos base necessários (descomente se quiser versioná-los)
-# !yolo_models/yolo11n.pt
-# !yolo_models/yolov8n.pt
 
 # Training outputs
 runs/
@@ -213,9 +140,8 @@ weights/
 results/
 
 # ============================================
-# 📁 ARQUIVOS TEMPORÁRIOS E BACKUP
+# 📁 TEMP / BACKUP
 # ============================================
-# Backups
 *.bak
 *.backup
 *_backup.*
@@ -223,21 +149,7 @@ results/
 *copy.*
 *Copy.*
 backup_*/
-templates_backup/
-templatesbackup/
 
-# Logs
-logs/
-*.log
-*.log.*
-log_*.txt
-
-# Databases
-*.db
-*.sqlite
-*.sqlite3
-
-# Temporary files
 tmp/
 temp/
 *.tmp
@@ -248,33 +160,28 @@ extensoes.txt
 # ============================================
 # 🖼️ MEDIA / UPLOADS
 # ============================================
-# Upload directories (ajuste conforme necessário)
 uploads/
 static/uploads/
 media/
 
-# Video / Image test files
 test_videos/
 test_images/
 sample_data/
 
-# Exceto assets necessários
+# -----------------------------------------------------------------
+# static/ policy (safe negation): ignore everything except selected
+# -----------------------------------------------------------------
+static/*
+!static/img/
 !static/img/.gitkeep
 !static/css/
+!static/css/**
 !static/js/
+!static/js/**
 
 # ============================================
 # 🔒 SECRETS / SENSITIVE DATA
 # ============================================
-# Environment variables
-.env
-.env.local
-.env.*.local
-.env.production
-.env.development
-.env.test
-
-# Secrets
 secrets.json
 config.json
 credentials.json
@@ -284,8 +191,16 @@ credentials.json
 *.crt
 
 # ============================================
-# 🖥️ OS SPECIFIC
+# 🖥️ OS / IDE
 # ============================================
+# IDE
+.idea/
+.vscode/
+.vscode-test/
+*.swp
+*.swo
+*~
+
 # Windows
 Thumbs.db
 ehthumbs.db
@@ -308,61 +223,27 @@ Icon
 .Trashes
 
 # Linux
-*~
 .directory
 .Trash-*
 
 # ============================================
-# 🔧 CONFIGURAÇÕES LOCAIS
+# 🔧 LOCAL CONFIG OVERRIDES
 # ============================================
-# Config overrides
 config.local.py
 config.override.py
 settings.local.py
 
 # ============================================
-# 📊 OUTROS
+# ✅ ALWAYS INCLUDE
 # ============================================
-# Coverage reports
-htmlcov/
-.coverage
-
-# Documentation builds
-docs/_build/
-
-# Compiled files
-*.com
-*.class
-*.dll
-*.exe
-*.o
-*.so
-
-# Archives
-*.7z
-*.dmg
-*.gz
-*.iso
-*.jar
-*.rar
-*.tar
-*.zip
-
-# ============================================
-# ✅ ARQUIVOS IMPORTANTES (SEMPRE INCLUIR)
-# ============================================
-# Force include important files
 !.gitignore
 !README.md
 !requirements.txt
 !package.json
 !docker-compose.yml
 !Dockerfile
-!.env.example
 
 # ============================================
-# 📝 NOTAS
+# 📝 NOTES
 # ============================================
-# Este .gitignore foi gerado automaticamente
-# Data: 2026-01-04
-# Projeto: YOLO Dashboard (Backend Flask + Frontend React)
+# Generated/curated on 2026-01-07

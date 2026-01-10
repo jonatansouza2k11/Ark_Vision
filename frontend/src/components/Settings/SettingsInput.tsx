@@ -10,7 +10,7 @@ import React from 'react';
 interface SettingsInputProps {
     label: string;
     name: string;
-    type: 'text' | 'number' | 'select';
+    type: 'text' | 'number' | 'select' | 'password';
     value: string | number;
     onChange: (name: string, value: any) => void;
     options?: { value: string; label: string }[];

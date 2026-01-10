@@ -1,209 +1,364 @@
 // src/types/dashboard.ts
+import type { ElementType } from 'react';
 
 // ============================================================================
-// TIPOS BASEADOS NO BANCO DE DADOS SQLite (database.py)
+// DASHBOARD
 // ============================================================================
-
-// Tabela: alerts
-export interface Alert {
-    id: number;
-    person_id: number;
-    out_time: number; // tempo fora da zona (segundos)
-    snapshot_path: string | null;
-    email_sent: boolean;
-    timestamp: string;
-}
-
-// Tabela: system_logs
-export interface SystemLog {
-    id: number;
-    action: 'PAUSAR' | 'RETOMAR' | 'PARAR' | 'INICIAR';
-    username: string;
-    reason: string | null;
-    email_sent: boolean;
-    timestamp: string;
-}
-
-// Tabela: settings (configurações do sistema)
-export interface SystemSettings {
-    // YOLO
-    conf_thresh: number;
-    model_path: string;
-
-    // Performance
-    target_width: number;
-    frame_step: number;
-
-    // Zona / Alertas
-    safe_zone: SafeZone[]; // JSON array de zonas
-    max_out_time: number;
-    email_cooldown: number;
-    buffer_seconds: number;
-
-    // Fonte de vídeo
-    source: string; // "0" para webcam ou path/url
-
-    // Parâmetros da câmera
-    cam_width: number;
-    cam_height: number;
-    cam_fps: number;
-
-    // Tracker
-    tracker: string;
-
-    // Parâmetros de zona
-    zone_empty_timeout: number;
-    zone_full_timeout: number;
-    zone_full_threshold: number;
-
-    // Email / SMTP
-    email_smtp_server: string;
-    email_smtp_port: number;
-    email_use_tls: boolean;
-    email_use_ssl: boolean;
-    email_from: string;
-    email_user: string;
-    email_password: string;
-}
-
-// Safe Zone (zona poligonal)
-export interface SafeZone {
-    id: string;
-    name: string;
-    mode: 'FLOW' | 'QUEUE' | 'CRITICAL' | 'GENERIC';
-    polygon: Point[]; // Array de pontos [x, y]
-    enabled: boolean;
-    // Parâmetros específicos por modo
-    params?: {
-        empty_timeout?: number;
-        full_timeout?: number;
-        full_threshold?: number;
-    };
-}
 
 export interface Point {
     x: number;
     y: number;
 }
 
-// Informações do sistema (runtime)
-export interface SystemInfo {
-    model_name: string;
-    video_source_label: string;
-    confidence: number;
-    fps: number;
-    resolution: string;
-    gpu_enabled: boolean;
-    status: 'online' | 'offline' | 'paused' | 'stopped';
-    uptime: number; // segundos
+export interface SafeZone {
+    name: string;
+    points: Point[];
+    color: string;
+    active: boolean;
+    created_at: string;
 }
 
-// Estatísticas em tempo real
-export interface DashboardStats {
-    // Contadores da sessão atual
-    in_zone_count: number;
-    out_zone_count: number;
-    total_detections: number;
+export interface ZoneStatus {
+    id: number;
+    name: string;
+    people_count: number;
+    status: 'empty' | 'occupied' | 'full';
+    last_change: string;
+    duration_seconds: number;
+}
 
-    // Alertas
-    alerts_last_24h: number;
-    alerts_total: number;
+export interface DashboardStats {
+    inzone: number;
+    outzone: number;
+    detections: number;
+    alerts: number;
+    fps: number;
+    system_status: string;
+    model_name: string;
+    video_source: string;
+}
+
+export interface Alert {
+    person_id: number;
+    timestamp: string;
+    inzone: boolean;
+    snapshot_path: string;
+    email_sent: boolean;
+    email_sent_at?: string | null;
+    created_at: string;
+    zone_id?: number | null;
+    zone_name?: string | null;
+}
+
+export interface SystemLog {
+    timestamp: string;
+    action: string;
+    reason?: string | null;
+    username?: string | null;
+    ip_address?: string | null;
+    context?: Record<string, any> | null;
+    created_at: string;
+}
+
+export interface SystemSettings {
+    confthresh: number;
+    targetwidth: number;
+    framestep: number;
+    maxouttime: number;
+    emailcooldown: number;
+    safezone: SafeZone[];
+    source: string;
+    camwidth: number;
+    camheight: number;
+    camfps: number;
+    modelpath: string;
+    tracker: string;
+    zoneemptytimeout: number;
+    zonefulltimeout: number;
+    zonefullthreshold: number;
+    bufferseconds: number;
+}
+
+export interface Activity {
+    type: 'alert' | 'system';
+    timestamp: string;
+    description: string;
+    severity: 'info' | 'warning' | 'critical';
+    data?: Alert | SystemLog;
+}
+
+export interface DashboardData {
+    stats: DashboardStats;
+    alerts: Alert[];
+    system_logs: SystemLog[];
+    recent_activities: Activity[];
+    settings: SystemSettings;
+    zones: ZoneStatus[];
+    safe_zones: SafeZone[];
+    updated_at: string;
+}
+
+export interface SystemInfo {
+    platform: string;
+    python_version: string;
+    opencv_version: string;
+    yolo_model: string;
+    database_status: string;
+    uptime_seconds: number;
+    total_detections: number;
+    total_alerts: number;
+    cpu_usage: number;
+    memory_usage: number;
+    disk_usage: number;
+    last_restart: string;
+}
+
+// ============================================================================
+// YOLO STREAM TYPES
+// ============================================================================
+
+export interface YOLOStats {
+    // ✅ FPS Metrics (v3.0+)
+    fps_current?: number;
+    fps_avg?: number;
+    fpsavg: number; // compat v2.0
 
     // Zonas
-    zones: ZoneStatus[];
-}
+    inzone: number;
+    outzone: number;
 
-// Status de uma zona em tempo real
-export interface ZoneStatus {
-    zone_id: string;
-    zone_name: string;
-    mode: 'FLOW' | 'QUEUE' | 'CRITICAL' | 'GENERIC';
-    current_count: number;
-    time_empty: number; // segundos que está vazia
-    time_full: number; // segundos que está cheia
-    state: 'empty' | 'normal' | 'warning' | 'alert' | 'critical';
-}
-
-// Atividade recente (combinação de alerts + detecções)
-export interface Activity {
-    id: string;
-    type: 'alert' | 'detection' | 'system_action';
-    timestamp: string;
-    person_id?: number;
-    out_time?: number;
-    zone_name?: string;
-    action?: string;
-    username?: string;
-    reason?: string;
-    snapshot_path?: string;
-    message: string;
-}
-
-// Dados completos do dashboard
-export interface DashboardData {
-    system_info: SystemInfo;
-    stats: DashboardStats;
-    recent_activities: Activity[];
-}
-
-// ============================================================================
-// STREAM STATUS - Resposta da API /stream/status (Backend Python - snake_case)
-// ============================================================================
-export interface YOLOStats {
-    // Status do Sistema (snake_case - vem do Python)
-    system_status: 'stopped' | 'running' | 'paused';
-    stream_active: boolean;
-    paused: boolean;
-
-    // Zonas (dados em tempo real)
-    in_zone: number;
-    out_zone: number;
-
-    // Detecções e Performance
+    // Detecções
     detected_count: number;
 
-    // ✅ FPS - Adicionado para corrigir os erros
-    fps?: number;          // FPS atual/instantâneo
-    fps_inst?: number;     // FPS instantâneo (alternativa)
-    fps_avg?: number;      // FPS médio
+    // Status do sistema
+    system_status: 'running' | 'stopped' | 'paused' | 'error';
+    paused: boolean;
+    stream_active: boolean;
 
-    // Memória e Performance
+    // Configuração
+    preset: string;
+
+    // Alertas
+    recent_alerts: any[];
+
+    // Métricas opcionais
     memory_mb?: number;
-    peak_memory_mb?: number;
-    frame_count?: number;
-
-    // Modelo
-    preset?: string;
-    model?: string;
-
-    // Zonas detalhadas (opcional)
-    zones?: Array<{
-        index: number;
-        name: string;
-        mode: string;
-        count: number;
-        empty_for: number | null;
-        full_for: number | null;
-        state: string;
-    }>;
-
-    // Alertas Recentes (opcional)
-    recent_alerts?: AlertRecent[];
 }
 
-export interface AlertRecent {
-    type: 'intrusion' | 'warning' | 'info';
+// ============================================================================
+// STREAM CONTROL TYPES
+// ============================================================================
+
+export interface StreamControlResponse {
     message: string;
-    timestamp: string;
-    zone_id?: string;
-    person_id?: number;
+    status: string;
+    paused?: boolean;
 }
 
-
-export interface AlertRecent {
-    type: 'intrusion' | 'warning' | 'info';
-    message: string;
+export interface StreamHealthResponse {
+    status: 'healthy' | 'degraded' | 'unhealthy';
+    stream_status: 'running' | 'stopped' | 'paused';
+    uptime_seconds: number;
+    fps_current: number;
+    fps_target: number;
+    frame_count: number;
+    errors_count: number;
+    memory_usage_mb: number;
+    cpu_percent: number;
+    gpu_available: boolean;
+    last_error?: string;
     timestamp: string;
-    zone_id?: string;
-    person_id?: number;
+}
+
+// ============================================================================
+// COMPONENT PROPS
+// ============================================================================
+
+export interface SystemInfoBannerProps {
+    modelName: string;
+    videoSource: string;
+    status: 'online' | 'offline' | 'paused' | 'stopped';
+}
+
+export interface StatCardProps {
+    icon: ElementType;
+    iconColor: string;
+    title: string;
+    value: number | string;
+    subtitle?: string;
+}
+
+// ============================================================================
+// ACTIVITY & EVENTS
+// ============================================================================
+
+export interface ActivityEvent {
+    id: string;
+    type: 'detection' | 'alert' | 'zone_violation' | 'system';
+    timestamp: string;
+    description: string;
+    severity?: 'low' | 'medium' | 'high' | 'critical';
+    metadata?: Record<string, any>;
+}
+
+// Observação: este type é de “estatística/estado por zona” do stream/detection.
+// Não confundir com ZonesStatisticsResponse do endpoint /api/v1/zones/statistics.
+export interface ZoneStatistics {
+    zone_id: number;
+    zone_name: string;
+    count: number;
+    status: 'OK' | 'EMPTY_LONG' | 'FULL_LONG';
+    mode: 'GENERIC' | 'SECURITY' | 'MONITORING';
+}
+
+// ============================================================================
+// DETECTION & TRACKING
+// ============================================================================
+
+export interface DetectionStats {
+    total_detections: number;
+    detections_per_minute: number;
+    objects_in_zone: number;
+    objects_out_zone: number;
+    unique_tracks: number;
+    active_tracks: number;
+    detection_classes: Record<string, number>;
+    zone_statistics: Record<string, ZoneStatistics>;
+    alerts_triggered: number;
+}
+
+export interface TrackInfo {
+    track_id: number;
+    status: 'IN' | 'OUT';
+    zone_idx: number;
+    last_seen: number;
+    out_time: number;
+    recording: boolean;
+}
+
+// ============================================================================
+// VIDEO & STREAM
+// ============================================================================
+
+export interface VideoStreamProps {
+    onError?: (error: Error) => void;
+    onLoad?: () => void;
+    quality?: 'low' | 'medium' | 'high' | 'ultra';
+}
+
+export interface StreamMetrics {
+    fps_current: number;
+    fps_average: number;
+    fps_min: number;
+    fps_max: number;
+    frame_count: number;
+    dropped_frames: number;
+    processing_time_ms: number;
+    detection_time_ms: number;
+    streaming_time_ms: number;
+    memory_usage_mb: number;
+    cpu_percent: number;
+    gpu_percent?: number;
+    bandwidth_mbps?: number;
+    uptime_seconds: number;
+    timestamp: string;
+}
+
+// ============================================================================
+// SYSTEM & DIAGNOSTICS
+// ============================================================================
+
+export interface SystemDiagnostics {
+    system_info: {
+        platform: string;
+        python_version: string;
+        opencv_version?: string;
+        cuda_available: boolean;
+        cuda_version?: string;
+        gpu_name?: string;
+    };
+    stream_info: {
+        status: string;
+        active: boolean;
+        paused: boolean;
+        fps: number;
+        total_frames: number;
+        restarts: number;
+        errors: number;
+    };
+    performance_info: {
+        memory_mb: number;
+        cpu_percent: number;
+        threads: number;
+    };
+    yolo_info: {
+        model_loaded: boolean;
+        detection_enabled: boolean;
+        tracking_enabled: boolean;
+        active_tracks: number;
+    };
+    zones_info: {
+        zones_count: number;
+        zones: string[];
+    };
+    issues: string[];
+    recommendations: string[];
+}
+
+// ============================================================================
+// API RESPONSE TYPES
+// ============================================================================
+
+export interface ApiResponse<T = any> {
+    success: boolean;
+    data?: T;
+    message?: string;
+    error?: string;
+}
+
+export interface PaginatedResponse<T> {
+    items: T[];
+    total: number;
+    page: number;
+    per_page: number;
+    pages: number;
+}
+
+// ============================================================================
+// HOOK RETURN TYPES
+// ============================================================================
+
+export interface UseYOLOStreamReturn {
+    stats: YOLOStats | null;
+    isConnected: boolean;
+    error: string | null;
+    refresh: () => Promise<void>;
+}
+
+export interface UseStreamControlReturn {
+    isLoading: boolean;
+    error: string | null;
+    startStream: () => Promise<void>;
+    stopStream: () => Promise<void>;
+    pauseStream: () => Promise<void>;
+}
+
+// ============================================================================
+// ZONES STATISTICS (API: /api/v1/zones/statistics) - NEW v3.0
+// (frontend snake_case; mapeado no src/api/dashboard.ts)
+// ============================================================================
+
+export interface ZonesStatisticsResponse {
+    total_zones: number;
+    enabled_zones: number;
+    disabled_zones: number;
+    active_zones: number;
+
+    zones_by_mode: Record<string, number>;
+    average_area: number;
+
+    total_detections?: number | null;
+    most_active_zones?: Array<Record<string, any>>;
+
+    timestamp: string;
 }

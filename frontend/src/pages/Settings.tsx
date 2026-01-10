@@ -1,11 +1,23 @@
 // frontend/src/pages/Settings.tsx
 
 import { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Save, RotateCcw, Camera, Mail, Cpu, Shield, AlertCircle, CheckCircle2 } from 'lucide-react';
+import {
+    Settings as SettingsIcon,
+    Save,
+    RotateCcw,
+    Camera,
+    Mail,
+    Cpu,
+    Shield,
+    AlertCircle,
+    CheckCircle2,
+    RefreshCw
+} from 'lucide-react';
 import MainLayout from '../components/layout/MainLayout';
 import { SettingsInput } from '../components/Settings/SettingsInput';
 import { useSettings } from '../hooks/useSettings';
-import type { SettingsTab } from '../types/settings.types';
+import { settingsApi, type YOLOModel } from '../api/settingsApi';
+import type { SettingsTab, AllSettings } from '../types/settings.types';
 
 export default function Settings() {
     const {
@@ -20,8 +32,13 @@ export default function Settings() {
     } = useSettings();
 
     const [activeTab, setActiveTab] = useState<SettingsTab>('yolo');
-    const [formData, setFormData] = useState<Record<string, any>>({});
+    const [formData, setFormData] = useState<Partial<AllSettings>>({});
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+    // ✅ Estados para modelos YOLO - SEMPRE inicializa como array
+    const [yoloModels, setYoloModels] = useState<YOLOModel[]>([]);
+    const [currentModel, setCurrentModel] = useState<string>('');
+    const [loadingModels, setLoadingModels] = useState(false);
 
     // Sync form data with loaded settings
     useEffect(() => {
@@ -29,6 +46,37 @@ export default function Settings() {
             setFormData({ ...settings });
         }
     }, [settings]);
+
+    // ✅ Carregar modelos YOLO ao montar o componente
+    useEffect(() => {
+        loadYoloModels();
+    }, []);
+
+    // ✅ Função para carregar modelos disponíveis com tratamento robusto
+    const loadYoloModels = async () => {
+        try {
+            setLoadingModels(true);
+            const response = await settingsApi.getYoloModels();
+
+            // ✅ Validação robusta da resposta
+            if (response && typeof response === 'object') {
+                const models = Array.isArray(response.models) ? response.models : [];
+                setYoloModels(models);
+                setCurrentModel(response.current || '');
+                console.log('✅ Modelos YOLO carregados:', models.length, 'modelo(s)');
+            } else {
+                console.warn('⚠️ Resposta inválida da API:', response);
+                setYoloModels([]);
+                setCurrentModel('');
+            }
+        } catch (err) {
+            console.error('❌ Erro ao carregar modelos YOLO:', err);
+            setYoloModels([]);
+            setCurrentModel('');
+        } finally {
+            setLoadingModels(false);
+        }
+    };
 
     const tabs = [
         { id: 'yolo' as const, label: 'YOLO Model', icon: Camera },
@@ -43,57 +91,60 @@ export default function Settings() {
 
     const handleSave = async () => {
         setSuccessMessage(null);
-
         let success = false;
 
-        if (activeTab === 'yolo') {
-            success = await updateYoloConfig({
-                model_path: formData.model_path,
-                conf_thresh: formData.conf_thresh,
-                target_width: formData.target_width,
-                frame_step: formData.frame_step,
-                tracker: formData.tracker,
-                source: formData.source,
-                cam_width: formData.cam_width,
-                cam_height: formData.cam_height,
-                cam_fps: formData.cam_fps,
-            });
-        } else if (activeTab === 'zones') {
-            success = await updateSettings({
-                max_out_time: formData.max_out_time,
-                email_cooldown: formData.email_cooldown,
-                zone_empty_timeout: formData.zone_empty_timeout,
-                zone_full_timeout: formData.zone_full_timeout,
-                zone_full_threshold: formData.zone_full_threshold,
-                buffer_seconds: formData.buffer_seconds,
-            });
-        } else if (activeTab === 'email') {
-            success = await updateEmailConfig({
-                email_smtp_server: formData.email_smtp_server,
-                email_smtp_port: formData.email_smtp_port,
-                email_user: formData.email_user,
-                email_password: formData.email_password,
-                email_from: formData.email_from,
-            });
-        } else if (activeTab === 'system') {
-            success = await updateSettings({
-                use_cuda: formData.use_cuda,
-                verbose_logs: formData.verbose_logs,
-                auto_restart: formData.auto_restart,
-            });
-        }
+        try {
+            if (activeTab === 'yolo') {
+                success = await updateYoloConfig({
+                    model_path: formData.model_path,
+                    conf_thresh: formData.conf_thresh,
+                    target_width: formData.target_width,
+                    frame_step: formData.frame_step,
+                    tracker: formData.tracker,
+                    source: formData.source,
+                    cam_width: formData.cam_width,
+                    cam_height: formData.cam_height,
+                    cam_fps: formData.cam_fps,
+                });
+            } else if (activeTab === 'zones') {
+                success = await updateSettings({
+                    max_out_time: formData.max_out_time,
+                    email_cooldown: formData.email_cooldown,
+                    zone_empty_timeout: formData.zone_empty_timeout,
+                    zone_full_timeout: formData.zone_full_timeout,
+                    zone_full_threshold: formData.zone_full_threshold,
+                    buffer_seconds: formData.buffer_seconds,
+                });
+            } else if (activeTab === 'email') {
+                success = await updateEmailConfig({
+                    email_smtp_server: formData.email_smtp_server,
+                    email_smtp_port: formData.email_smtp_port,
+                    email_user: formData.email_user,
+                    email_password: formData.email_password,
+                    email_from: formData.email_from,
+                });
+            } else if (activeTab === 'system') {
+                success = await updateSettings({
+                    use_cuda: formData.use_cuda,
+                    verbose_logs: formData.verbose_logs,
+                    auto_restart: formData.auto_restart,
+                });
+            }
 
-        if (success) {
-            setSuccessMessage('✅ Configurações salvas com sucesso!');
-            setTimeout(() => setSuccessMessage(null), 3000);
+            if (success) {
+                setSuccessMessage('✅ Configurações salvas com sucesso!');
+                setTimeout(() => setSuccessMessage(null), 3000);
+            }
+        } catch (err) {
+            console.error('Failed to save settings:', err);
         }
     };
 
     const handleReset = async () => {
-        if (window.confirm('Deseja restaurar todas as configurações para os valores padrão?')) {
+        if (window.confirm('⚠️ Deseja restaurar todas as configurações para os valores padrão?')) {
             const success = await resetSettings();
             if (success) {
-                setSuccessMessage('✅ Configurações restauradas!');
+                setSuccessMessage('✅ Configurações restauradas com sucesso!');
                 setTimeout(() => setSuccessMessage(null), 3000);
             }
         }
@@ -126,7 +177,7 @@ export default function Settings() {
                         <button
                             onClick={handleReset}
                             disabled={saving}
-                            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50"
+                            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             <RotateCcw className="w-4 h-4" />
                             Restaurar Padrões
@@ -134,7 +185,7 @@ export default function Settings() {
                         <button
                             onClick={handleSave}
                             disabled={saving}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50"
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             <Save className="w-4 h-4" />
                             {saving ? 'Salvando...' : 'Salvar Alterações'}
@@ -144,7 +195,7 @@ export default function Settings() {
 
                 {/* Messages */}
                 {error && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 animate-in fade-in duration-300">
                         <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                         <div>
                             <h3 className="font-medium text-red-900">Erro</h3>
@@ -154,7 +205,7 @@ export default function Settings() {
                 )}
 
                 {successMessage && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3 animate-in fade-in duration-300">
                         <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                         <p className="text-sm text-green-700">{successMessage}</p>
                     </div>
@@ -187,14 +238,63 @@ export default function Settings() {
                         {/* YOLO Tab */}
                         {activeTab === 'yolo' && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <SettingsInput
-                                    label="Modelo YOLO"
-                                    name="model_path"
-                                    type="text"
-                                    value={formData.model_path || ''}
-                                    onChange={handleInputChange}
-                                    help="Exemplo: yolov8n.pt, yolov8s.pt, yolov8m.pt"
-                                />
+                                {/* ✅ Campo de Modelo YOLO - Select dinâmico com verificações robustas */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <label htmlFor="model_path" className="block text-sm font-medium text-gray-700">
+                                            Modelo YOLO
+                                        </label>
+                                        <button
+                                            onClick={loadYoloModels}
+                                            disabled={loadingModels}
+                                            className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 disabled:opacity-50"
+                                            title="Recarregar lista de modelos"
+                                        >
+                                            <RefreshCw className={`w-3 h-3 ${loadingModels ? 'animate-spin' : ''}`} />
+                                            Atualizar
+                                        </button>
+                                    </div>
+
+                                    <select
+                                        id="model_path"
+                                        name="model_path"
+                                        value={formData.model_path || ''}
+                                        onChange={(e) => handleInputChange('model_path', e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        disabled={loadingModels}
+                                    >
+                                        {loadingModels ? (
+                                            <option>Carregando modelos...</option>
+                                        ) : !Array.isArray(yoloModels) || yoloModels.length === 0 ? (
+                                            <option>Nenhum modelo encontrado</option>
+                                        ) : (
+                                            <>
+                                                <option value="">Selecione um modelo</option>
+                                                {yoloModels.map((model) => (
+                                                    <option key={model.filename} value={model.path}>
+                                                        {model.filename} - {model.type} {model.variant} ({model.size_mb} MB)
+                                                    </option>
+                                                ))}
+                                            </>
+                                        )}
+                                    </select>
+
+                                    {/* ✅ Info e badge do modelo atual */}
+                                    {/* ✅ Info e badge do modelo atual */}
+                                    <div className="flex items-center justify-between text-xs">
+                                        <span className="text-gray-500">
+                                            {Array.isArray(yoloModels) && yoloModels.length > 0
+                                                ? `${yoloModels.length} modelo(s) em /yolo_models/ (.pt ou .engine)`
+                                                : 'Coloque os arquivos .pt ou .engine na pasta /yolo_models/'}
+                                        </span>
+                                        {formData.model_path && formData.model_path === currentModel && (
+                                            <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">
+                                                ✓ Atual
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
                                 <SettingsInput
                                     label="Confidence Threshold"
                                     name="conf_thresh"
@@ -230,8 +330,8 @@ export default function Settings() {
                                     value={formData.tracker || ''}
                                     onChange={handleInputChange}
                                     options={[
-                                        { value: 'BoT-SORT', label: 'BoT-SORT' },
-                                        { value: 'ByteTrack', label: 'ByteTrack' },
+                                        { value: 'botsort.yaml', label: 'BoT-SORT' },
+                                        { value: 'bytetrack.yaml', label: 'ByteTrack' },
                                     ]}
                                     help="Algoritmo de rastreamento"
                                 />
@@ -361,7 +461,7 @@ export default function Settings() {
                                         <SettingsInput
                                             label="Senha SMTP"
                                             name="email_password"
-                                            type="text"
+                                            type="password"
                                             value={formData.email_password || ''}
                                             onChange={handleInputChange}
                                             help="Para Gmail, use App Password (não a senha normal)"

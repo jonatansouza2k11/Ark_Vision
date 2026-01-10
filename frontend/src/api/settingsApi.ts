@@ -1,10 +1,16 @@
 // frontend/src/api/settingsApi.ts
 
 /**
- * Settings API Client v4.0 - Advanced Features
+ * Settings API Client v4.1 - Advanced Features + YOLO Models
  */
 
-import type { YOLOConfig, EmailConfig, AllSettings, ApiResponse, ExportData } from '../types/settings.types';
+import type {
+    YOLOConfig,
+    EmailConfig,
+    AllSettings,
+    ApiResponse,
+    ExportData
+} from '../types/settings.types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -15,6 +21,29 @@ const getAuthHeader = () => {
         'Content-Type': 'application/json',
     };
 };
+
+// ============================================================================
+// NEW v4.1: YOLO Models Types
+// ============================================================================
+
+export interface YOLOModel {
+    filename: string;
+    path: string;
+    type: string;         // "YOLO v8", "YOLO v11"
+    variant: string;      // "Nano (fastest)", "Small (balanced)", etc.
+    size_mb: number;
+}
+
+export interface YOLOModelsResponse {
+    models: YOLOModel[];
+    current: string;      // Modelo atualmente em uso
+    total: number;
+    message?: string;
+}
+
+// ============================================================================
+// Settings API
+// ============================================================================
 
 export const settingsApi = {
     // ========== Existing Methods ==========
@@ -184,6 +213,60 @@ export const settingsApi = {
             return { data };
         } catch (error) {
             return { error: error instanceof Error ? error.message : 'Failed to import settings' };
+        }
+    },
+
+    // ========== NEW v4.1: YOLO Available Models ==========
+
+    getYoloModels: async (): Promise<YOLOModelsResponse> => {
+        try {
+            const response = await fetch(`${API_BASE}/api/v1/settings/available-models`, {
+                headers: getAuthHeader(),
+            });
+
+            if (!response.ok) {
+                console.error(`❌ HTTP Error: ${response.status} ${response.statusText}`);
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            // ✅ Validação robusta da resposta
+            if (!data || typeof data !== 'object') {
+                console.error('❌ Resposta inválida da API:', data);
+                return {
+                    models: [],
+                    current: '',
+                    total: 0,
+                    message: 'Resposta inválida do servidor'
+                };
+            }
+
+            // ✅ Garante que models sempre seja um array
+            const validModels = Array.isArray(data.models) ? data.models : [];
+
+            console.log('✅ API response:', {
+                modelsCount: validModels.length,
+                current: data.current || 'none',
+                total: data.total || 0
+            });
+
+            return {
+                models: validModels,
+                current: data.current || '',
+                total: data.total || validModels.length,
+                message: data.message
+            };
+        } catch (error) {
+            console.error('❌ Failed to fetch YOLO models:', error);
+
+            // ✅ Return fallback válido em caso de erro
+            return {
+                models: [],
+                current: '',
+                total: 0,
+                message: error instanceof Error ? error.message : 'Failed to fetch models'
+            };
         }
     },
 };

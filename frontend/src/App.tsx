@@ -4,12 +4,14 @@ import { useEffect, useState } from 'react';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
-import Settings from './pages/Settings'; // ✅ NOVO
-import Logs from './pages/Logs'; // ✅ NOVO
+import Settings from './pages/Settings';
+import Logs from './pages/Logs';
 import NotFound from './pages/NotFound';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuthStore } from './store/authStore';
 import { usersApi } from './api/users';
+import { ToastProvider } from './contexts/ToastContext'; // ✅ ADICIONADO
+import ToastContainer from './components/ToastContainer'; // ✅ ADICIONADO
 
 function App() {
   const { user, token, login } = useAuthStore();
@@ -45,56 +47,62 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Rota pública */}
-        <Route
-          path="/login"
-          element={token ? <Navigate to="/" replace /> : <Login />}
-        />
+    // ✅ TOAST PROVIDER - Envolve toda a aplicação
+    <ToastProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Rota pública */}
+          <Route
+            path="/login"
+            element={token ? <Navigate to="/" replace /> : <Login />}
+          />
 
-        {/* Rotas protegidas */}
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
+          {/* Rotas protegidas */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
 
-        <Route
-          path="/users"
-          element={
-            <ProtectedRoute adminOnly>
-              <Users />
-            </ProtectedRoute>
-          }
-        />
+          <Route
+            path="/users"
+            element={
+              <ProtectedRoute adminOnly>
+                <Users />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* ✅ NOVAS ROTAS */}
-        <Route
-          path="/settings"
-          element={
-            <ProtectedRoute>
-              <Settings />
-            </ProtectedRoute>
-          }
-        />
+          {/* Rotas de Configurações e Logs */}
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
+              </ProtectedRoute>
+            }
+          />
 
-        <Route
-          path="/logs"
-          element={
-            <ProtectedRoute>
-              <Logs />
-            </ProtectedRoute>
-          }
-        />
+          <Route
+            path="/logs"
+            element={
+              <ProtectedRoute>
+                <Logs />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* 404 */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </BrowserRouter>
+          {/* 404 */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+
+        {/* ✅ TOAST CONTAINER - Renderiza as notificações */}
+        <ToastContainer />
+      </BrowserRouter>
+    </ToastProvider>
   );
 }
 
