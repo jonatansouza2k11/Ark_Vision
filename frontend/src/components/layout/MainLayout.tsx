@@ -1,7 +1,7 @@
 // src/components/layout/MainLayout.tsx
 import { ReactNode, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, LogOut, Menu, X, Settings, FileText } from 'lucide-react'; // ✅ Adiciona Settings, FileText
+import { LayoutDashboard, Users, LogOut, Menu, X, Settings, FileText } from 'lucide-react'; 
 import { useAuthStore } from '../../store/authStore';
 
 interface MainLayoutProps {

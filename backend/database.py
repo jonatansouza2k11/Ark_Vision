@@ -36,12 +36,6 @@ except ModuleNotFoundError:
 
 logger = logging.getLogger("uvicorn")
 
-# Windows fix
-#if sys.platform == "win32":
-#    import asyncio
-#    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-
 # ============================================
 # OPTIMIZATION 1: Constants & Enums
 # ============================================
@@ -143,6 +137,12 @@ class SQL:
     DELETE_ZONE_SOFT = "UPDATE zones SET deleted_at = CURRENT_TIMESTAMP, active = FALSE, enabled = FALSE WHERE id = %s"
     DELETE_ZONE_HARD = "DELETE FROM zones WHERE id = %s"
     
+    # CAMERA QUERIES (NEW)
+    SELECT_ALL_CAMERAS = "SELECT * FROM cameras ORDER BY id"
+    SELECT_ACTIVE_CAMERAS = "SELECT * FROM cameras WHERE enabled = TRUE ORDER BY id"
+    SELECT_CAMERA_BY_ID = "SELECT * FROM cameras WHERE id = %s"
+    DELETE_CAMERA = "DELETE FROM cameras WHERE id = %s"
+
     # SETTINGS QUERIES
     SELECT_SETTING = "SELECT * FROM settings WHERE key = %s"
     SELECT_ALL_SETTINGS = "SELECT key, value, category, data_type FROM settings"
@@ -382,7 +382,34 @@ async def init_database(force_recreate: bool = False) -> None:
         """)
         logger.info("✅ Tabela 'settings' criada (v3.0)")
         
-        # ==================== ZONES TABLE v3.0 ====================
+        # ==================== CAMERAS TABLE v1.0 ====================
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS cameras (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                source VARCHAR(500) NOT NULL,   -- RTSP/HTTP/device
+                username VARCHAR(100),
+                password VARCHAR(255),
+                location VARCHAR(255),
+
+                -- Status
+                enabled BOOLEAN DEFAULT TRUE NOT NULL,
+
+                -- Metadata
+                metadata JSONB DEFAULT '{}'::jsonb,
+
+                -- Timestamps
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP
+            )
+        """)
+
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cameras_enabled ON cameras(enabled)"
+        )
+        logger.info("✅ Tabela 'cameras' criada (v1.0)")
+
+        # ==================== ZONES TABLE v3.1 (camera_id) ====================
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS zones (
                 id SERIAL PRIMARY KEY,
@@ -390,38 +417,41 @@ async def init_database(force_recreate: bool = False) -> None:
                 points JSONB NOT NULL,
                 mode VARCHAR(50) DEFAULT 'occupancy' NOT NULL,
                 
+                -- Camera relationship (nullable for legacy zones)
+                camera_id INTEGER,
+
                 -- Zone parameters
-                empty_timeout REAL DEFAULT 5.0,
-                full_timeout REAL DEFAULT 10.0,
+                empty_timeout REAL DEFAULT 50.0,
+                full_timeout REAL DEFAULT 50.0,
                 empty_threshold INTEGER DEFAULT 0,
                 full_threshold INTEGER DEFAULT 3,
                 max_out_time REAL,
                 email_cooldown REAL,
-                
+
                 -- Status flags v3.0 (zones.py)
                 enabled BOOLEAN DEFAULT TRUE NOT NULL,
                 active BOOLEAN DEFAULT TRUE NOT NULL,
-                
+
                 -- NEW v3.0
                 description TEXT,
                 metadata JSONB DEFAULT '{}'::jsonb,
-                
+
                 -- Timestamps
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 deleted_at TIMESTAMP  -- NEW v3.0: Soft delete
             )
         """)
-        
+
         # Índices otimizados
         for index_sql in [
             "CREATE INDEX IF NOT EXISTS idx_zones_active ON zones(active) WHERE deleted_at IS NULL",
             "CREATE INDEX IF NOT EXISTS idx_zones_enabled ON zones(enabled) WHERE deleted_at IS NULL",
-            "CREATE INDEX IF NOT EXISTS idx_zones_mode ON zones(mode)"
+            "CREATE INDEX IF NOT EXISTS idx_zones_mode ON zones(mode)",
+            "CREATE INDEX IF NOT EXISTS idx_zones_camera_id ON zones(camera_id)"
         ]:
             await conn.execute(index_sql)
-        
-        logger.info("✅ Tabela 'zones' criada (v3.0)")
+        logger.info("✅ Tabela 'zones' criada (v3.1 com camera_id)")
         
         # ==================== ALERTS TABLE v3.0 ====================
         await conn.execute("""
@@ -696,6 +726,7 @@ async def create_zone(
     name: str,
     mode: str,
     points: List[List[float]],
+    camera_id: Optional[int] = None,
     max_out_time: Optional[float] = None,
     email_cooldown: Optional[float] = None,
     empty_timeout: Optional[float] = 5.0,
@@ -711,7 +742,7 @@ async def create_zone(
         result = await _execute_query(
             """
             INSERT INTO zones (
-                name, mode, points, max_out_time, email_cooldown,
+                name, mode, points, camera_id, max_out_time, email_cooldown,
                 empty_timeout, full_timeout, empty_threshold, full_threshold,
                 enabled, active, description
             )
@@ -719,7 +750,7 @@ async def create_zone(
             RETURNING id
             """,
             (
-                name, mode, json.dumps(points), max_out_time, email_cooldown,
+                name, mode, json.dumps(points), camera_id, max_out_time, email_cooldown,
                 empty_timeout, full_timeout, empty_threshold, full_threshold,
                 enabled, active, description
             ),
@@ -763,6 +794,7 @@ async def update_zone(
     name: Optional[str] = None,
     mode: Optional[str] = None,
     points: Optional[List[List[float]]] = None,
+    camera_id: Optional[int] = None,
     max_out_time: Optional[float] = None,
     email_cooldown: Optional[float] = None,
     empty_timeout: Optional[float] = None,
@@ -785,6 +817,7 @@ async def update_zone(
             name or zone['name'],
             mode or zone['mode'],
             json.dumps(points if points is not None else zone['points']),
+            camera_id if camera_id is not None else zone.get('camera_id'),
             max_out_time if max_out_time is not None else zone.get('max_out_time'),
             email_cooldown if email_cooldown is not None else zone.get('email_cooldown'),
             empty_timeout if empty_timeout is not None else zone.get('empty_timeout'),
@@ -800,7 +833,7 @@ async def update_zone(
         await _execute_query(
             """
             UPDATE zones SET
-                name = %s, mode = %s, points = %s,
+                name = %s, mode = %s, points = %s, camera_id = %s,
                 max_out_time = %s, email_cooldown = %s,
                 empty_timeout = %s, full_timeout = %s,
                 empty_threshold = %s, full_threshold = %s,
@@ -843,6 +876,90 @@ async def delete_zone(zone_id: int, soft: bool = True) -> bool:
         logger.error(f"❌ Error deleting zone: {e}")
         return False
 
+
+# ============================================
+# CAMERAS FUNCTIONS v3.1
+# ============================================
+async def get_all_cameras(active_only: bool = False) -> List[Dict[str, Any]]:
+    """Retorna todas as câmeras (ou apenas ativas)."""
+    query = SQL.SELECT_ACTIVE_CAMERAS if active_only else SQL.SELECT_ALL_CAMERAS
+    return await _execute_query(query, fetch="all")
+
+
+async def get_camera_by_id(camera_id: int) -> Optional[Dict[str, Any]]:
+    """Busca câmera por ID."""
+    return await _execute_query(SQL.SELECT_CAMERA_BY_ID, (camera_id,), fetch="one")
+
+
+async def create_camera(
+    name: str,
+    source: str,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    location: Optional[str] = None,
+    enabled: bool = True,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> int:
+    """Cria nova câmera."""
+    row = await _execute_query(
+        """
+        INSERT INTO cameras (
+            name, source, username, password, location,
+            enabled, metadata
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+        """,
+        (
+            name,
+            source,
+            username,
+            password,
+            location,
+            enabled,
+            _safe_json_dumps(metadata),
+        ),
+        fetch="one",
+    )
+    camera_id = row["id"]
+    logger.info(f"✅ Camera created: {name} (ID: {camera_id})")
+    return camera_id
+
+
+async def update_camera(
+    camera_id: int,
+    **kwargs: Any,
+) -> bool:
+    """Atualiza câmera; aceita qualquer campo simples ou metadata=dict."""
+    try:
+        if not kwargs:
+            return False
+
+        update_fields = []
+        params: List[Any] = []
+
+        for key, value in kwargs.items():
+            if key == "metadata" and isinstance(value, dict):
+                value = _safe_json_dumps(value)
+            update_fields.append(f"{key} = %s")
+            params.append(value)
+
+        update_fields.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(camera_id)
+
+        query = f"UPDATE cameras SET {', '.join(update_fields)} WHERE id = %s"
+        await _execute_query(query, tuple(params))
+
+        logger.info(f"✅ Camera updated (ID: {camera_id})")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Error updating camera: {e}")
+        return False
+
+
+async def delete_camera(camera_id: int) -> bool:
+    """Deleta câmera por ID."""
+    return await _execute_delete(TableName.CAMERAS, camera_id)
 
 # ============================================
 # USER FUNCTIONS v3.0
@@ -1167,6 +1284,91 @@ async def get_detections_by_track(track_id: int, limit: int = 100) -> List[Dict[
 
 
 # ============================================
+# CAMERAS FUNCTIONS v1.0
+# ============================================
+async def get_all_cameras(active_only: bool = False) -> List[Dict[str, Any]]:
+    """Retorna todas as câmeras (ou apenas ativas)."""
+    query = SQL.SELECT_ACTIVE_CAMERAS if active_only else SQL.SELECT_ALL_CAMERAS
+    return await _execute_query(query, fetch="all")
+
+
+async def get_camera_by_id(camera_id: int) -> Optional[Dict[str, Any]]:
+    """Busca câmera por ID."""
+    return await _execute_query(SQL.SELECT_CAMERA_BY_ID, (camera_id,), fetch="one")
+
+
+async def create_camera(
+    name: str,
+    source: str,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    location: Optional[str] = None,
+    enabled: bool = True,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> int:
+    """Cria nova câmera."""
+    row = await _execute_query(
+        """
+        INSERT INTO cameras (
+            name, source, username, password, location,
+            enabled, metadata
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+        """,
+        (
+            name,
+            source,
+            username,
+            password,
+            location,
+            enabled,
+            _safe_json_dumps(metadata),
+        ),
+        fetch="one",
+    )
+    camera_id = row["id"]
+    logger.info(f"✅ Camera created: {name} (ID: {camera_id})")
+    return camera_id
+
+
+async def update_camera(
+    camera_id: int,
+    **kwargs: Any,
+) -> bool:
+    """Atualiza câmera; aceita qualquer campo simples ou metadata=dict."""
+    try:
+        if not kwargs:
+            return False
+
+        update_fields = []
+        params: List[Any] = []
+
+        for key, value in kwargs.items():
+            if key == "metadata" and isinstance(value, dict):
+                value = _safe_json_dumps(value)
+            update_fields.append(f"{key} = %s")
+            params.append(value)
+
+        update_fields.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(camera_id)
+
+        query = f"UPDATE cameras SET {', '.join(update_fields)} WHERE id = %s"
+        await _execute_query(query, tuple(params))
+
+        logger.info(f"✅ Camera updated (ID: {camera_id})")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Error updating camera: {e}")
+        return False
+
+
+async def delete_camera(camera_id: int) -> bool:
+    """Deleta câmera por ID."""
+    return await _execute_delete(TableName.CAMERAS, camera_id)
+
+
+# ============================================
 # RAG FUNCTIONS (CONVERSATIONS + KNOWLEDGE BASE)
 # ============================================
 
@@ -1265,19 +1467,21 @@ if __name__ == "__main__":
             print("✅ Conexão estabelecida!")
             
             print("\n🔧 Criando tabelas v3.0...")
-            await init_database(force_recreate=False)
+            await init_database(force_recreate=False) #True para recriar o banco
             print("✅ Tabelas criadas!")
             
             print("\n✅ Database v3.0 100% ALIGNED WITH APIs!")
             print("   - users.py ✅")
             print("   - auth.py ✅")
-            print("   - zones.py ✅ (sync_zones_to_settings RESTORED!)")
+            print("   - zones.py ✅")
+            print("   - cameras.py ✅")
+            print("   - zones.camera_id ✅")
             print("   - alerts.py ✅")
             print("   - settings.py ✅")
             print("   - video.py ✅")
             
             await close_db_pool()
-            print("✅ Pool fechado com sucesso!")
+            print("✅ Pool fechado com sucesso!  (CAMERAS SUPPORT)...")
             
             print("=" * 80)
             
@@ -1285,5 +1489,3 @@ if __name__ == "__main__":
             print(f"❌ Erro: {e}")
             import traceback
             traceback.print_exc()
-    
-#    asyncio.run(test_connection())

@@ -16,10 +16,12 @@ import {
     Filter,
     AlertCircle,
     CheckCircle2,
-    XCircle
+    XCircle,
+    Camera
 } from 'lucide-react';
 import type { Zone, ZoneMode } from '../../types/zones.types';
 import { ZONE_MODE_LABELS, ZONE_MODE_COLORS } from '../../types/zones.types';
+import { useCameras } from '../../hooks/useCameras';
 
 // ============================================================================
 // TYPES
@@ -120,6 +122,7 @@ interface ZoneCardProps {
     isSelected?: boolean;
     onSelect?: (selected: boolean) => void;
     showSelection?: boolean;
+    getCameraName?: (cameraId: number | null | undefined) => string | null;
 }
 
 function ZoneCard({
@@ -130,7 +133,8 @@ function ZoneCard({
     onView,
     isSelected = false,
     onSelect,
-    showSelection = false
+    showSelection = false,
+    getCameraName
 }: ZoneCardProps) {
     const modeColor = zone.color || ZONE_MODE_COLORS[zone.mode];
 
@@ -226,6 +230,19 @@ function ZoneCard({
                     </div>
                 </div>
 
+                {/* ✅ NEW v3.1: Câmera Associada */}
+                {zone.camera_id && getCameraName && getCameraName(zone.camera_id) && (
+                    <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+                        <Camera className="w-4 h-4 text-purple-600" />
+                        <div className="flex-1">
+                            <p className="text-xs text-gray-500">Câmera</p>
+                            <p className="text-sm font-semibold text-purple-700">
+                                {getCameraName ? getCameraName(zone.camera_id) : 'Câmera'}
+                            </p>
+                    </div>
+                    </div>
+                )}
+
                 {/* Tags */}
                 {zone.tags && zone.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1">
@@ -296,6 +313,16 @@ export default function ZonesList({
     // ==========================================================================
 
     const [searchTerm, setSearchTerm] = useState('');
+
+    // ✅ NEW v3.1: Cameras para mostrar nome
+    const { cameras } = useCameras();
+    // Helper para buscar nome da câmera
+    const getCameraName = (cameraId: number | null | undefined): string | null => {
+        if (!cameraId) return null;
+        const camera = cameras.find(c => c.id === cameraId);
+        return camera?.name || null;
+    };
+
     const [filterMode, setFilterMode] = useState<ZoneMode | 'ALL'>('ALL');
     const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
     const [deleteDialog, setDeleteDialog] = useState<{
@@ -501,8 +528,10 @@ export default function ZonesList({
                             isSelected={selectedZones.includes(zone.id)}
                             onSelect={(selected) => handleZoneSelect(zone.id, selected)}
                             showSelection={isSelectionMode}
+                            getCameraName={getCameraName}
                         />
                     ))}
+
                 </div>
             )}
 

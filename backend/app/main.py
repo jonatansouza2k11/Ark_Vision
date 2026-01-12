@@ -49,7 +49,7 @@ from backend import database
 from backend.dependencies import limiter
 from slowapi.errors import RateLimitExceeded
 
-from backend.api import auth, users, admin, zones, alerts
+from backend.api import auth, users, admin, zones, alerts, cameras
 from backend.api import settings as settings_api
 from backend.api import stream
 
@@ -223,6 +223,7 @@ app.include_router(users.router)
 app.include_router(settings_api.router)
 app.include_router(admin.router)
 app.include_router(zones.router)
+app.include_router(cameras.router)
 app.include_router(alerts.router)
 app.include_router(stream.router)
 

@@ -1,12 +1,6 @@
 # ===================================================================
 # backend/api/stream.py
-# CORRIGIDO E OTIMIZADO v4.8
-# - Compatível com VisionSystem antigo e novo
-# - Suporte Multi-Câmeras
-# - FPS unificado
-# - Tracking robusto
-# - Limite de streams e memória industrial
-# - Mantém contratos com frontend
+# CORRIGIDO E GOVERNADO v4.9
 # ===================================================================
 
 import logging
@@ -19,31 +13,22 @@ from enum import Enum
 from collections import deque
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel
 
 from backend.config import settings
 from backend.dependencies import get_current_user, get_current_admin_user
-from backend.services.vision_system import VisionSystem
 from backend.yolo import get_vision_system
+from backend.dependencies import get_current_active_user
 
 logger = logging.getLogger("uvicorn")
 
-# ====================================================================
-# ROUTER
-# ====================================================================
-router = APIRouter(prefix="/api/v1/stream", tags=["YOLO Stream"])
+router = APIRouter(prefix="/api/v1/stream", tags=["Stream"])
 
-# ====================================================================
-# ENV SAFE CONFIG
-# ====================================================================
 MAX_CONCURRENT_STREAMS = getattr(settings, "MAX_CONCURRENT_STREAMS", 3)
 MEMORY_PERCENT_THRESHOLD = getattr(settings, "MEMORY_PERCENT_THRESHOLD", 85)
 MEMORY_MIN_AVAILABLE_MB = getattr(settings, "MEMORY_MIN_AVAILABLE_MB", 200)
 
-# ====================================================================
-# STATE
-# ====================================================================
 active_streams: Set[str] = set()
 stream_events = deque(maxlen=100)
 stream_stats = {
@@ -53,9 +38,6 @@ stream_stats = {
     "memory_errors": 0,
 }
 
-# ====================================================================
-# ENUMS
-# ====================================================================
 class StreamStatus(str, Enum):
     RUNNING = "running"
     STOPPED = "stopped"
@@ -68,9 +50,6 @@ class EventType(str, Enum):
     ERROR = "error"
     MEMORY_ERROR = "memory_error"
 
-# ====================================================================
-# MODELS
-# ====================================================================
 class StreamStatusResponse(BaseModel):
     fps_current: float = 0.0
     fps_avg: float = 0.0
@@ -85,28 +64,23 @@ class StreamStatusResponse(BaseModel):
     active_connections: int
     max_connections: int
 
-# ====================================================================
-# HELPERS
-# ====================================================================
 @lru_cache(maxsize=1)
 def _get_vision_system_cached():
     vs = get_vision_system()
-    required_attrs = [
+    required = [
         "start_live", "stop_live",
         "generate_frames", "track_state",
         "stream_active", "paused",
         "current_fps", "avg_fps",
+        "get_detection_count",
+        "contexts",
     ]
-    for attr in required_attrs:
+    for attr in required:
         if not hasattr(vs, attr):
             raise RuntimeError(f"VisionSystem missing attribute: {attr}")
     return vs
 
 def _is_live(vs) -> bool:
-    """
-    Compatibilidade com VisionSystem antigo e novo.
-    Aceita is_live como método ou property.
-    """
     attr = getattr(vs, "is_live", None)
     if callable(attr):
         return attr()
@@ -140,7 +114,7 @@ def check_memory_available() -> bool:
         return True
 
 # ====================================================================
-# VIDEO STREAM (MJPEG)
+# VIDEO STREAM
 # ====================================================================
 @router.get("/video_feed", summary="📹 Stream MJPEG")
 async def video_feed(request: Request):
@@ -164,7 +138,7 @@ async def video_feed(request: Request):
     vs = _get_vision_system_cached()
     if not _is_live(vs):
         vs.start_live()
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.2)
 
     def generator():
         try:
@@ -179,6 +153,11 @@ async def video_feed(request: Request):
             active_streams.discard(stream_key)
             log_event(EventType.STOPPED, f"Client disconnected: {stream_key}")
 
+            # Governança: se não há mais consumidores, encerra o pipeline
+            if not active_streams and _is_live(vs):
+                logger.info("🧹 No active streams. Stopping VisionSystem.")
+                vs.stop_live()
+
     return StreamingResponse(
         generator(),
         media_type="multipart/x-mixed-replace; boundary=frame",
@@ -191,6 +170,58 @@ async def video_feed(request: Request):
     )
 
 # ====================================================================
+# SNAPSHOT
+# ====================================================================
+@router.get("/snapshot", summary="📸 Capturar snapshot do stream")
+async def get_snapshot(current_user: dict = Depends(get_current_active_user)):
+    try:
+        import cv2
+
+        vs = _get_vision_system_cached()
+
+        if not vs.stream_active:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Stream não está ativo. Inicie o stream primeiro."
+            )
+
+        if not vs.contexts:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Nenhuma câmera configurada"
+            )
+
+        ctx = vs.contexts[0]
+        frame = ctx.camera.get_frame()
+
+        if frame is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Nenhum frame disponível. Aguarde a câmera inicializar."
+            )
+
+        _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 100])
+
+        return Response(
+            content=buffer.tobytes(),
+            media_type="image/jpeg",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erro ao capturar snapshot: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao capturar snapshot: {str(e)}"
+        )
+
+# ====================================================================
 # STREAM CONTROL
 # ====================================================================
 @router.post("/start", summary="▶️ Start stream")
@@ -198,12 +229,14 @@ async def start_stream(current_user: dict = Depends(get_current_user)):
     vs = _get_vision_system_cached()
     if _is_live(vs):
         return {"status": StreamStatus.RUNNING.value}
+
     if not check_memory_available():
         stream_stats["memory_errors"] += 1
         raise HTTPException(
             status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
             detail="Insufficient memory available"
         )
+
     vs.start_live()
     stream_stats["restarts"] += 1
     log_event(EventType.STARTED, f"Started by {current_user.get('username')}")
@@ -214,6 +247,7 @@ async def stop_stream(current_user: dict = Depends(get_current_user)):
     vs = _get_vision_system_cached()
     if not _is_live(vs):
         return {"status": StreamStatus.STOPPED.value}
+
     vs.stop_live()
     active_streams.clear()
     log_event(EventType.STOPPED, f"Stopped by {current_user.get('username')}")
@@ -226,6 +260,7 @@ async def stop_stream(current_user: dict = Depends(get_current_user)):
 async def get_stream_status(current_user: dict = Depends(get_current_user)):
     vs = _get_vision_system_cached()
     track_state = vs.track_state or {}
+
     in_zone = sum(1 for s in track_state.values() if s.get("status") == "IN")
     out_zone = sum(1 for s in track_state.values() if s.get("status") == "OUT")
 

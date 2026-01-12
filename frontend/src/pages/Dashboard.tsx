@@ -14,6 +14,10 @@ import ZoneTable from '../components/dashboard/ZoneTable';
 import ZoneDrawer from '../components/zones/ZoneDrawer';
 import type { Zone, CreateZonePayload, UpdateZonePayload } from '../types/zones.types';
 
+// ✅ NOVO: Imports para Câmeras
+import { useCameras } from '../hooks/useCameras';
+import { Camera } from 'lucide-react';
+
 // ============================================================================
 // StatCard Component
 // ============================================================================
@@ -96,6 +100,60 @@ function ZonesSummaryCard({ totalZones, activeZones, onOpenMap }: ZonesSummaryCa
     );
 }
 
+
+// ============================================================================
+// ✅ NOVO: CamerasSummaryCard Component (Mini Card de Resumo)
+// ============================================================================
+interface CamerasSummaryCardProps {
+    totalCameras: number;
+    activeCameras: number;
+    onManageCameras: () => void;
+}
+
+function CamerasSummaryCard({ totalCameras, activeCameras, onManageCameras }: CamerasSummaryCardProps) {
+    return (
+        <div className="bg-white rounded-lg shadow border border-gray-200">
+            {/* Header */}
+            <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+                <div className="flex items-center gap-2">
+                    <Camera className="w-5 h-5 text-purple-600" />
+                    <h3 className="text-sm font-semibold text-gray-900">Câmeras Configuradas</h3>
+                </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 space-y-4">
+                {/* Stats */}
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="text-center p-3 bg-purple-50 rounded-lg">
+                        <p className="text-2xl font-bold text-purple-600">{totalCameras}</p>
+                        <p className="text-xs text-gray-600 mt-1">Total</p>
+                    </div>
+                    <div className="text-center p-3 bg-green-50 rounded-lg">
+                        <p className="text-2xl font-bold text-green-600">{activeCameras}</p>
+                        <p className="text-xs text-gray-600 mt-1">Ativas</p>
+                    </div>
+                </div>
+
+                {/* Manage Button */}
+                <button
+                    onClick={onManageCameras}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all shadow-sm hover:shadow-md"
+                >
+                    <Camera className="w-4 h-4" />
+                    <span className="font-medium">Gerenciar Câmeras</span>
+                </button>
+
+                {/* Info */}
+                <p className="text-xs text-gray-500 text-center">
+                    Adicione e configure câmeras de vídeo
+                </p>
+            </div>
+        </div>
+    );
+}
+
+
 // ============================================================================
 // Dashboard Page
 // ============================================================================
@@ -107,6 +165,9 @@ export default function Dashboard() {
     const { zones, loading: zonesLoading, fetchZones } = useZones();
     const [showZoneMap, setShowZoneMap] = useState(false);
     const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
+
+    // ✅ NOVO: Câmeras Hook
+    const { cameras } = useCameras();
 
     const [dashboardStats] = useState({
         status: 'Sistema Operacional',
@@ -131,6 +192,9 @@ export default function Dashboard() {
     // ✅ NOVO: Calcular zonas ativas
     const activeZonesCount = zones.filter(z => z.enabled).length;
 
+    // ✅ NOVO: Calcular câmeras ativas
+    const activeCamerasCount = cameras.filter(c => c.enabled).length;
+
     // ✅ NOVO: Buscar zonas ao montar
     useEffect(() => {
         fetchZones(false); // false = apenas ativas
@@ -140,6 +204,11 @@ export default function Dashboard() {
     const handleOpenMap = () => {
         setShowZoneMap(true);
         setSelectedZone(null);
+    };
+
+    // ✅ NOVO: Handler para gerenciar câmeras
+    const handleManageCameras = () => {
+        window.location.href = '/cameras';
     };
 
     return (
@@ -206,18 +275,26 @@ export default function Dashboard() {
                         <VideoStream />
                     </div>
 
-                    {/* ✅ MODIFICADO: Coluna lateral com StreamControls + ZonesSummary */}
+                    {/* ✅ MODIFICADO: Coluna lateral com StreamControls + ZonesSummary + CamerasSummary */}
                     <div className="lg:col-span-1 space-y-6">
                         {/* Stream Controls */}
                         <StreamControls />
 
-                        {/* ✅ NOVO: Resumo de Zonas */}
+                        {/* ✅ Resumo de Zonas */}
                         <ZonesSummaryCard
                             totalZones={zones.length}
                             activeZones={activeZonesCount}
                             onOpenMap={handleOpenMap}
                         />
+
+                        {/* ✅ NOVO: Resumo de Câmeras */}
+                        <CamerasSummaryCard
+                            totalCameras={cameras.length}
+                            activeCameras={activeCamerasCount}
+                            onManageCameras={handleManageCameras}
+                        />
                     </div>
+
                 </div>
 
                 {/* ✅ NOVO: Tabela de Zonas Monitoradas */}
@@ -276,8 +353,9 @@ export default function Dashboard() {
             {showZoneMap && (
                 <ZoneDrawer
                     isOpen={true}
-                    mode="view"
+                    mode="create"
                     zone={selectedZone || undefined}
+                    streamUrl="http://localhost:8000/api/v1/stream/video_feed"
                     onClose={() => {
                         setShowZoneMap(false);
                         setSelectedZone(null);

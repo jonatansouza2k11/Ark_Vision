@@ -6,12 +6,13 @@ import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Settings from './pages/Settings';
 import Logs from './pages/Logs';
+import Cameras from './pages/Cameras';
 import NotFound from './pages/NotFound';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuthStore } from './store/authStore';
 import { usersApi } from './api/users';
-import { ToastProvider } from './contexts/ToastContext'; // ✅ ADICIONADO
-import ToastContainer from './components/ToastContainer'; // ✅ ADICIONADO
+import { ToastProvider } from './contexts/ToastContext';
+import ToastContainer from './components/ToastContainer';
 
 function App() {
   const { user, token, login } = useAuthStore();
@@ -82,6 +83,34 @@ function App() {
             element={
               <ProtectedRoute>
                 <Settings />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/logs"
+            element={
+              <ProtectedRoute>
+                <Logs />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Rotas de Configurações, Câmeras e Logs */}
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/cameras"
+            element={
+              <ProtectedRoute>
+                <Cameras />
               </ProtectedRoute>
             }
           />

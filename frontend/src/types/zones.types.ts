@@ -70,6 +70,7 @@ export interface Zone {
 
     // Parâmetros
     max_out_time?: number;
+    camera_id?: number | null;
     email_cooldown?: number;
     empty_timeout: number;
     full_timeout: number;
@@ -101,6 +102,7 @@ export interface CreateZonePayload {
     name: string;
     points: Polygon;
     mode: ZoneMode;
+    camera_id?: number | null;
 
     // Opcionais com defaults
     max_out_time?: number;

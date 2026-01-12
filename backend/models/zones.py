@@ -426,6 +426,13 @@ class ZoneBase(BaseModel):
         description=f"Pontos do polígono ({MIN_ZONE_POINTS}-{MAX_ZONE_POINTS} pontos)"
     )
     
+    # ✅ NEW v3.1: Camera relationship
+    camera_id: Optional[int] = Field(
+        None, 
+        ge=1, 
+        description="ID da câmera associada (None = zona global)"
+    )
+
     # Zone-specific configs (None = use global settings)
     max_out_time: Optional[float] = Field(
         None,
@@ -684,6 +691,7 @@ class ZoneCreate(ZoneBase):
                     [500.0, 400.0],
                     [100.0, 400.0]
                 ],
+                "camera_id": 1,
                 "max_out_time": 30.0,
                 "email_cooldown": 600.0,
                 "empty_timeout": 5.0,
@@ -715,6 +723,13 @@ class ZoneUpdate(BaseModel):
         min_length=MIN_ZONE_POINTS,
         max_length=MAX_ZONE_POINTS
     )
+
+    # ✅ NEW v3.1: Camera relationship
+    camera_id: Optional[int] = Field(
+        None, 
+        ge=1
+    )
+
     max_out_time: Optional[float] = Field(None, ge=0)
     email_cooldown: Optional[float] = Field(None, ge=0)
     empty_timeout: Optional[float] = Field(None, ge=0)

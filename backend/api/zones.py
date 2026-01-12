@@ -335,58 +335,62 @@ def validate_polygon(points: List[List[int]]) -> tuple[bool, List[str]]:
 
 
 async def zone_to_dict(row: dict) -> dict:
-    """Convert database row to zone dictionary"""
+    """Convert database row to zone dictionary (✅ v3.1 - todos os campos)"""
     return {
-        'id': row['id'],
-        'name': row['name'],
-        'points': json.loads(row['points']) if isinstance(row['points'], str) else row['points'],
-        'mode': row['mode'],
-        'empty_timeout': row['empty_timeout'],
-        'full_timeout': row['full_timeout'],
-        'empty_threshold': row['empty_threshold'],
-        'full_threshold': row['full_threshold'],
-        'enabled': row['enabled'],
-        'active': row['active'],
-        'created_at': row['created_at'],
-        'updated_at': row['updated_at'],
-        'deleted_at': row.get('deleted_at')
+        "id": row["id"],
+        "name": row["name"],
+        "points": json.loads(row["points"]) if isinstance(row["points"], str) else row["points"],
+        "mode": row["mode"],
+        "camera_id": row.get("camera_id"),
+        "empty_timeout": row["empty_timeout"],
+        "full_timeout": row["full_timeout"],
+        "empty_threshold": row["empty_threshold"],
+        "full_threshold": row["full_threshold"],
+        "max_out_time": row.get("max_out_time"),
+        "email_cooldown": row.get("email_cooldown"),
+        "enabled": row["enabled"],
+        "active": row["active"],
+        "description": row.get("description"),
+        "metadata": json.loads(row["metadata"]) if isinstance(row.get("metadata"), str) else row.get("metadata", {}),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "deleted_at": row.get("deleted_at")
     }
+
 
 
 async def sync_zones_to_json():
     """Sync all zones to JSON file"""
     try:
-        pool = get_db_pool()
+        pool = await get_db_pool()
         async with pool.connection() as conn:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT id, name, points, mode, empty_timeout, full_timeout,
-                           empty_threshold, full_threshold, enabled, active,
-                           created_at, updated_at
-                    FROM zones
-                    WHERE deleted_at IS NULL
+                await cur.execute("""
+                    SELECT id, name, points, mode, camera_id, empty_timeout, full_timeout,
+                           empty_threshold, full_threshold, max_out_time, email_cooldown,
+                           enabled, active, description, metadata, created_at, updated_at
+                    FROM zones 
+                    WHERE deleted_at IS NULL 
                     ORDER BY created_at DESC
-                    """
-                )
+                """)
                 rows = await cur.fetchall()
-        
-        zones_data = []
-        for row in rows:
-            zone_dict = await zone_to_dict(row)
-            zone_dict['created_at'] = zone_dict['created_at'].isoformat()
-            zone_dict['updated_at'] = zone_dict['updated_at'].isoformat() if zone_dict['updated_at'] else None
-            zone_dict.pop('deleted_at', None)
-            zones_data.append(zone_dict)
-        
-        zones_file = DATA_DIR / "zones.json"
-        with open(zones_file, 'w', encoding='utf-8') as f:
-            json.dump(zones_data, f, indent=2, ensure_ascii=False)
-        
-        logger.info(f"✅ Synced {len(zones_data)} zones to JSON")
-        
+                
+                zones_data = []
+                for row in rows:
+                    zone_dict = await zone_to_dict(row)
+                    zone_dict["created_at"] = zone_dict["created_at"].isoformat()
+                    zone_dict["updated_at"] = zone_dict["updated_at"].isoformat() if zone_dict["updated_at"] else None
+                    zone_dict.pop("deleted_at", None)
+                    zones_data.append(zone_dict)
+                
+                zones_file = DATA_DIR / "zones.json"
+                with open(zones_file, 'w', encoding='utf-8') as f:
+                    json.dump(zones_data, f, indent=2, ensure_ascii=False)
+                
+                logger.info(f"✅ Synced {len(zones_data)} zones to JSON")
     except Exception as e:
         logger.warning(f"⚠️ Error syncing zones to JSON: {e}")
+
 
 
 # ============================================================================
@@ -398,13 +402,25 @@ async def sync_zones_to_json():
 async def create_zone(
     request: Request,
     zone: ZoneCreate,
-    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
+    current_user: dict = Depends(get_current_admin_user),
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
-    ✅ v2.0: Cria uma nova zona de detecção
+    ✅ v3.1: Cria uma nova zona de detecção
     
     **Requer:** Token JWT de ADMIN (is_superuser=True)
+    
+    Campos:
+    - name: Nome da zona
+    - points: Polígono [[x,y], ...]
+    - mode: Modo de operação
+    - camera_id: ID da câmera (opcional)
+    - empty_timeout, full_timeout: Timeouts
+    - empty_threshold, full_threshold: Thresholds
+    - max_out_time: Tempo máximo fora
+    - email_cooldown: Cooldown de email
+    - enabled, active: Status
+    - description: Descrição (opcional)
     """
     async with pool.connection() as conn:
         try:
@@ -416,8 +432,8 @@ async def create_zone(
                     detail=f"Invalid polygon: {', '.join(issues)}"
                 )
             
-            # Check duplicate name
             async with conn.cursor() as cur:
+                # Check duplicate name
                 await cur.execute(
                     "SELECT id FROM zones WHERE name = %s AND deleted_at IS NULL",
                     (zone.name,)
@@ -430,28 +446,43 @@ async def create_zone(
                         detail=f"Zona com nome '{zone.name}' já existe"
                     )
                 
-                # Insert zone
+                # ✅ Validate camera exists if camera_id provided
+                if zone.camera_id:
+                    await cur.execute("SELECT id FROM cameras WHERE id = %s", (zone.camera_id,))
+                    if not await cur.fetchone():
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Câmera com ID {zone.camera_id} não encontrada"
+                        )
+                
+                # Insert zone (✅ ORDEM EXATA DO BANCO)
                 await cur.execute(
                     """
                     INSERT INTO zones (
-                        name, points, mode, empty_timeout, full_timeout,
-                        empty_threshold, full_threshold, enabled, active, created_at
+                        name, points, mode, camera_id, empty_timeout, full_timeout,
+                        empty_threshold, full_threshold, max_out_time, email_cooldown,
+                        enabled, active, description, metadata, created_at
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-                    RETURNING id, name, points, mode, empty_timeout, full_timeout,
-                              empty_threshold, full_threshold, enabled, active, 
-                              created_at, updated_at
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                    RETURNING id, name, points, mode, camera_id, empty_timeout, full_timeout,
+                              empty_threshold, full_threshold, max_out_time, email_cooldown,
+                              enabled, active, description, metadata, created_at, updated_at
                     """,
                     (
                         zone.name,
                         json.dumps(zone.points),
                         zone.mode,
-                        zone.empty_timeout,
-                        zone.full_timeout,
-                        zone.empty_threshold,
-                        zone.full_threshold,
+                        zone.camera_id,
+                        zone.emptytimeout,
+                        zone.fulltimeout,
+                        zone.emptythreshold,
+                        zone.fullthreshold,
+                        zone.maxouttime,
+                        zone.emailcooldown,
                         zone.enabled,
-                        zone.active
+                        zone.active,
+                        zone.description,
+                        json.dumps(zone.metadata) if hasattr(zone, 'metadata') and zone.metadata else '{}'
                     )
                 )
                 
@@ -478,36 +509,48 @@ async def create_zone(
             )
 
 
+
 @router.get("", response_model=List[ZoneResponse], summary="📋 Listar todas zonas")
 @limiter.limit("100/minute")
 async def list_zones(
     request: Request,
     include_disabled: bool = Query(default=False),
-    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
+    camera_id: Optional[int] = Query(default=None),  # ✅ NEW: Filter by camera
+    current_user: dict = Depends(get_current_admin_user),
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
-    ✅ v2.0: Lista todas as zonas ativas (não deletadas)
+    ✅ v3.1: Lista todas as zonas ativas (não deletadas)
     
     **Requer:** Token JWT de ADMIN (is_superuser=True)
+    
+    Parâmetros:
+    - include_disabled: Incluir zonas desabilitadas
+    - camera_id: Filtrar por câmera específica (✅ NEW v3.1)
     """
     async with pool.connection() as conn:
         try:
             query = """
-                SELECT id, name, points, mode, empty_timeout, full_timeout,
-                       empty_threshold, full_threshold, enabled, active,
-                       created_at, updated_at
+                SELECT id, name, points, mode, camera_id, empty_timeout, full_timeout,
+                       empty_threshold, full_threshold, max_out_time, email_cooldown,
+                       enabled, active, description, metadata, created_at, updated_at
                 FROM zones
                 WHERE deleted_at IS NULL
             """
+            params = []
             
             if not include_disabled:
                 query += " AND enabled = TRUE"
             
+            # ✅ NEW v3.1: Filter by camera
+            if camera_id is not None:
+                query += " AND camera_id = %s"
+                params.append(camera_id)
+            
             query += " ORDER BY created_at DESC"
             
             async with conn.cursor() as cur:
-                await cur.execute(query)
+                await cur.execute(query, tuple(params))
                 rows = await cur.fetchall()
             
             logger.info(f"📋 Listando {len(rows)} zonas para {current_user.get('username')} [ADMIN]")
@@ -527,16 +570,17 @@ async def list_zones(
             )
 
 
+
 @router.get("/{zone_id}", response_model=ZoneResponse, summary="🔍 Obter zona específica")
 @limiter.limit("100/minute")
 async def get_zone(
     request: Request,
     zone_id: int,
-    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
+    current_user: dict = Depends(get_current_admin_user),
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
-    ✅ v2.0: Obtém uma zona específica por ID
+    ✅ v3.1: Obtém uma zona específica por ID
     
     **Requer:** Token JWT de ADMIN (is_superuser=True)
     """
@@ -545,9 +589,9 @@ async def get_zone(
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT id, name, points, mode, empty_timeout, full_timeout,
-                           empty_threshold, full_threshold, enabled, active,
-                           created_at, updated_at
+                    SELECT id, name, points, mode, camera_id, empty_timeout, full_timeout,
+                           empty_threshold, full_threshold, max_out_time, email_cooldown,
+                           enabled, active, description, metadata, created_at, updated_at
                     FROM zones
                     WHERE id = %s AND deleted_at IS NULL
                     """,
@@ -578,19 +622,22 @@ async def get_zone(
             )
 
 
+
 @router.put("/{zone_id}", response_model=ZoneResponse, summary="✏️ Atualizar zona")
 @limiter.limit("100/minute")
 async def update_zone(
     request: Request,
     zone_id: int,
     zone_update: ZoneUpdate,
-    current_user: dict = Depends(get_current_admin_user),  # 🔒 ADMIN ONLY
+    current_user: dict = Depends(get_current_admin_user),
     pool: AsyncConnectionPool = Depends(get_db_pool)
 ):
     """
-    ✅ v2.0: Atualiza uma zona existente
+    ✅ v3.1: Atualiza uma zona existente
     
     **Requer:** Token JWT de ADMIN (is_superuser=True)
+    
+    Todos os campos são opcionais - apenas os fornecidos serão atualizados.
     """
     async with pool.connection() as conn:
         try:
@@ -616,6 +663,15 @@ async def update_zone(
                             detail=f"Invalid polygon: {', '.join(issues)}"
                         )
                 
+                # ✅ Validate camera exists if camera_id provided
+                if zone_update.camera_id is not None:
+                    await cur.execute("SELECT id FROM cameras WHERE id = %s", (zone_update.camera_id,))
+                    if not await cur.fetchone():
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Câmera com ID {zone_update.camera_id} não encontrada"
+                        )
+                
                 # Check duplicate name if changed
                 if zone_update.name:
                     await cur.execute(
@@ -629,19 +685,23 @@ async def update_zone(
                             detail=f"Zona com nome '{zone_update.name}' já existe"
                         )
                 
-                # Build dynamic update query
+                # Build dynamic update query (✅ ORDEM EXATA DO BANCO)
                 update_fields = []
                 update_values = []
                 
                 field_mapping = {
                     'name': zone_update.name,
                     'mode': zone_update.mode,
-                    'empty_timeout': zone_update.empty_timeout,
-                    'full_timeout': zone_update.full_timeout,
-                    'empty_threshold': zone_update.empty_threshold,
-                    'full_threshold': zone_update.full_threshold,
+                    'camera_id': zone_update.camera_id,
+                    'empty_timeout': zone_update.emptytimeout,
+                    'full_timeout': zone_update.fulltimeout,
+                    'empty_threshold': zone_update.emptythreshold,
+                    'full_threshold': zone_update.fullthreshold,
+                    'max_out_time': zone_update.maxouttime,
+                    'email_cooldown': zone_update.emailcooldown,
                     'enabled': zone_update.enabled,
-                    'active': zone_update.active
+                    'active': zone_update.active,
+                    'description': zone_update.description
                 }
                 
                 for field, value in field_mapping.items():
@@ -666,9 +726,9 @@ async def update_zone(
                     UPDATE zones
                     SET {', '.join(update_fields)}
                     WHERE id = %s AND deleted_at IS NULL
-                    RETURNING id, name, points, mode, empty_timeout, full_timeout,
-                              empty_threshold, full_threshold, enabled, active,
-                              created_at, updated_at
+                    RETURNING id, name, points, mode, camera_id, empty_timeout, full_timeout,
+                              empty_threshold, full_threshold, max_out_time, email_cooldown,
+                              enabled, active, description, metadata, created_at, updated_at
                 """
                 
                 await cur.execute(query, update_values)
@@ -693,6 +753,7 @@ async def update_zone(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Erro ao atualizar zona: {str(e)}"
             )
+
 
 
 @router.delete("/{zone_id}", status_code=status.HTTP_204_NO_CONTENT, summary="🗑️ Deletar zona")

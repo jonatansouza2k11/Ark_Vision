@@ -1,24 +1,13 @@
 # ===================================================================
 # backend/services/inference_worker.py
-# InferenceWorker v5.0 - Pure Detection Engine
-# -------------------------------------------------------------------
-# Responsabilidade:
-# - Carregar o modelo YOLO
-# - Aquecer o modelo (warm-up)
-# - Executar inferência pura
-# - Ser thread-safe
-#
-# NÃO FAZ:
-# - Tracking
-# - Regras de negócio
-# - Filtro por câmera
-# - Stream
-# - Anotações visuais
+# InferenceWorker v6.0 - GPU-Safe Governed Lifecycle
 # ===================================================================
 
 import threading
 import logging
+import gc
 import numpy as np
+import torch
 from ultralytics import YOLO
 from config import settings
 
@@ -27,15 +16,14 @@ logger = logging.getLogger("inference_worker")
 
 class InferenceWorker:
     """
-    InferenceWorker
-    ------------------------------------------------------------------
     Motor de inferência YOLO.
 
-    Características:
+    Garantias:
     - Thread-safe
-    - Warm-up automático
-    - Inferência pura
-    - Stateless (não mantém contexto)
+    - Warm-up único por processo
+    - Idempotente
+    - Sem reentrada CUDA
+    - Governança por ciclo lógico, não por frame
     """
 
     def __init__(self):
@@ -44,6 +32,8 @@ class InferenceWorker:
 
         self._lock = threading.Lock()
         self._started = False
+        self._warmed = False
+        self.model = YOLO(settings.YOLO_MODEL_PATH, task="detect")
 
         logger.info("🧠 YOLO model loaded (InferenceWorker)")
 
@@ -52,48 +42,50 @@ class InferenceWorker:
     # ==================================================================
 
     def start(self) -> None:
-        """
-        Realiza warm-up do modelo para evitar latência no primeiro frame real.
-        """
-        if self._started:
-            return
+        with self._lock:
+            if self._started:
+                return
 
-        try:
-            dummy = np.zeros(
-                (settings.CAM_HEIGHT, settings.CAM_WIDTH, 3),
-                dtype=np.uint8,
-            )
+            if not self._warmed:
+                try:
+                    dummy = np.zeros(
+                        (settings.CAM_HEIGHT, settings.CAM_WIDTH, 3),
+                        dtype=np.uint8,
+                    )
 
-            with self._lock:
-                self.model(
-                    dummy,
-                    conf=settings.YOLO_CONF_THRESHOLD,
-                    device=self.device,
-                    verbose=False,
-                )
+                    self.model(
+                        dummy,
+                        conf=settings.YOLO_CONF_THRESHOLD,
+                        device=self.device,
+                        verbose=False,
+                    )
+
+                    self._warmed = True
+                    logger.info("🔥 YOLO warm-up completed (one-time)")
+
+                except Exception as e:
+                    logger.error(f"❌ YOLO warm-up failed: {e}")
+                    raise
+                finally:
+                    del dummy
+                    gc.collect()
 
             self._started = True
-            logger.info("🔥 YOLO warm-up completed")
-
-        except Exception as e:
-            logger.error(f"❌ YOLO warm-up failed: {e}")
-            raise
 
     def stop(self) -> None:
-        self._started = False
-        logger.info("🧠 InferenceWorker stopped")
+        with self._lock:
+            if not self._started:
+                return
+
+            self._started = False
+            gc.collect()
+            logger.info("🧠 InferenceWorker stopped (logical cycle)")
 
     # ==================================================================
     # INFERENCE
     # ==================================================================
 
     def run(self, frame):
-        """
-        Executa inferência pura em um frame.
-
-        Retorna:
-            results (Ultralytics format) ou None
-        """
         if frame is None:
             return None
 
@@ -101,11 +93,15 @@ class InferenceWorker:
             self.start()
 
         with self._lock:
-            results = self.model(
-                frame,
-                conf=settings.YOLO_CONF_THRESHOLD,
-                device=self.device,
-                verbose=False,
-            )
-
-        return results
+            try:
+                return self.model(
+                    frame,
+                    conf=settings.YOLO_CONF_THRESHOLD,
+                    device=self.device,
+                    verbose=False,
+                )
+            except Exception:
+                # Falha crítica invalida apenas o ciclo lógico
+                self._started = False
+                gc.collect()
+                raise

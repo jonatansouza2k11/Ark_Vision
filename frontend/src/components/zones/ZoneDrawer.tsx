@@ -17,8 +17,9 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Save, Trash2, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { X, Save, Trash2, RefreshCw, AlertCircle, CheckCircle2, Camera } from 'lucide-react';
 import { useToast } from '../../hooks/useToast';
+import { useCameras } from '../../hooks/useCameras';
 import type {
     Zone,
     CreateZonePayload,
@@ -65,7 +66,6 @@ export default function ZoneDrawer({
     zone,
     onClose,
     onSave,
-    streamUrl = 'http://localhost:8000/video_feed'
 }: ZoneDrawerProps) {
     // ==========================================================================
     // STATE
@@ -78,18 +78,22 @@ export default function ZoneDrawer({
         ...DEFAULT_ZONE_VALUES
     });
 
+    const { cameras, loading: camerasLoading } = useCameras();
     const [canvasPoints, setCanvasPoints] = useState<CanvasPoint[]>([]);
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
     const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
     const [isValidPolygon, setIsValidPolygon] = useState(false);
     const [validationMessage, setValidationMessage] = useState('');
     const [isSaving, setIsSaving] = useState(false);
+    const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+    const [capturingSnapshot, setCapturingSnapshot] = useState(false);
+    const [streamActive, setStreamActive] = useState(false);
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const imgRef = useRef<HTMLImageElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
-    const { success, error: showError, warning } = useToast();
+    const { error: showError, warning } = useToast();
 
     // ==========================================================================
     // CANVAS DIMENSIONS
@@ -149,17 +153,21 @@ export default function ZoneDrawer({
      * Valida polígono quando pontos mudam
      */
     useEffect(() => {
-        if (canvasPoints.length >= 3) {
+        if (!snapshotUrl) {
+            setIsValidPolygon(false);
+            setValidationMessage('Capture uma foto antes de desenhar');
+        } else if (canvasPoints.length >= 3) {
             setIsValidPolygon(true);
             setValidationMessage(`Polígono válido com ${canvasPoints.length} pontos`);
         } else if (canvasPoints.length > 0) {
             setIsValidPolygon(false);
-            setValidationMessage(`Adicione ${3 - canvasPoints.length} ponto(s) para completar`);
+            setValidationMessage(`Adicione ${3 - canvasPoints.length} pontos para completar`);
         } else {
             setIsValidPolygon(false);
-            setValidationMessage('Clique no vídeo para adicionar pontos');
+            setValidationMessage('Clique no canvas para adicionar pontos');
         }
-    }, [canvasPoints]);
+    }, [canvasPoints, snapshotUrl]);
+
 
     /**
      * Renderiza canvas quando pontos mudam
@@ -167,6 +175,41 @@ export default function ZoneDrawer({
     useEffect(() => {
         drawCanvas();
     }, [canvasPoints, hoveredIndex, draggingIndex]);
+
+
+        /**
+     * Renderiza canvas quando pontos mudam
+     */
+    useEffect(() => {
+        drawCanvas();
+    }, [canvasPoints, hoveredIndex, draggingIndex]);
+
+
+    /**
+     * Verifica status do stream a cada 2 segundos
+     */
+    useEffect(() => {
+        const checkStreamStatus = async () => {
+            try {
+                const response = await fetch('http://localhost:8000/api/v1/stream/status', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                    }
+                });
+                const data = await response.json();
+                setStreamActive(data.stream_active || false);
+            } catch (error) {
+                setStreamActive(false);
+            }
+        };
+
+        if (isOpen) {
+            checkStreamStatus();
+            const interval = setInterval(checkStreamStatus, 2000);
+            return () => clearInterval(interval);
+        }
+    }, [isOpen]);
+
 
     // ==========================================================================
     // CANVAS DRAWING
@@ -177,7 +220,6 @@ export default function ZoneDrawer({
      */
     const drawCanvas = useCallback(() => {
         const canvas = canvasRef.current;
-        const img = imgRef.current;
         if (!canvas) return;
 
         const ctx = canvas.getContext('2d');
@@ -185,11 +227,6 @@ export default function ZoneDrawer({
 
         // Limpa canvas
         ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-        // Desenha imagem de fundo (stream)
-        if (img && img.complete) {
-            ctx.drawImage(img, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        }
 
         // Se não há pontos, para aqui
         if (canvasPoints.length === 0) return;
@@ -359,6 +396,59 @@ export default function ZoneDrawer({
         setDraggingIndex(null);
     };
 
+
+    // ==========================================================================
+    // SNAPSHOT HANDLER
+    // ==========================================================================
+
+    /**
+     * Captura snapshot do stream
+     */
+    const handleCaptureSnapshot = async () => {
+        setCapturingSnapshot(true);
+        try {
+            const response = await fetch('http://localhost:8000/api/v1/stream/snapshot', {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Falha ao capturar snapshot');
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+
+            if (snapshotUrl) {
+                URL.revokeObjectURL(snapshotUrl);
+            }
+
+            setSnapshotUrl(url);
+
+            // ✅ PARA stream para economizar memória (não precisa mais dele)
+            try {
+                await fetch('http://localhost:8000/api/v1/stream/stop', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                    }
+                });
+                console.log('✅ Stream parado para economizar memória');
+            } catch (stopError) {
+                console.warn('Não foi possível parar stream:', stopError);
+            }
+
+        } catch (error) {
+            console.error('Erro ao capturar snapshot:', error);
+            showError && showError('Erro ao capturar foto do stream');
+        } finally {
+            setCapturingSnapshot(false);
+        }
+    };
+
+
+
     // ==========================================================================
     // FORM HANDLERS
     // ==========================================================================
@@ -369,6 +459,7 @@ export default function ZoneDrawer({
     const handleFieldChange = (field: keyof CreateZonePayload, value: any) => {
         setFormData(prev => ({ ...prev, [field]: value }));
     };
+
 
     /**
      * Limpa todos os pontos
@@ -466,6 +557,7 @@ export default function ZoneDrawer({
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6">
                     <div className="max-w-3xl mx-auto space-y-6">
+                        
                         {/* Canvas Section */}
                         <div className="bg-gray-50 rounded-xl p-4 border-2 border-gray-200">
                             <div className="flex items-center justify-between mb-3">
@@ -477,15 +569,44 @@ export default function ZoneDrawer({
                                     </p>
                                 </div>
 
-                                <button
-                                    onClick={handleClearPoints}
-                                    disabled={canvasPoints.length === 0}
-                                    className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                    Limpar
-                                </button>
+                                <div className="flex items-center gap-2">
+
+                                    {/* Botão Capturar Foto */}
+                                    <button
+                                        onClick={handleCaptureSnapshot}
+                                        disabled={!streamActive || capturingSnapshot || mode === 'view'}
+                                        className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                                        title={!streamActive ? 'Inicie o stream primeiro' : 'Capturar foto'}
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        </svg>
+                                        {capturingSnapshot ? 'Capturando...' : 'Capturar'}
+                                    </button>
+
+                                    {/* Badge de aviso quando stream está parado */}
+                                    {!streamActive && (
+                                        <div className="text-xs text-amber-700 bg-amber-50 px-3 py-1 rounded-lg border border-amber-200 flex items-center gap-1">
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                            </svg>
+                                            <span>Stream parado</span>
+                                        </div>
+                                    )}
+
+                                    {/* Botão Limpar */}
+                                    <button
+                                        onClick={handleClearPoints}
+                                        disabled={canvasPoints.length === 0}
+                                        className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                        Limpar
+                                    </button>
+                                </div>
                             </div>
+
 
                             {/* Canvas Container */}
                             <div
@@ -493,31 +614,46 @@ export default function ZoneDrawer({
                                 className="relative bg-black rounded-lg overflow-hidden border-2 border-gray-300"
                                 style={{ aspectRatio: `${CANVAS_WIDTH}/${CANVAS_HEIGHT}` }}
                             >
-                                {/* Background Image (Stream) */}
-                                <img
-                                    ref={imgRef}
-                                    src={streamUrl}
-                                    alt="Video Stream"
-                                    className="absolute inset-0 w-full h-full object-cover"
-                                    onLoad={drawCanvas}
-                                    crossOrigin="anonymous"
-                                />
+                                {/* ✅ Background com Snapshot ou Placeholder */}
+                                {snapshotUrl ? (
+                                    <img
+                                        ref={imgRef}
+                                        src={snapshotUrl}
+                                        alt="Snapshot"
+                                        className="absolute inset-0 w-full h-full object-contain bg-gray-900"
+                                        onLoad={drawCanvas}
+                                    />
+                                ) : (
+                                    <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center pointer-events-none">
+                                        <div className="text-center text-gray-400">
+                                            <svg className="w-16 h-16 mx-auto mb-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            </svg>
+                                            <p className="text-sm font-medium mb-2">Nenhuma foto capturada</p>
+                                            <p className="text-xs text-gray-500">
+                                                Clique no botão "Capturar" acima
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Canvas Overlay */}
                                 <canvas
                                     ref={canvasRef}
                                     width={CANVAS_WIDTH}
                                     height={CANVAS_HEIGHT}
-                                    onClick={handleCanvasClick}
-                                    onContextMenu={handleCanvasContextMenu}
-                                    onMouseMove={handleCanvasMouseMove}
-                                    onMouseDown={handleCanvasMouseDown}
-                                    onMouseUp={handleCanvasMouseUp}
-                                    onMouseLeave={handleCanvasMouseLeave}
-                                    className="absolute inset-0 w-full h-full cursor-crosshair"
-                                    style={{ imageRendering: 'crisp-edges' }}
+                                    onClick={snapshotUrl ? handleCanvasClick : undefined}
+                                    onContextMenu={snapshotUrl ? handleCanvasContextMenu : undefined}
+                                    onMouseMove={snapshotUrl ? handleCanvasMouseMove : undefined}
+                                    onMouseDown={snapshotUrl ? handleCanvasMouseDown : undefined}
+                                    onMouseUp={snapshotUrl ? handleCanvasMouseUp : undefined}
+                                    onMouseLeave={snapshotUrl ? handleCanvasMouseLeave : undefined}
+                                    className={`absolute inset-0 w-full h-full ${snapshotUrl ? 'cursor-crosshair' : 'cursor-not-allowed'}`}
+                                    style={{ imageRendering: 'crisp-edges', pointerEvents: snapshotUrl ? 'auto' : 'none' }}
                                 />
                             </div>
+
 
                             {/* Validation Status */}
                             <div className={`mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${isValidPolygon
@@ -571,6 +707,32 @@ export default function ZoneDrawer({
                                 </select>
                                 <p className="mt-1 text-sm text-gray-600">
                                     {ZONE_MODE_DESCRIPTIONS[formData.mode]}
+                                </p>
+                            </div>
+
+                            {/* ✅ NEW v3.1: Câmera Associada */}
+                            <div>
+                                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                                    <Camera className="w-4 h-4" />
+                                    Câmera Associada
+                                </label>
+                                <select
+                                    value={formData.camera_id || ''}
+                                    onChange={(e) => handleFieldChange('camera_id', e.target.value ? parseInt(e.target.value) : null)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    disabled={mode === 'view' || camerasLoading}
+                                >
+                                    <option value="">Nenhuma (zona global)</option>
+                                    {cameras.map(camera => (
+                                        <option key={camera.id} value={camera.id}>
+                                            {camera.name} {!camera.enabled && '(Inativa)'}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="mt-1 text-sm text-gray-600">
+                                    {formData.camera_id
+                                        ? 'Zona vinculada a uma câmera específica'
+                                        : 'Zona global - não vinculada a nenhuma câmera'}
                                 </p>
                             </div>
 

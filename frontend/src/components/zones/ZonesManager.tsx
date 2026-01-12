@@ -466,7 +466,7 @@ export default function ZonesManager() {
                     zone={drawerState.zone}
                     onClose={handleCloseDrawer}
                     onSave={handleSaveZone}
-                    streamUrl="http://localhost:8000/video_feed"
+                    streamUrl="http://localhost:8000/api/v1/stream/video_feed"
                 />
             </div>
         </div>

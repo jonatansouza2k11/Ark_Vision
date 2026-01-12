@@ -1,23 +1,13 @@
 # ===================================================================
 # backend/services/camera_worker.py
-# CameraWorker v5.0
-# -------------------------------------------------------------------
-# Responsabilidade:
-# - Captura contínua de frames de uma fonte (USB / RTSP / arquivo)
-# - Estratégia latest-frame-only (zero backlog)
-# - Baixa latência e previsibilidade temporal
-#
-# NÃO FAZ:
-# - Inferência
-# - Tracking
-# - Stream
-# - Regras de negócio
+# CameraWorker v5.1 - Memory Governed Edition
 # ===================================================================
 
 import cv2
 import threading
 import time
 import logging
+import gc
 from typing import Optional, Any
 from config import settings
 
@@ -25,19 +15,7 @@ logger = logging.getLogger("camera_worker")
 
 
 class CameraWorker:
-    """
-    CameraWorker
-    ------------------------------------------------------------------
-    Worker dedicado à captura de frames.
-    Cada instância representa uma câmera.
-    """
-
     def __init__(self, source: Any = None, name: Optional[str] = None):
-        """
-        Args:
-            source: int (índice da câmera) ou str (RTSP / arquivo)
-            name: identificador lógico da câmera
-        """
         self.source = source if source is not None else settings.video_source_parsed
         self.name = name or f"camera-{self.source}"
 
@@ -64,7 +42,6 @@ class CameraWorker:
         if not self.cap.isOpened():
             raise RuntimeError(f"❌ Failed to open video source: {self.source}")
 
-        # Configurações defensivas para ambiente industrial
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, settings.CAM_WIDTH)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, settings.CAM_HEIGHT)
         self.cap.set(cv2.CAP_PROP_FPS, settings.CAM_FPS)
@@ -96,6 +73,7 @@ class CameraWorker:
         with self._lock:
             self._frame = None
 
+        gc.collect()
         logger.info(f"📷 CameraWorker stopped ({self.name})")
 
     # ==================================================================
@@ -115,7 +93,7 @@ class CameraWorker:
             next_frame_time = now + self._frame_interval
 
             if not self.cap:
-                time.sleep(0.1)
+                time.sleep(0.05)
                 continue
 
             ret, frame = self.cap.read()
@@ -125,7 +103,6 @@ class CameraWorker:
                 time.sleep(0.05)
                 continue
 
-            # Latest-frame-only (atomic swap)
             with self._lock:
                 self._frame = frame
 
@@ -134,19 +111,12 @@ class CameraWorker:
     # ==================================================================
 
     def get_frame(self):
-        """
-        Retorna cópia defensiva do último frame válido.
-        """
         with self._lock:
             if self._frame is None:
                 return None
             return self._frame.copy()
 
     def encode_mjpeg(self, frame) -> Optional[bytes]:
-        """
-        Encode frame em MJPEG.
-        Contrato esperado pelo StreamingResponse do FastAPI.
-        """
         try:
             ret, jpeg = cv2.imencode(
                 ".jpg",
