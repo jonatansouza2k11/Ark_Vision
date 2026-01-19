@@ -1,6 +1,8 @@
 // src/App.tsx
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+
+// Pages
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
@@ -8,7 +10,13 @@ import Settings from './pages/Settings';
 import Logs from './pages/Logs';
 import Cameras from './pages/Cameras';
 import NotFound from './pages/NotFound';
+
+// Components
 import ProtectedRoute from './components/ProtectedRoute';
+import ZonesManager from './components/zones/ZonesManager';
+import StreamViewer from './components/stream/StreamViewer';  // 🔥 NOVO
+
+// Context & Store
 import { useAuthStore } from './store/authStore';
 import { usersApi } from './api/users';
 import { ToastProvider } from './contexts/ToastContext';
@@ -48,17 +56,22 @@ function App() {
   }
 
   return (
-    // ✅ TOAST PROVIDER - Envolve toda a aplicação
     <ToastProvider>
       <BrowserRouter>
         <Routes>
-          {/* Rota pública */}
+          {/* ============================================ */}
+          {/* PUBLIC ROUTES */}
+          {/* ============================================ */}
           <Route
             path="/login"
             element={token ? <Navigate to="/" replace /> : <Login />}
           />
 
-          {/* Rotas protegidas */}
+          {/* ============================================ */}
+          {/* PROTECTED ROUTES */}
+          {/* ============================================ */}
+
+          {/* Dashboard */}
           <Route
             path="/"
             element={
@@ -68,6 +81,7 @@ function App() {
             }
           />
 
+          {/* Users (ADMIN only) */}
           <Route
             path="/users"
             element={
@@ -77,35 +91,7 @@ function App() {
             }
           />
 
-          {/* Rotas de Configurações e Logs */}
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <Settings />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/logs"
-            element={
-              <ProtectedRoute>
-                <Logs />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Rotas de Configurações, Câmeras e Logs */}
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <Settings />
-              </ProtectedRoute>
-            }
-          />
-
+          {/* Cameras Management */}
           <Route
             path="/cameras"
             element={
@@ -115,6 +101,37 @@ function App() {
             }
           />
 
+          {/* Zones Management */}
+          <Route
+            path="/zones"
+            element={
+              <ProtectedRoute>
+                <ZonesManager />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* 🔥 NOVO: Stream Viewer */}
+          <Route
+            path="/stream"
+            element={
+              <ProtectedRoute>
+                <StreamViewer />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Settings */}
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Logs */}
           <Route
             path="/logs"
             element={
@@ -124,11 +141,13 @@ function App() {
             }
           />
 
-          {/* 404 */}
+          {/* ============================================ */}
+          {/* 404 NOT FOUND */}
+          {/* ============================================ */}
           <Route path="*" element={<NotFound />} />
         </Routes>
 
-        {/* ✅ TOAST CONTAINER - Renderiza as notificações */}
+        {/* Toast Notifications */}
         <ToastContainer />
       </BrowserRouter>
     </ToastProvider>

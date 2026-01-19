@@ -23,6 +23,8 @@ import type { Zone, ZoneMode } from '../../types/zones.types';
 import { ZONE_MODE_LABELS, ZONE_MODE_COLORS } from '../../types/zones.types';
 import { useCameras } from '../../hooks/useCameras';
 
+import { getDetectionLabel, getDetectionEmojis } from '../../utils/coco_classes';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -118,7 +120,23 @@ interface ZoneCardProps {
     onDelete: () => void;
     onToggle: () => void;
     onView?: () => void;
-    // ✅ ADICIONAR: Props de seleção
+    isSelected?: boolean;
+    onSelect?: (selected: boolean) => void;
+    showSelection?: boolean;
+    getCameraName?: (cameraId: number | null | undefined) => string | null;
+}
+
+// ============================================================================
+// ZONE CARD COMPONENT
+// ============================================================================
+
+interface ZoneCardProps {
+    zone: Zone;
+    onEdit: () => void;
+    onDelete: () => void;
+    onToggle: () => void;
+    onView?: () => void;
+    // Props de seleção
     isSelected?: boolean;
     onSelect?: (selected: boolean) => void;
     showSelection?: boolean;
@@ -138,17 +156,22 @@ function ZoneCard({
 }: ZoneCardProps) {
     const modeColor = zone.color || ZONE_MODE_COLORS[zone.mode];
 
+    // ✅ Obter classes de detecção do metadata
+    const detectionClasses = zone.metadata?.detection_classes as number[] | undefined;
+    const detectionLabel = getDetectionLabel(detectionClasses);
+    const detectionEmojis = getDetectionEmojis(detectionClasses);
+
     return (
-        <div className={`bg-white rounded-xl border-2 hover:shadow-lg transition-all duration-200 overflow-hidden ${isSelected ? 'border-blue-500 shadow-lg' : 'border-gray-200 hover:border-blue-300'
-            }`}>
+        <div className={`
+            bg-white rounded-xl border-2 transition-all duration-200 overflow-hidden
+            ${isSelected ? 'border-blue-500 shadow-lg' : 'border-gray-200 hover:border-blue-300'}
+            hover:shadow-lg
+        `}>
             {/* Header com cor do modo */}
-            <div
-                className="h-2"
-                style={{ backgroundColor: modeColor }}
-            />
+            <div className="h-2" style={{ backgroundColor: modeColor }} />
 
             <div className="p-5 space-y-4">
-                {/* ✅ ADICIONAR: Checkbox de seleção */}
+                {/* Checkbox de seleção */}
                 {showSelection && onSelect && (
                     <div className="flex items-center gap-3 pb-3 border-b border-gray-100">
                         <input
@@ -169,17 +192,16 @@ function ZoneCard({
                         <h3 className="text-lg font-bold text-gray-900 truncate">
                             {zone.name}
                         </h3>
-                        <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <span
                                 className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium"
                                 style={{
                                     backgroundColor: `${modeColor}15`,
-                                    color: modeColor
+                                    color: modeColor,
                                 }}
                             >
                                 {ZONE_MODE_LABELS[zone.mode]}
                             </span>
-
                             {zone.enabled ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-green-50 text-green-700">
                                     <CheckCircle2 className="w-3 h-3" />
@@ -197,15 +219,38 @@ function ZoneCard({
                     {/* Toggle Button */}
                     <button
                         onClick={onToggle}
-                        className={`flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${zone.enabled
+                        className={`
+                            flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg 
+                            transition-colors
+                            ${zone.enabled
                                 ? 'bg-green-50 text-green-600 hover:bg-green-100'
                                 : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-                            }`}
+                            }
+                        `}
                         title={zone.enabled ? 'Desabilitar zona' : 'Habilitar zona'}
                     >
                         <Power className="w-5 h-5" />
                     </button>
                 </div>
+
+                {/* ✅ NOVO: Seção de Detecção */}
+                {detectionClasses && detectionClasses.length > 0 && (
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg px-3 py-2.5 border border-blue-200">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xl flex-shrink-0">
+                                {detectionEmojis}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs text-blue-600 font-medium mb-0.5">
+                                    Detectando:
+                                </p>
+                                <p className="text-sm text-blue-900 font-bold truncate" title={detectionLabel}>
+                                    {detectionLabel}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Descrição */}
                 {zone.description && (
@@ -230,16 +275,16 @@ function ZoneCard({
                     </div>
                 </div>
 
-                {/* ✅ NEW v3.1: Câmera Associada */}
+                {/* Câmera Associada */}
                 {zone.camera_id && getCameraName && getCameraName(zone.camera_id) && (
                     <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
-                        <Camera className="w-4 h-4 text-purple-600" />
-                        <div className="flex-1">
+                        <Camera className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
                             <p className="text-xs text-gray-500">Câmera</p>
-                            <p className="text-sm font-semibold text-purple-700">
-                                {getCameraName ? getCameraName(zone.camera_id) : 'Câmera'}
+                            <p className="text-sm font-semibold text-purple-700 truncate">
+                                {getCameraName(zone.camera_id)}
                             </p>
-                    </div>
+                        </div>
                     </div>
                 )}
 
@@ -266,24 +311,22 @@ function ZoneCard({
                 <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
                     {onView && (
                         <button
-                            onClick={onView}
+                            onClick={() => onView()}
                             className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-sm font-medium"
                         >
                             <Eye className="w-4 h-4" />
                             Ver
                         </button>
                     )}
-
                     <button
-                        onClick={onEdit}
+                        onClick={() => onEdit()}
                         className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
                     >
                         <Edit2 className="w-4 h-4" />
                         Editar
                     </button>
-
                     <button
-                        onClick={onDelete}
+                        onClick={() => onDelete()}
                         className="flex items-center justify-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-sm font-medium"
                     >
                         <Trash2 className="w-4 h-4" />
@@ -293,6 +336,7 @@ function ZoneCard({
         </div>
     );
 }
+
 
 // ============================================================================
 // MAIN COMPONENT

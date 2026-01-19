@@ -1,7 +1,7 @@
 // src/components/layout/MainLayout.tsx
 import { ReactNode, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, LogOut, Menu, X, Settings, FileText } from 'lucide-react'; 
+import { LayoutDashboard, Users, LogOut, Menu, X, Settings, FileText, Camera, Layers } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
 interface MainLayoutProps {
@@ -24,8 +24,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
   // ✅ ATUALIZADO: adiciona Settings e Logs
   const navLinks = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/settings', icon: Settings, label: 'Configurações' }, // ✅ NOVO
-    { path: '/logs', icon: FileText, label: 'Logs' }, // ✅ NOVO
+    { path: '/cameras', icon: Camera, label: 'Câmeras', adminOnly: true },
+    { path: '/zones', icon: Layers, label: 'Zonas', adminOnly: true },  
+    { path: '/settings', icon: Settings, label: 'Configurações' }, 
+    { path: '/logs', icon: FileText, label: 'Logs' }, 
     { path: '/users', icon: Users, label: 'Usuários', adminOnly: true },
   ];
 
@@ -170,7 +172,8 @@ export default function MainLayout({ children }: MainLayoutProps) {
       <footer className="bg-white border-t border-gray-200 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <p className="text-center text-sm text-gray-500">
-            © 2026 Vision Dashboard. Todos os direitos reservados.
+            © 2026 Ark Vision. Todos os direitos reservados.
+            Email: "jonatandj2k14@gmail.com"
           </p>
         </div>
       </footer>

@@ -1,26 +1,53 @@
 /**
- * ============================================================================
- * ZoneTable.tsx v3.0 - Dashboard Zone Statistics Table
- * ============================================================================
- * ✅ Suporta todos os 7 modos do ZoneMode enum
- * ✅ 100% compatível com backend v3.0
- * ============================================================================
+ * ZoneTable.tsx v5.3 - COM ANIMAÇÃO DE ALERTA SUAVE
+ * ✅ Agrupamento por modo com seções colapsáveis
+ * ✅ Filtro por câmera
+ * ✅ Colunas dinâmicas por regra de negócio
+ * ✅ Bordas e espaçamento visual entre grupos
+ * ✅ NOVO: Animação de pulsação em alertas
  */
 
+import { useState } from 'react';
 import { ZoneMode, ZONE_MODE_LABELS, ZONE_MODE_COLORS } from '../../types/zones.types';
-import {
-    AlertCircle,
-    TrendingUp,
-    ShieldAlert,
-    Users,
-    Eye,
-    Circle,
-    CircleDot
-} from 'lucide-react';
+import { AlertCircle, TrendingUp, ShieldAlert, Users, Eye, UserPlus, ChevronDown, ChevronUp, Camera, RefreshCw } from 'lucide-react';
+import { useCameras } from '../../hooks/useCameras';
 
 // ============================================================================
-// TIPOS PARA ZONAS NA TABELA
+// CSS PARA ANIMAÇÃO DE ALERTA SUAVE
 // ============================================================================
+
+const alertAnimationStyles = `
+@keyframes alertPulse {
+    0%, 100% {
+        background-color: rgba(239, 68, 68, 0.05);
+        border-color: rgba(239, 68, 68, 0.2);
+    }
+    50% {
+        background-color: rgba(239, 68, 68, 0.15);
+        border-color: rgba(239, 68, 68, 0.4);
+    }
+}
+
+.alert-pulse {
+    animation: alertPulse 2s ease-in-out infinite;
+}
+`;
+
+// Injetar estilos no document
+if (typeof document !== 'undefined') {
+    const styleId = 'zone-alert-animation';
+    if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = alertAnimationStyles;
+        document.head.appendChild(style);
+    }
+}
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
 interface ZoneTableItem {
     zone_id: number;
     zone_name: string;
@@ -28,7 +55,10 @@ interface ZoneTableItem {
     current_count: number;
     time_empty: number;
     time_full: number;
-    state: 'empty' | 'normal' | 'warning' | 'alert' | 'critical';
+    state: 'empty' | 'normal' | 'warning' | 'alert' | 'critical' | 'pending' | 'empty_pending' | 'full_pending';  
+    max_capacity?: number;
+    camera_id?: number | null;
+    full_timeout?: number;
 }
 
 interface ZoneTableProps {
@@ -36,55 +66,29 @@ interface ZoneTableProps {
 }
 
 // ============================================================================
-// CONFIGURAÇÕES VISUAIS v3.0 - TODOS OS 7 MODOS
+// VISUAL CONFIG
 // ============================================================================
 
-/**
- * ✅ Mapeamento COMPLETO de ícones para todos os 7 modos
- */
 const modeIcons: Record<ZoneMode, any> = {
-    // v3.0 modes (novos)
     [ZoneMode.OCCUPANCY]: Users,
     [ZoneMode.COUNTING]: TrendingUp,
     [ZoneMode.ALERT]: ShieldAlert,
     [ZoneMode.TRACKING]: Eye,
-
-    // v2.0 legacy (antigos)
+    [ZoneMode.CAPACITY]: UserPlus,
     [ZoneMode.GENERIC]: AlertCircle,
-    [ZoneMode.EMPTY]: Circle,
-    [ZoneMode.FULL]: CircleDot,
+    [ZoneMode.EMPTY]: AlertCircle,
+    [ZoneMode.FULL]: AlertCircle,
 };
 
-/**
- * ✅ Função para gerar classes Tailwind COMPLETA para todos os 7 modos
- */
-const getModeColorClasses = (mode: ZoneMode): string => {
-    const colorMap: Record<ZoneMode, string> = {
-        // v3.0 modes
-        [ZoneMode.OCCUPANCY]: 'text-blue-600 bg-blue-50 border-blue-200',
-        [ZoneMode.COUNTING]: 'text-green-600 bg-green-50 border-green-200',
-        [ZoneMode.ALERT]: 'text-red-600 bg-red-50 border-red-200',
-        [ZoneMode.TRACKING]: 'text-purple-600 bg-purple-50 border-purple-200',
-
-        // v2.0 legacy
-        [ZoneMode.GENERIC]: 'text-gray-600 bg-gray-50 border-gray-200',
-        [ZoneMode.EMPTY]: 'text-teal-600 bg-teal-50 border-teal-200',
-        [ZoneMode.FULL]: 'text-orange-600 bg-orange-50 border-orange-200',
-    };
-
-    // ✅ Fallback case o modo não seja reconhecido
-    return colorMap[mode] || 'text-gray-600 bg-gray-50 border-gray-200';
-};
-
-/**
- * Estados da zona (baseado no backend)
- */
 const stateColors: Record<ZoneTableItem['state'], string> = {
     empty: 'bg-gray-100 text-gray-700',
     normal: 'bg-green-100 text-green-700',
     warning: 'bg-yellow-100 text-yellow-700',
     alert: 'bg-orange-100 text-orange-700',
     critical: 'bg-red-100 text-red-700',
+    pending: 'bg-blue-100 text-blue-700',
+    empty_pending: 'bg-gray-200 text-gray-600',
+    full_pending: 'bg-yellow-200 text-yellow-600',
 };
 
 const stateLabels: Record<ZoneTableItem['state'], string> = {
@@ -93,172 +97,503 @@ const stateLabels: Record<ZoneTableItem['state'], string> = {
     warning: 'Aviso',
     alert: 'Alerta',
     critical: 'Crítico',
+    pending: 'Pendente',
+    empty_pending: 'Vazia (Aguardando)',
+    full_pending: 'Cheia (Aguardando)',
 };
 
 // ============================================================================
-// COMPONENTE PRINCIPAL
+// HELPER FUNCTIONS
 // ============================================================================
+
+const formatTime = (seconds: number): string => {
+    if (seconds < 60) return `${seconds.toFixed(0)}s`;
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${minutes}m ${secs}s`;
+};
+
+const getOccupancyPercent = (count: number, maxCapacity: number = 50): number => {
+    if (maxCapacity === 0) return 0;
+    return Math.round((count / maxCapacity) * 100);
+};
+
+const getProgressColor = (percent: number): string => {
+    if (percent >= 100) return 'bg-red-500';
+    if (percent >= 90) return 'bg-yellow-500';
+    return 'bg-green-500';
+};
+
+const getModeColorClasses = (mode: ZoneMode): string => {
+    const colorMap: Record<ZoneMode, string> = {
+        [ZoneMode.OCCUPANCY]: 'text-blue-600 bg-blue-50 border-blue-200',
+        [ZoneMode.COUNTING]: 'text-green-600 bg-green-50 border-green-200',
+        [ZoneMode.ALERT]: 'text-red-600 bg-red-50 border-red-200',
+        [ZoneMode.TRACKING]: 'text-purple-600 bg-purple-50 border-purple-200',
+        [ZoneMode.CAPACITY]: 'text-amber-600 bg-amber-50 border-amber-200',
+        [ZoneMode.GENERIC]: 'text-gray-600 bg-gray-50 border-gray-200',
+        [ZoneMode.EMPTY]: 'text-teal-600 bg-teal-50 border-teal-200',
+        [ZoneMode.FULL]: 'text-orange-600 bg-orange-50 border-orange-200',
+    };
+    return colorMap[mode] || 'text-gray-600 bg-gray-50 border-gray-200';
+};
+
+// ============================================================================
+// COMPONENT
+// ============================================================================
+
 export default function ZoneTable({ zones }: ZoneTableProps) {
-    /**
-     * Formata segundos para formato legível (Xs ou Xm Ys)
-     */
-    const formatTime = (seconds: number): string => {
-        if (seconds < 60) return `${seconds.toFixed(0)}s`;
-        const minutes = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${minutes}m ${secs}s`;
+
+    const { cameras } = useCameras();
+    const [selectedCameraId, setSelectedCameraId] = useState<number | 'all'>('all');
+    const [expandedModes, setExpandedModes] = useState<Set<ZoneMode>>(
+        new Set(Object.values(ZoneMode))
+    );
+
+    const filteredZones = zones.filter(zone => {
+        if (selectedCameraId === 'all') return true;
+        return zone.camera_id === selectedCameraId;
+    });
+
+    const groupedByMode = filteredZones.reduce((acc, zone) => {
+        if (!acc[zone.mode]) acc[zone.mode] = [];
+        acc[zone.mode].push(zone);
+        return acc;
+    }, {} as Record<ZoneMode, ZoneTableItem[]>);
+
+    const toggleModeExpansion = (mode: ZoneMode) => {
+        setExpandedModes(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(mode)) {
+                newSet.delete(mode);
+            } else {
+                newSet.add(mode);
+            }
+            return newSet;
+        });
+    };
+
+    const renderHeadersForMode = (mode: ZoneMode) => {
+        switch (mode) {
+            case ZoneMode.CAPACITY:
+                return (
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider" colSpan={3}>
+                        Ocupação
+                    </th>
+                );
+
+            case ZoneMode.COUNTING:
+                return (
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider" colSpan={3}>
+                        Contagem
+                    </th>
+                );
+
+            case ZoneMode.ALERT:
+                return (
+                    <>
+                        <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            Contagem
+                        </th>
+                        <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            --
+                        </th>
+                        <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            Tempo em Alerta
+                        </th>
+                    </>
+                );
+
+            case ZoneMode.TRACKING:
+                return (
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider" colSpan={3}>
+                        Rastreamento
+                    </th>
+                );
+
+            case ZoneMode.OCCUPANCY:
+            default:
+                return (
+                    <>
+                        <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            Contagem
+                        </th>
+                        <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            Tempo Vazia
+                        </th>
+                        <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            Tempo Cheia
+                        </th>
+                    </>
+                );
+        }
+    };
+    const renderMetricsCell = (zone: ZoneTableItem) => {
+        switch (zone.mode) {
+            case ZoneMode.CAPACITY:
+                const maxCap = zone.max_capacity ?? 50;
+                const percent = getOccupancyPercent(zone.current_count, maxCap);
+
+                // Calcular tempo restante até alerta
+                const capacityTimeout = 10;  // TODO: Pegar do backend (zone.full_timeout)
+                const timeElapsed = zone.time_full;  // Tempo já decorrido
+                const timeRemaining = Math.max(0, capacityTimeout - timeElapsed);
+                const isInPending = percent >= 100 && timeRemaining > 0;
+
+                return (
+                    <td className="px-6 py-4 whitespace-nowrap text-center" colSpan={3}>
+                        <div className="space-y-2">
+                            <div className="text-center">
+                                <span className="text-2xl font-bold text-gray-900">
+                                    {percent}%
+                                </span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div
+                                    className={`h-2 rounded-full transition-all ${getProgressColor(percent)}`}
+                                    style={{ width: `${Math.min(percent, 100)}%` }}
+                                />
+                            </div>
+                            <div className="text-xs text-gray-500 text-center">
+                                {zone.current_count}/{maxCap} detecções
+                            </div>
+
+                            {/* Contador decrescente */}
+                            {isInPending && (
+                                <div className="text-xs font-semibold text-amber-600 text-center animate-pulse">
+                                    ⏳ Alerta em {timeRemaining}s
+                                </div>
+                            )}
+
+                            {percent >= 100 && !isInPending && zone.state === 'critical' && (
+                                <div className="text-xs font-bold text-red-600 text-center">
+                                    🚨 LOTAÇÃO MÁXIMA!
+                                </div>
+                            )}
+                        </div>
+                    </td>
+                );
+
+            case ZoneMode.OCCUPANCY:
+                return (
+                    <>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-gray-900">
+                                    {zone.current_count}
+                                </div>
+                                <div className="text-xs text-gray-500">objetos</div>
+                            </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-center">
+                                <div className="text-sm font-medium text-gray-900">
+                                    {formatTime(zone.time_empty)}
+                                </div>
+                                <div className="text-xs text-gray-500">vazia</div>
+                            </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-center">
+                                <div className="text-sm font-medium text-gray-900">
+                                    {formatTime(zone.time_full)}
+                                </div>
+                                <div className="text-xs text-gray-500">cheia</div>
+                            </div>
+                        </td>
+                    </>
+                );
+
+            case ZoneMode.COUNTING:
+                return (
+                    <td className="px-6 py-4 whitespace-nowrap text-center" colSpan={3}>
+                        <div className="text-center">
+                            <span className="text-2xl font-bold block text-green-600">
+                                {zone.current_count}
+                            </span>
+                            <div className="text-xs text-gray-500">detecções</div>
+                        </div>
+                    </td>
+                );
+
+            case ZoneMode.ALERT:
+                return (
+                    <>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-center">
+                                {zone.current_count > 0 ? (
+                                    <>
+                                        <div className="text-2xl font-bold text-red-600">
+                                            ⚠ {zone.current_count}
+                                        </div>
+                                        <div className="text-xs text-gray-500">em alerta</div>
+                                    </>
+                                ) : (
+                                    <div className="text-sm text-gray-400">--</div>
+                                )}
+                            </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-sm text-gray-400 text-center">--</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-center">
+                                {zone.current_count > 0 ? (
+                                    <>
+                                        <div className="text-sm font-medium text-red-600">
+                                            {formatTime(zone.time_full)}
+                                        </div>
+                                        <div className="text-xs text-gray-500">em alerta</div>
+                                    </>
+                                ) : (
+                                    <div className="text-sm text-gray-400">--</div>
+                                )}
+                            </div>
+                        </td>
+                    </>
+                );
+
+            case ZoneMode.TRACKING:
+                return (
+                    <td className="px-6 py-4 whitespace-nowrap text-center" colSpan={3}>
+                        <div className="text-center">
+                            <div className="text-lg font-semibold text-purple-600">
+                                {zone.current_count}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                                {zone.current_count === 1 ? 'objeto rastreado' : 'objetos rastreados'}
+                            </div>
+                        </div>
+                    </td>
+                );
+
+            default:
+                return (
+                    <>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-gray-900">
+                                    {zone.current_count}
+                                </div>
+                                <div className="text-xs text-gray-500">objetos</div>
+                            </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-sm text-gray-600 text-center">
+                                {formatTime(zone.time_empty)}
+                            </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-sm text-gray-600 text-center">
+                                {formatTime(zone.time_full)}
+                            </div>
+                        </td>
+                    </>
+                );
+        }
     };
 
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-xl font-bold text-gray-900">Zonas Monitoradas</h2>
-                {zones.length > 0 && (
-                    <p className="text-sm text-gray-500 mt-1">
-                        {zones.length} {zones.length === 1 ? 'zona ativa' : 'zonas ativas'}
-                    </p>
-                )}
+            {/* Filtro de Câmera */}
+            <div className="px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 flex-1">
+                        <Camera className="w-5 h-5 text-gray-600 flex-shrink-0" />
+                        <select
+                            value={selectedCameraId}
+                            onChange={(e) => setSelectedCameraId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                            className="flex-1 max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white font-medium text-gray-700"
+                        >
+                            <option value="all">📷 Todas as Zonas</option>
+                            {cameras.map(camera => (
+                                <option key={camera.id} value={camera.id}>
+                                    📹 {camera.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-gray-600">
+                        <span>
+                            <span className="font-semibold text-gray-900">{filteredZones.length}</span> zonas
+                        </span>
+                        <span className="text-gray-400">|</span>
+                        <span>
+                            <span className="font-semibold text-gray-900">{Object.keys(groupedByMode).length}</span> modos
+                        </span>
+                    </div>
+                </div>
             </div>
 
             {/* Empty State */}
-            {zones.length === 0 ? (
+            {filteredZones.length === 0 ? (
                 <div className="p-12 text-center">
                     <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-500 font-medium mb-2">Nenhuma zona definida</p>
+                    <p className="text-gray-500 font-medium mb-2">
+                        {selectedCameraId === 'all' ? 'Nenhuma zona definida' : 'Nenhuma zona para esta câmera'}
+                    </p>
                     <p className="text-sm text-gray-400">
-                        Configure zonas para começar o monitoramento
+                        {selectedCameraId === 'all'
+                            ? 'Configure zonas para começar o monitoramento'
+                            : 'Selecione outra câmera ou configure zonas para esta'
+                        }
                     </p>
                 </div>
             ) : (
-                <>
-                    {/* Table */}
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-gray-50 border-b border-gray-200">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                                        Zona
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                                        Modo
-                                    </th>
-                                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                                        Contagem
-                                    </th>
-                                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                                        Tempo Vazia
-                                    </th>
-                                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                                        Tempo Cheia
-                                    </th>
-                                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                                        Estado
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200">
-                                {zones.map((zone) => {
-                                    // ✅ Obter ícone com fallback
-                                    const Icon = modeIcons[zone.mode] || AlertCircle;
+                <div className="p-4 space-y-4">
+                    {Object.entries(groupedByMode).map(([mode, zonesInMode]) => {
+                        const Icon = modeIcons[mode as ZoneMode] || AlertCircle;
+                        const modeColor = ZONE_MODE_COLORS[mode as ZoneMode];
+                        const isExpanded = expandedModes.has(mode as ZoneMode);
 
-                                    return (
-                                        <tr key={zone.zone_id} className="hover:bg-gray-50 transition-colors">
-                                            {/* Nome da Zona */}
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="flex items-center gap-3">
-                                                    {/* Indicador de cor hex */}
-                                                    <div
-                                                        className="w-3 h-3 rounded-full flex-shrink-0 border-2 border-white shadow-sm"
-                                                        style={{ backgroundColor: ZONE_MODE_COLORS[zone.mode] }}
-                                                        title={`Cor: ${ZONE_MODE_COLORS[zone.mode]}`}
-                                                    />
-                                                    <div>
-                                                        <span className="font-medium text-gray-900">
-                                                            {zone.zone_name}
-                                                        </span>
-                                                        <div className="text-xs text-gray-500">
-                                                            ID: {zone.zone_id}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </td>
+                        // ✅ NOVO: Verifica se alguma zona do grupo está em alerta
+                        const hasAlert = zonesInMode.some(z => z.state === 'alert' || z.state === 'critical');
 
-                                            {/* Modo */}
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div
-                                                    className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getModeColorClasses(zone.mode)}`}
-                                                >
-                                                    <Icon className="w-4 h-4" />
-                                                    <span className="text-sm font-medium">
-                                                        {ZONE_MODE_LABELS[zone.mode]}
-                                                    </span>
-                                                </div>
-                                            </td>
+                        return (
+                            <div
+                                key={mode}
+                                className={`
+                                    overflow-hidden rounded-lg border-2 shadow-sm hover:shadow-md transition-shadow
+                                    ${hasAlert ? 'alert-pulse border-red-300' : 'border-gray-200'}
+                                `}
+                                style={{ borderLeftWidth: '4px', borderLeftColor: modeColor }}
+                            >
+                                <button
+                                    onClick={() => toggleModeExpansion(mode as ZoneMode)}
+                                    className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                                    style={{
+                                        backgroundColor: isExpanded ? `${modeColor}08` : 'transparent',
+                                    }}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div
+                                            className="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm"
+                                            style={{ backgroundColor: `${modeColor}15` }}
+                                        >
+                                            <Icon className="w-5 h-5" style={{ color: modeColor }} />
+                                        </div>
+                                        <div className="text-left">
+                                            <h3 className="text-lg font-bold text-gray-900">
+                                                {ZONE_MODE_LABELS[mode as ZoneMode]}
+                                            </h3>
+                                            <p className="text-sm text-gray-600">
+                                                {zonesInMode.length} {zonesInMode.length === 1 ? 'zona' : 'zonas'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {isExpanded ? (
+                                        <ChevronUp className="w-5 h-5 text-gray-400" />
+                                    ) : (
+                                        <ChevronDown className="w-5 h-5 text-gray-400" />
+                                    )}
+                                </button>
 
-                                            {/* Contagem */}
-                                            <td className="px-6 py-4 whitespace-nowrap text-center">
-                                                <div>
-                                                    <span className="text-lg font-semibold text-gray-900">
-                                                        {zone.current_count}
-                                                    </span>
-                                                    <div className="text-xs text-gray-500">
-                                                        {zone.current_count === 1 ? 'pessoa' : 'pessoas'}
-                                                    </div>
-                                                </div>
-                                            </td>
+                                {isExpanded && (
+                                    <div className="border-t-2 border-gray-200">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full">
+                                                <thead className="bg-gray-50">
+                                                    <tr>
+                                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                                            Zona
+                                                        </th>
+                                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                                            Modo
+                                                        </th>
+                                                        {renderHeadersForMode(mode as ZoneMode)}
+                                                        <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                                            Estado
+                                                        </th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-200 bg-white">
+                                                    {zonesInMode.map((zone) => {
+                                                        const ZoneIcon = modeIcons[zone.mode] || AlertCircle;
 
-                                            {/* Tempo Vazia */}
-                                            <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-600">
-                                                {formatTime(zone.time_empty)}
-                                            </td>
+                                                        return (
+                                                            <tr
+                                                                key={zone.zone_id}
+                                                                className={`
+                                                                    hover:bg-gray-50 transition-colors
+                                                                    ${(zone.state === 'alert' || zone.state === 'critical') ? 'alert-pulse' : ''}
+                                                                `}
+                                                            >
+                                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div
+                                                                            className="w-3 h-3 rounded-full flex-shrink-0 border-2 border-white shadow-sm"
+                                                                            style={{ backgroundColor: modeColor }}
+                                                                        />
+                                                                        <span className="font-medium text-gray-900">
+                                                                            {zone.zone_name}
+                                                                        </span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getModeColorClasses(zone.mode)}`}>
+                                                                        <ZoneIcon className="w-4 h-4" />
+                                                                        <span className="text-sm font-medium">
+                                                                            {ZONE_MODE_LABELS[zone.mode]}
+                                                                        </span>
+                                                                    </div>
+                                                                </td>
+                                                                {renderMetricsCell(zone)}
+                                                                <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                                    <span className={`
+                                                                        inline-flex px-3 py-1 rounded-full text-sm font-medium 
+                                                                        ${stateColors[zone.state]}
+                                                                        ${(zone.state === 'alert' || zone.state === 'critical') ? 'animate-pulse' : ''}
+                                                                    `}>
+                                                                        {stateLabels[zone.state]}
+                                                                    </span>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
 
-                                            {/* Tempo Cheia */}
-                                            <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-600">
-                                                {formatTime(zone.time_full)}
-                                            </td>
-
-                                            {/* Estado */}
-                                            <td className="px-6 py-4 whitespace-nowrap text-center">
-                                                <span
-                                                    className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${stateColors[zone.state]}`}
-                                                >
-                                                    {stateLabels[zone.state]}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* Footer Summary */}
-                    <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
-                        <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-6">
+            {/* Footer Summary */}
+            {filteredZones.length > 0 && (
+                <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
+                    <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-6">
+                            <div>
+                                <span className="text-gray-600">Total de zonas:</span>
+                                <span className="font-semibold text-gray-900 ml-2">
+                                    {filteredZones.length}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-gray-600">Objetos detectados:</span>
+                                <span className="font-semibold text-gray-900 ml-2">
+                                    {filteredZones.reduce((sum, zone) => sum + zone.current_count, 0)}
+                                </span>
+                            </div>
+                            {selectedCameraId !== 'all' && (
                                 <div>
-                                    <span className="text-gray-600">Total de zonas:</span>
-                                    <span className="font-semibold text-gray-900 ml-2">
-                                        {zones.length}
+                                    <span className="text-gray-600">Câmera:</span>
+                                    <span className="font-semibold text-blue-600 ml-2">
+                                        {cameras.find(c => c.id === selectedCameraId)?.name || 'N/A'}
                                     </span>
                                 </div>
-                                <div>
-                                    <span className="text-gray-600">Pessoas detectadas:</span>
-                                    <span className="font-semibold text-gray-900 ml-2">
-                                        {zones.reduce((sum, zone) => sum + zone.current_count, 0)}
-                                    </span>
-                                </div>
-                            </div>
-
-                            {/* Indicador de atualização em tempo real */}
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
-                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                                <span>Atualização em tempo real</span>
-                            </div>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-green-600" />
+                            <span>Atualização em tempo real</span>
                         </div>
                     </div>
-                </>
+                </div>
             )}
         </div>
     );

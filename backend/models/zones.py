@@ -41,6 +41,8 @@ class ZoneMode(str, Enum):
     COUNTING = "counting"        # Contagem de pessoas/objetos
     ALERT = "alert"             # Alerta de intrusão
     TRACKING = "tracking"       # Rastreamento de movimento
+    CAPACITY = "capacity"       # Controle de lotação máxima
+
     # 🔙 Backward compatibility v2.0 (uppercase)
     GENERIC = "GENERIC"
     EMPTY = "EMPTY"
@@ -475,6 +477,12 @@ class ZoneBase(BaseModel):
         default=CoordinateSystem.AUTO,
         description="Sistema de coordenadas dos pontos"
     )
+
+    snapshot_path: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="Caminho do snapshot da zona"
+    )
     
     @field_validator('points')
     @classmethod
@@ -662,7 +670,6 @@ class ZoneCreate(ZoneBase):
         description="Se a zona está ativa (deprecated, use enabled)"
     )
     
-    # NEW: Optional metadata
     description: Optional[str] = Field(
         None,
         max_length=1000,
@@ -678,6 +685,16 @@ class ZoneCreate(ZoneBase):
     tags: Optional[List[str]] = Field(
         default=None,
         description="Tags para categorização"
+    )
+
+    metadata: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Metadados adicionais da zona (ex: max_capacity)"
+    )
+
+    snapshot_base64: Optional[str] = Field(
+        None,
+        description="Snapshot da zona em base64 (sem prefixo data:image/...)"
     )
     
     model_config = ConfigDict(
@@ -703,7 +720,8 @@ class ZoneCreate(ZoneBase):
                 "coordinate_system": "absolute",
                 "description": "Zona de monitoramento principal",
                 "color": "#00FF00",
-                "tags": ["principal", "entrada"]
+                "tags": ["principal", "entrada"],
+                "snapshot_base64": "/9j/4AAQSkZJRg..."
             }
         }
     )
@@ -745,6 +763,10 @@ class ZoneUpdate(BaseModel):
     color: Optional[str] = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')
     tags: Optional[List[str]] = None
     
+    snapshot_path: Optional[str] = Field(None, max_length=500)
+
+    metadata: Optional[Dict[str, Any]] = None
+    
     @field_validator('points')
     @classmethod
     def validate_points(cls, v: Optional[List[List[float]]]) -> Optional[List[List[float]]]:
@@ -771,6 +793,10 @@ class ZoneResponse(ZoneBase):
     color: Optional[str] = None
     tags: Optional[List[str]] = None
     
+    snapshot_path: Optional[str] = Field(None, max_length=500, description="Caminho do snapshot da zona")
+    
+    metadata: Optional[Dict[str, Any]] = None
+
     model_config = ConfigDict(from_attributes=True)
     
     # ========================================================================

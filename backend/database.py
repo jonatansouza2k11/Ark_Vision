@@ -19,7 +19,7 @@ CRITICAL: sync_zones_to_settings() RESTORED!
 
 import psycopg
 from psycopg.rows import dict_row
-from psycopg_pool import AsyncConnectionPool
+from psycopg_pool import AsyncConnectionPool, ConnectionPool  
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 from functools import lru_cache
@@ -317,7 +317,9 @@ async def init_database(force_recreate: bool = False) -> None:
             logger.warning("⚠️ FORCE RECREATE: Dropping all tables...")
             await drop_all_tables()
         
+        # ==========================================================
         # ==================== USERS TABLE v3.0 ====================
+        # ==========================================================
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -352,7 +354,9 @@ async def init_database(force_recreate: bool = False) -> None:
         """)
         logger.info("✅ Tabela 'users' criada (v3.0)")
         
+        # =============================================================
         # ==================== SETTINGS TABLE v3.0 ====================
+        # =============================================================
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS settings (
                 key VARCHAR(100) PRIMARY KEY,
@@ -382,6 +386,7 @@ async def init_database(force_recreate: bool = False) -> None:
         """)
         logger.info("✅ Tabela 'settings' criada (v3.0)")
         
+
         # ==================== CAMERAS TABLE v1.0 ====================
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS cameras (
@@ -409,6 +414,7 @@ async def init_database(force_recreate: bool = False) -> None:
         )
         logger.info("✅ Tabela 'cameras' criada (v1.0)")
 
+
         # ==================== ZONES TABLE v3.1 (camera_id) ====================
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS zones (
@@ -434,8 +440,11 @@ async def init_database(force_recreate: bool = False) -> None:
 
                 -- NEW v3.0
                 description TEXT,
+                color VARCHAR(7),
+                tags TEXT[] DEFAULT ARRAY[]::TEXT[],
+                snapshot_path VARCHAR(500),         
                 metadata JSONB DEFAULT '{}'::jsonb,
-
+                                         
                 -- Timestamps
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -453,6 +462,7 @@ async def init_database(force_recreate: bool = False) -> None:
             await conn.execute(index_sql)
         logger.info("✅ Tabela 'zones' criada (v3.1 com camera_id)")
         
+
         # ==================== ALERTS TABLE v3.0 ====================
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS alerts (
@@ -486,7 +496,9 @@ async def init_database(force_recreate: bool = False) -> None:
                 
                 -- Metadata v3.0 (JSONB)
                 metadata JSONB DEFAULT '{}'::jsonb,
-                
+                color VARCHAR(7),  
+                tags TEXT[] DEFAULT ARRAY[]::TEXT[],  
+                           
                 -- Timestamps
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 updated_at TIMESTAMP
@@ -641,16 +653,14 @@ async def init_database(force_recreate: bool = False) -> None:
         
         logger.info("✅ Tabela 'detections' criada")
         
-        await conn.commit()
-        logger.info("✅ Database tables initialized (v3.0 - 100% API ALIGNED)")
-        
-        # ✅ Create default zone if needed
+        # ✅ Create default zone if needed (IMPROVED - v3.2)
         async with conn.cursor() as cur:
-            await cur.execute(SQL.COUNT_ZONES)
+            # ✅ Verifica se ALGUMA zona já foi criada (incluindo deletadas)
+            await cur.execute("SELECT COUNT(*) as count FROM zones")
             result = await cur.fetchone()
             
             if result['count'] == 0:
-                logger.info("📍 Creating default zone...")
+                logger.info("📍 Creating default zone (first time)...")
                 await cur.execute(
                     """
                     INSERT INTO zones (
@@ -668,6 +678,8 @@ async def init_database(force_recreate: bool = False) -> None:
                 )
                 await conn.commit()
                 logger.info("✅ Default zone created")
+            else:
+                logger.info("⏭️ Skipped default zone (already created before)")
         
         await sync_zones_to_settings()
 
@@ -803,7 +815,9 @@ async def update_zone(
     full_threshold: Optional[int] = None,
     enabled: Optional[bool] = None,
     active: Optional[bool] = None,
-    description: Optional[str] = None
+    description: Optional[str] = None,
+    color: Optional[str] = None,
+    tags: Optional[List[str]] = None
 ) -> bool:
     """Atualiza zona existente (v3.0)"""
     try:
@@ -827,6 +841,8 @@ async def update_zone(
             enabled if enabled is not None else zone['enabled'],
             active if active is not None else zone['active'],
             description if description is not None else zone.get('description'),
+            color if color is not None else zone.get('color'),
+            tags if tags is not None else zone.get('tags', []), 
             zone_id
         )
         
@@ -838,6 +854,7 @@ async def update_zone(
                 empty_timeout = %s, full_timeout = %s,
                 empty_threshold = %s, full_threshold = %s,
                 enabled = %s, active = %s, description = %s,
+                color = %s, tags = %s,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
             """,
@@ -875,6 +892,48 @@ async def delete_zone(zone_id: int, soft: bool = True) -> bool:
     except Exception as e:
         logger.error(f"❌ Error deleting zone: {e}")
         return False
+
+
+async def get_zones_by_camera_id(camera_id: int, active_only: bool = True) -> List[Dict[str, Any]]:
+    """
+    Retorna todas as zonas associadas a uma câmera específica.
+    """
+    try:
+        if active_only:
+            query = """
+                SELECT * FROM zones
+                WHERE camera_id = %s
+                  AND enabled = TRUE
+                  AND active = TRUE
+                  AND deleted_at IS NULL
+                ORDER BY id
+            """
+        else:
+            query = """
+                SELECT * FROM zones
+                WHERE camera_id = %s
+                  AND deleted_at IS NULL
+                ORDER BY id
+            """
+        
+        zones = await _execute_query(query, (camera_id,), fetch="all")
+        
+        # Parse JSONB fields
+        for zone in zones:
+            if isinstance(zone.get("points"), str):
+                try:
+                    zone["points"] = json.loads(zone["points"])
+                except json.JSONDecodeError:
+                    logger.warning(f"Invalid JSON in zone {zone.get('id')} points")
+                    zone["points"] = []
+        
+        return zones
+    
+    except Exception as e:
+        logger.error(f"❌ Error fetching zones for camera {camera_id}: {e}")
+        return []
+
+
 
 
 # ============================================

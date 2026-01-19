@@ -1,66 +1,80 @@
 [
   {
-    "id": 5,
-    "name": "Zona Teste 1",
+    "id": 53,
+    "name": "CAPACIDADE",
     "points": [
       [
-        100.0,
-        100.0
+        0.19745767612561635,
+        0.37536294177799484
       ],
       [
-        500.0,
-        100.0
+        0.4710452608983234,
+        0.37864452731418224
       ],
       [
-        500.0,
-        400.0
+        0.4820622106207143,
+        0.9627667527555432
       ],
       [
-        100.0,
-        400.0
+        0.16073451038431344,
+        0.9660483382917309
       ]
     ],
-    "mode": "GENERIC",
-    "empty_timeout": 5.0,
-    "full_timeout": 10.0,
-    "empty_threshold": 0,
+    "mode": "capacity",
+    "camera_id": 13,
+    "empty_timeout": 10.0,
+    "full_timeout": 5.0,
+    "empty_threshold": 1,
     "full_threshold": 3,
+    "max_out_time": 30.0,
+    "email_cooldown": 600.0,
     "enabled": true,
     "active": true,
-    "created_at": "2026-01-01T11:58:49.581037",
-    "updated_at": "2026-01-01T11:58:49.581037",
-    "deleted_at": null
+    "description": null,
+    "color": "#3B82F6",
+    "tags": [],
+    "snapshot_path": null,
+    "metadata": {},
+    "created_at": "2026-01-19T10:45:54.146758",
+    "updated_at": "2026-01-19T13:15:24.273155"
   },
   {
-    "id": 2,
-    "name": "Zona Teste 1",
+    "id": 49,
+    "name": "PESSOA",
     "points": [
       [
-        100.0,
-        100.0
+        0.5761564303923875,
+        0.3435072652835084
       ],
       [
-        500.0,
-        100.0
+        0.8309984689621864,
+        0.35333135527050974
       ],
       [
-        500.0,
-        400.0
+        0.8933339316339358,
+        0.9820731144385962
       ],
       [
-        100.0,
-        400.0
+        0.590823598079858,
+        0.9853478111009297
       ]
     ],
-    "mode": "GENERIC",
+    "mode": "capacity",
+    "camera_id": 13,
     "empty_timeout": 5.0,
     "full_timeout": 10.0,
     "empty_threshold": 0,
-    "full_threshold": 3,
-    "enabled": true,
+    "full_threshold": 1,
+    "max_out_time": 30.0,
+    "email_cooldown": 600.0,
+    "enabled": false,
     "active": true,
-    "created_at": "2026-01-01T12:22:38.851050",
-    "updated_at": "2026-01-01T12:22:38.851050",
-    "deleted_at": null
+    "description": null,
+    "color": "#3B82F6",
+    "tags": [],
+    "snapshot_path": null,
+    "metadata": {},
+    "created_at": "2026-01-18T16:07:22.795613",
+    "updated_at": "2026-01-19T11:46:21.467473"
   }
 ]

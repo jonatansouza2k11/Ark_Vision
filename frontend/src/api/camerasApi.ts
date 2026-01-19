@@ -9,7 +9,7 @@ import type {
     Camera,
     CreateCameraPayload,
     UpdateCameraPayload,
-    CameraListResponse
+    CameraCrudListResponse  // 🔥 CORRIGIDO: Novo nome
 } from '../types/cameras.types';
 
 // ============================================
@@ -40,8 +40,8 @@ function getAuthHeaders(): Record<string, string> {
 /**
  * List all cameras
  */
-export async function listCameras(activeOnly: boolean = false): Promise<CameraListResponse> {
-    const response = await axios.get<CameraListResponse>(CAMERAS_ENDPOINT, {
+export async function listCameras(activeOnly: boolean = false): Promise<CameraCrudListResponse> {
+    const response = await axios.get<CameraCrudListResponse>(CAMERAS_ENDPOINT, {
         headers: getAuthHeaders(),
         params: { active_only: activeOnly }
     });
@@ -51,8 +51,8 @@ export async function listCameras(activeOnly: boolean = false): Promise<CameraLi
 /**
  * List only active cameras
  */
-export async function listActiveCameras(): Promise<CameraListResponse> {
-    const response = await axios.get<CameraListResponse>(`${CAMERAS_ENDPOINT}active`, {
+export async function listActiveCameras(): Promise<CameraCrudListResponse> {
+    const response = await axios.get<CameraCrudListResponse>(`${CAMERAS_ENDPOINT}active`, {
         headers: getAuthHeaders()
     });
     return response.data;

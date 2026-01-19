@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * ZonesManager.tsx - Zones Management Page v3.0
+ * ZonesManager.tsx - Zones Management Page v3.1
  * ============================================================================
  * Componente principal que integra toda a funcionalidade de zonas
  * 
@@ -11,8 +11,10 @@
  * - Export/Import de zonas
  * - Bulk operations
  * - Notificações Toast
+ * - MainLayout integrado ✅ NOVO
  * ============================================================================
  */
+
 
 import { useState, useEffect } from 'react';
 import {
@@ -26,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useZones } from '../../hooks/useZones';
 import { useToast } from '../../hooks/useToast';
+import MainLayout from '../layout/MainLayout';  // ✅ NOVO: Import do MainLayout
 import ZoneDrawer from './ZoneDrawer';
 import ZonesList from './ZonesList';
 import { zonesApi } from '../../api/zonesApi';
@@ -35,9 +38,11 @@ import type {
     UpdateZonePayload
 } from '../../types/zones.types';
 
+
 // ============================================================================
 // STATISTICS CARD
 // ============================================================================
+
 
 interface StatCardProps {
     label: string;
@@ -45,6 +50,7 @@ interface StatCardProps {
     icon: React.ReactNode;
     color: string;
 }
+
 
 function StatCard({ label, value, icon, color }: StatCardProps) {
     return (
@@ -65,20 +71,23 @@ function StatCard({ label, value, icon, color }: StatCardProps) {
     );
 }
 
+
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
+
 
 export default function ZonesManager() {
     // ==========================================================================
     // HOOKS
     // ==========================================================================
 
+
     const {
         zones,
         loading,
         error,
-        fetchZones,      // ← ADICIONAR
+        fetchZones,
         createZone,
         updateZone,
         deleteZone,
@@ -89,11 +98,14 @@ export default function ZonesManager() {
         refresh
     } = useZones();
 
+
     const { success, error: showError, info } = useToast();
+
 
     // ==========================================================================
     // STATE
     // ==========================================================================
+
 
     const [drawerState, setDrawerState] = useState<{
         isOpen: boolean;
@@ -105,31 +117,38 @@ export default function ZonesManager() {
         zone: null
     });
 
+
     const [selectedZones, setSelectedZones] = useState<number[]>([]);
     const [isRefreshing, setIsRefreshing] = useState(false);
+
 
     // ==========================================================================
     // EFFECTS
     // ==========================================================================
 
+
     /**
-     * ✅ CORRIGIDO: Carrega zonas E estatísticas na montagem
+     * ✅ Carrega zonas E estatísticas na montagem
      */
     useEffect(() => {
-        fetchZones();      // ← ADICIONAR
+        fetchZones();
         loadStatistics();
+
 
         // Refresh estatísticas a cada 30 segundos
         const interval = setInterval(() => {
             loadStatistics();
-        }, 30000);
+        }, 10000);
+
 
         return () => clearInterval(interval);
-    }, [fetchZones, loadStatistics]); // ← ADICIONAR fetchZones
+    }, [fetchZones, loadStatistics]);
+
 
     // ==========================================================================
     // DRAWER HANDLERS
     // ==========================================================================
+
 
     const handleOpenCreateDrawer = () => {
         setDrawerState({
@@ -139,6 +158,7 @@ export default function ZonesManager() {
         });
     };
 
+
     const handleOpenEditDrawer = (zone: Zone) => {
         setDrawerState({
             isOpen: true,
@@ -146,6 +166,7 @@ export default function ZonesManager() {
             zone
         });
     };
+
 
     const handleOpenViewDrawer = (zone: Zone) => {
         setDrawerState({
@@ -155,6 +176,7 @@ export default function ZonesManager() {
         });
     };
 
+
     const handleCloseDrawer = () => {
         setDrawerState({
             isOpen: false,
@@ -163,8 +185,9 @@ export default function ZonesManager() {
         });
     };
 
+
     /**
-     * ✅ CORRIGIDO: Adiciona feedback de sucesso/erro
+     * ✅ Adiciona feedback de sucesso/erro
      */
     const handleSaveZone = async (
         data: CreateZonePayload | UpdateZonePayload,
@@ -193,13 +216,18 @@ export default function ZonesManager() {
         }
     };
 
+
+
+
     // ==========================================================================
     // ZONE ACTIONS
     // ==========================================================================
 
+
     const handleDeleteZone = async (zoneId: number) => {
         const confirmed = window.confirm('Tem certeza que deseja deletar esta zona?');
         if (!confirmed) return;
+
 
         const result = await deleteZone(zoneId);
         if (result) {
@@ -208,6 +236,7 @@ export default function ZonesManager() {
             showError('Erro ao deletar zona');
         }
     };
+
 
     const handleToggleZone = async (zoneId: number, enabled: boolean) => {
         const result = await toggleZone(zoneId, enabled);
@@ -218,9 +247,11 @@ export default function ZonesManager() {
         }
     };
 
+
     // ==========================================================================
     // BULK OPERATIONS
     // ==========================================================================
+
 
     const handleBulkDelete = async () => {
         if (selectedZones.length === 0) {
@@ -228,11 +259,14 @@ export default function ZonesManager() {
             return;
         }
 
+
         const confirmed = window.confirm(
             `Deletar ${selectedZones.length} zona(s) selecionada(s)?`
         );
 
+
         if (!confirmed) return;
+
 
         const result = await bulkDelete(selectedZones);
         if (result) {
@@ -243,9 +277,11 @@ export default function ZonesManager() {
         }
     };
 
+
     // ==========================================================================
     // IMPORT/EXPORT
     // ==========================================================================
+
 
     const handleExport = async () => {
         try {
@@ -256,9 +292,11 @@ export default function ZonesManager() {
         }
     };
 
+
     const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+
 
         try {
             const result = await zonesApi.importZones(file);
@@ -268,13 +306,16 @@ export default function ZonesManager() {
             showError('Erro ao importar zonas');
         }
 
+
         // Reset input
         e.target.value = '';
     };
 
+
     // ==========================================================================
     // REFRESH
     // ==========================================================================
+
 
     const handleRefresh = async () => {
         setIsRefreshing(true);
@@ -286,15 +327,17 @@ export default function ZonesManager() {
         }
     };
 
+
     // ==========================================================================
     // RENDER
     // ==========================================================================
 
+
     return (
-        <div className="min-h-screen bg-gray-50">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <MainLayout>  {/* ✅ NOVO: Envolvido com MainLayout */}
+            <div className="space-y-6">  {/* ✅ MUDOU: min-h-screen → space-y-6 */}
                 {/* Header */}
-                <div className="mb-8">
+                <div>
                     <div className="flex items-center justify-between mb-4">
                         <div>
                             <h1 className="text-3xl font-bold text-gray-900">
@@ -304,6 +347,7 @@ export default function ZonesManager() {
                                 Configure e monitore zonas de detecção do sistema
                             </p>
                         </div>
+
 
                         <div className="flex items-center gap-3">
                             {/* Refresh Button */}
@@ -317,6 +361,7 @@ export default function ZonesManager() {
                                 <span className="hidden sm:inline">Atualizar</span>
                             </button>
 
+
                             {/* Export Button */}
                             <button
                                 onClick={handleExport}
@@ -326,6 +371,7 @@ export default function ZonesManager() {
                                 <Download className="w-5 h-5" />
                                 <span className="hidden sm:inline">Exportar</span>
                             </button>
+
 
                             {/* Import Button */}
                             <label className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium cursor-pointer">
@@ -339,6 +385,7 @@ export default function ZonesManager() {
                                 />
                             </label>
 
+
                             {/* Create Button */}
                             <button
                                 onClick={handleOpenCreateDrawer}
@@ -349,6 +396,7 @@ export default function ZonesManager() {
                             </button>
                         </div>
                     </div>
+
 
                     {/* Statistics */}
                     {statistics && (
@@ -393,9 +441,10 @@ export default function ZonesManager() {
                     )}
                 </div>
 
+
                 {/* Error State */}
                 {error && (
-                    <div className="mb-6 bg-red-50 border-2 border-red-200 rounded-xl p-4">
+                    <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
                                 <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -410,9 +459,10 @@ export default function ZonesManager() {
                     </div>
                 )}
 
+
                 {/* Bulk Actions Bar */}
                 {selectedZones.length > 0 && (
-                    <div className="mb-6 bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+                    <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -427,6 +477,7 @@ export default function ZonesManager() {
                                     </p>
                                 </div>
                             </div>
+
 
                             <div className="flex items-center gap-2">
                                 <button
@@ -447,6 +498,9 @@ export default function ZonesManager() {
                     </div>
                 )}
 
+
+
+
                 {/* Zones List */}
                 <ZonesList
                     zones={zones}
@@ -459,6 +513,7 @@ export default function ZonesManager() {
                     onSelectionChange={setSelectedZones}
                 />
 
+
                 {/* Zone Drawer */}
                 <ZoneDrawer
                     isOpen={drawerState.isOpen}
@@ -469,6 +524,6 @@ export default function ZonesManager() {
                     streamUrl="http://localhost:8000/api/v1/stream/video_feed"
                 />
             </div>
-        </div>
+        </MainLayout>
     );
 }

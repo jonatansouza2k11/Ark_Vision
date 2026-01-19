@@ -29,6 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from backend.services.camera_sync import initialize_vision_system_from_db
 # ----------------------------------------------------------------------------
 # PATH & LOGGING
 # ----------------------------------------------------------------------------
@@ -101,11 +102,19 @@ def html_admin_route(template_name: str, fetch_data_fn=None):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting FastAPI Application")
-
     try:
         await database.get_db_pool()
         await database.init_database(force_recreate=False)
         logger.info("✅ Database ready")
+
+        # Inicializa VisionSystem com câmeras ativas do banco
+        try:
+            await initialize_vision_system_from_db()
+            logger.info("✅ VisionSystem initialized successfully")
+        except Exception as e:
+            logger.error(f"⚠️ VisionSystem init failed: {e}")
+            # Não levanta, mantém API funcional
+
     except Exception as e:
         logger.error(f"❌ Database init failed: {e}")
         raise
@@ -115,6 +124,7 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 Shutting down...")
     await database.close_db_pool()
     logger.info("✅ Database closed")
+
 
 
 # ----------------------------------------------------------------------------

@@ -66,7 +66,7 @@ export function useZones(): UseZonesReturn {
     // FETCH ZONES
     // ==========================================================================
 
-    const fetchZones = useCallback(async (includeDisabled = false) => {
+    const fetchZones = useCallback(async (includeDisabled = true) => {
         setLoading(true);
         setError(null);
 
@@ -243,7 +243,7 @@ export function useZones(): UseZonesReturn {
 
     const refresh = useCallback(async () => {
         await Promise.all([
-            fetchZones(),
+            fetchZones(true),
             loadStatistics()
         ]);
     }, [fetchZones, loadStatistics]);

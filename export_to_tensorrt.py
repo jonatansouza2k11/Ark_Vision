@@ -6,8 +6,9 @@ from ultralytics import YOLO
 import torch
 
 # Configuração
-MODEL_PT = "yolo_models/yolo11n.pt"  # Modelo PyTorch original
-MODEL_ENGINE = "yolo_models/yolo11n.engine"  # Saída TensorRT
+MODEL_PT = "yolo_models/yolo11m.pt"             # Modelo PyTorch original
+MODEL_ENGINE = "yolo_models/yolo11m.engine"     # Saída TensorRT
+
 IMGSZ = 640  # Tamanho de entrada (deve bater com inferência)
 DEVICE = 0  # GPU ID (0 para primeira GPU)
 
@@ -37,11 +38,11 @@ model = YOLO(MODEL_PT)
 model.export(
     format="engine",
     imgsz=IMGSZ,
-    half=True,  # FP16 precision (2x mais rápido)
+    half=True,      # FP16 precision (2x mais rápido)
     device=DEVICE,
     dynamic=False,  # Fixed input size (melhor performance)
     simplify=True,
-    workspace=4,  # GB de workspace (ajuste conforme sua GPU)
+    workspace=4,    # GB de workspace (ajuste conforme sua GPU)
 )
 
 print("\n" + "=" * 70)

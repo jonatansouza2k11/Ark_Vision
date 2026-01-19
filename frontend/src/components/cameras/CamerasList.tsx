@@ -1,15 +1,28 @@
 /**
- * CamerasList.tsx - Cameras List Component
- * Displays cameras in card grid with actions
+ * CamerasList.tsx v2.0 - Cameras List Component
+ * Displays cameras in card grid with actions and streaming status
  */
 
-import { useState } from 'react';
-import { Camera as CameraIcon, Edit, Trash2, Power, MapPin, Video, Layers } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import {
+    Camera as CameraIcon,
+    Edit,
+    Trash2,
+    Power,
+    MapPin,
+    Video,
+    Layers,
+    Eye,           // 🔥 NOVO: Ícone visualizar
+    Settings       // 🔥 NOVO: Ícone configurar zonas
+} from 'lucide-react';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';  // 🔥 NOVO: Navegação
+
 import type { Camera } from '../../types/cameras.types';
 import {
     formatCameraSource,
-    getCameraStatusText
+    getCameraStatusText,
+    isCameraStreamable  // 🔥 NOVO: Helper
 } from '../../types/cameras.types';
 import { useZones } from '../../hooks/useZones';
 
@@ -23,6 +36,8 @@ interface CamerasListProps {
     onDelete: (cameraId: number) => void;
     onToggle: (cameraId: number) => void;
     loading?: boolean;
+    // 🔥 NOVO: Callback opcional para streaming status
+    onViewStream?: (cameraId: number) => void;
 }
 
 // ============================================
@@ -34,13 +49,21 @@ export function CamerasList({
     onEdit,
     onDelete,
     onToggle,
-    loading = false
+    loading = false,
+    onViewStream
 }: CamerasListProps) {
+    const navigate = useNavigate();  // 🔥 NOVO
     const [deletingId, setDeletingId] = useState<number | null>(null);
     const [togglingId, setTogglingId] = useState<number | null>(null);
 
-    // ✅ NEW v3.1: Zonas para contar por câmera
-    const { zones } = useZones();    
+    // Zonas para contar por câmera
+    const { zones, fetchZones } = useZones();
+
+    // Busca zonas no mount
+    useEffect(() => {
+        fetchZones(true); // includeDisabled = true para contar todas
+    }, [fetchZones]);
+
     // Helper para contar zonas por câmera
     const getZoneCount = (cameraId: number): number => {
         return zones.filter(z => z.camera_id === cameraId).length;
@@ -81,15 +104,38 @@ export function CamerasList({
         }
     };
 
+    // 🔥 NOVO: Visualizar stream
+    const handleViewStream = (camera: Camera) => {
+        if (!isCameraStreamable(camera)) {
+            toast.error('Câmera não disponível para streaming. Verifique se está ativa e configurada.');
+            return;
+        }
+
+        if (onViewStream) {
+            onViewStream(camera.id);
+        } else {
+            // Navegar para página de streaming com camera_id
+            navigate(`/stream?camera=${camera.id}`);
+        }
+    };
+
+    // 🔥 NOVO: Configurar zonas
+    const handleConfigureZones = (cameraId: number) => {
+        navigate(`/zones?camera=${cameraId}`);
+    };
+
     // ============================================
     // RENDER LOADING
     // ============================================
 
     if (loading) {
         return (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[1, 2, 3].map(i => (
-                    <div key={i} className="bg-white rounded-lg shadow p-6 animate-pulse">
+                    <div
+                        key={i}
+                        className="bg-white rounded-lg border border-gray-200 p-6 animate-pulse"
+                    >
                         <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
                         <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
                         <div className="h-4 bg-gray-200 rounded w-2/3"></div>
@@ -105,12 +151,12 @@ export function CamerasList({
 
     if (cameras.length === 0) {
         return (
-            <div className="bg-white rounded-lg shadow p-12 text-center">
-                <CameraIcon size={48} className="mx-auto text-gray-400 mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <div className="text-center py-12">
+                <CameraIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
                     Nenhuma câmera cadastrada
                 </h3>
-                <p className="text-gray-600">
+                <p className="text-gray-500">
                     Clique no botão "Nova Câmera" para adicionar sua primeira câmera.
                 </p>
             </div>
@@ -122,43 +168,39 @@ export function CamerasList({
     // ============================================
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {cameras.map(camera => (
                 <div
                     key={camera.id}
-                    className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-6 border-l-4"
-                    style={{
-                        borderLeftColor: camera.enabled ? '#10b981' : '#6b7280'
-                    }}
+                    className="bg-white rounded-lg border border-gray-200 hover:shadow-lg transition-shadow"
                 >
                     {/* Header */}
-                    <div className="flex items-start justify-between mb-4">
-                        <div className="flex-1">
-                            <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                                {camera.name}
-                            </h3>
-                            <div className="flex items-center space-x-2">
-                                <span
-                                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${camera.enabled
-                                            ? 'bg-green-100 text-green-800'
-                                            : 'bg-gray-100 text-gray-800'
-                                        }`}
-                                >
-                                    {getCameraStatusText(camera.enabled)}
-                                </span>
+                    <div className="p-6 border-b border-gray-200">
+                        <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center space-x-2 flex-1">
+                                <CameraIcon className="w-5 h-5 text-gray-400" />
+                                <h3 className="text-lg font-semibold text-gray-900 truncate">
+                                    {camera.name}
+                                </h3>
                             </div>
+
+                            {/* Status Badge */}
+                            <span
+                                className={`px-2 py-1 text-xs font-medium rounded-full ${camera.enabled
+                                        ? 'bg-green-100 text-green-800'
+                                        : 'bg-gray-100 text-gray-800'
+                                    }`}
+                            >
+                                {getCameraStatusText(camera.enabled)}
+                            </span>
                         </div>
-                        <CameraIcon
-                            size={24}
-                            className={camera.enabled ? 'text-green-600' : 'text-gray-400'}
-                        />
                     </div>
 
                     {/* Details */}
-                    <div className="space-y-2 mb-4">
+                    <div className="p-6 space-y-3">
                         {/* Source */}
                         <div className="flex items-start space-x-2 text-sm">
-                            <Video size={16} className="text-gray-400 mt-0.5 flex-shrink-0" />
+                            <Video className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
                             <span className="text-gray-600 break-all">
                                 {formatCameraSource(camera.source)}
                             </span>
@@ -166,40 +208,60 @@ export function CamerasList({
 
                         {/* Location */}
                         {camera.location && (
-                            <div className="flex items-start space-x-2 text-sm">
-                                <MapPin size={16} className="text-gray-400 mt-0.5 flex-shrink-0" />
+                            <div className="flex items-center space-x-2 text-sm">
+                                <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
                                 <span className="text-gray-600">{camera.location}</span>
+                            </div>
+                        )}
+
+                        {/* Zone Count */}
+                        <div className="flex items-center space-x-2 text-sm">
+                            <Layers className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                            <div className="flex items-center justify-between w-full">
+                                <span className="text-gray-600">
+                                    {getZoneCount(camera.id)} zona{getZoneCount(camera.id) !== 1 ? 's' : ''}
+                                </span>
+                                {/* 🔥 NOVO: Link para configurar zonas */}
+                                <button
+                                    onClick={() => handleConfigureZones(camera.id)}
+                                    className="text-blue-600 hover:text-blue-700 text-xs font-medium flex items-center space-x-1"
+                                    title="Configurar zonas"
+                                >
+                                    <Settings className="w-3 h-3" />
+                                    <span>Configurar</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Metadata */}
+                        {camera.metadata && Object.keys(camera.metadata).length > 0 && (
+                            <div className="pt-3 border-t border-gray-100">
+                                <p className="text-xs text-gray-500 mb-2">Metadados:</p>
+                                <div className="space-y-1">
+                                    {Object.entries(camera.metadata).map(([key, value]) => (
+                                        <div key={key} className="text-xs text-gray-600">
+                                            <span className="font-medium">{key}:</span> {String(value)}
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>
 
-                    {/* ✅ NEW v3.1: Zone Count */}
-                    <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                        <Layers size={18} className="text-blue-600 flex-shrink-0" />
-                        <div className="flex-1">
-                            <p className="text-xs text-blue-600 font-medium">Zonas Configuradas</p>
-                            <p className="text-lg font-bold text-blue-700">
-                                {getZoneCount(camera.id)} zona{getZoneCount(camera.id) !== 1 ? 's' : ''}
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Metadata */}
-                    {camera.metadata && Object.keys(camera.metadata).length > 0 && (
-                        <div className="mb-4 p-3 bg-gray-50 rounded text-xs">
-                            <div className="font-medium text-gray-700 mb-1">Metadados:</div>
-                            <div className="space-y-1">
-                                {Object.entries(camera.metadata).map(([key, value]) => (
-                                    <div key={key} className="text-gray-600">
-                                        <span className="font-mono">{key}:</span> {String(value)}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
                     {/* Actions */}
-                    <div className="flex items-center justify-between pt-4 border-t space-x-2">
+                    <div className="p-4 bg-gray-50 border-t border-gray-200 flex flex-wrap gap-2">
+                        {/* 🔥 NOVO: View Stream Button */}
+                        {camera.enabled && (
+                            <button
+                                onClick={() => handleViewStream(camera)}
+                                className="flex items-center space-x-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                                title="Visualizar Stream"
+                            >
+                                <Eye className="w-4 h-4" />
+                                <span>Ver Stream</span>
+                            </button>
+                        )}
+
                         {/* Toggle Button */}
                         <button
                             onClick={() => handleToggle(camera)}
@@ -210,34 +272,37 @@ export function CamerasList({
                                 } disabled:opacity-50 disabled:cursor-not-allowed`}
                             title={camera.enabled ? 'Desativar' : 'Ativar'}
                         >
-                            <Power size={16} />
-                            <span>{togglingId === camera.id ? '...' : camera.enabled ? 'Desativar' : 'Ativar'}</span>
+                            <Power className="w-4 h-4" />
+                            <span>
+                                {togglingId === camera.id
+                                    ? '...'
+                                    : camera.enabled ? 'Desativar' : 'Ativar'
+                                }
+                            </span>
                         </button>
 
-                        <div className="flex items-center space-x-2">
-                            {/* Edit Button */}
-                            <button
-                                onClick={() => onEdit(camera)}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                title="Editar"
-                            >
-                                <Edit size={18} />
-                            </button>
+                        {/* Edit Button */}
+                        <button
+                            onClick={() => onEdit(camera)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Editar"
+                        >
+                            <Edit className="w-4 h-4" />
+                        </button>
 
-                            {/* Delete Button */}
-                            <button
-                                onClick={() => handleDelete(camera)}
-                                disabled={deletingId === camera.id}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Deletar"
-                            >
-                                <Trash2 size={18} />
-                            </button>
-                        </div>
+                        {/* Delete Button */}
+                        <button
+                            onClick={() => handleDelete(camera)}
+                            disabled={deletingId === camera.id}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Deletar"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </button>
                     </div>
 
                     {/* Footer - Timestamps */}
-                    <div className="mt-3 pt-3 border-t text-xs text-gray-500">
+                    <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
                         Criada em: {new Date(camera.created_at).toLocaleString('pt-BR')}
                     </div>
                 </div>

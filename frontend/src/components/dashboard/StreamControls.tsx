@@ -1,20 +1,33 @@
 // frontend/src/components/dashboard/StreamControls.tsx
+// v3.0 - Controles de Stream (Start / Pause / Stop)
+//
+// RESPONSABILIDADE:
+// - Mostrar botões corretos conforme system_status global
+// - Proteger contra cliques repetidos (debounce + isProcessing)
+// - Delegar ações para useStreamControl
+
 import { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Square, RotateCcw } from 'lucide-react';
+import { Play, Pause, Square } from 'lucide-react';
+
 import { useStreamControl } from '../../hooks/useStreamControl';
 import { useYOLOStream } from '../../hooks/useYOLOStream';
 
 export default function StreamControls() {
+    // Stats globais do stream (vêm de /api/v1/stream/status)
     const { stats } = useYOLOStream(2000, true);
-    const { startStream, pauseStream, stopStream, isProcessing } = useStreamControl();
 
+    // Ações de controle (start / pause / stop)
+    const { startStream, pauseStream, stopStream, isProcessing } =
+        useStreamControl();
+
+    // Debounce simples para evitar cliques muito rápidos
     const [isDebouncing, setIsDebouncing] = useState(false);
-    const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const debounceTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
         return () => {
             if (debounceTimerRef.current) {
-                clearTimeout(debounceTimerRef.current);
+                window.clearTimeout(debounceTimerRef.current);
             }
         };
     }, []);
@@ -28,36 +41,38 @@ export default function StreamControls() {
         setIsDebouncing(true);
         action();
 
-        debounceTimerRef.current = setTimeout(() => {
+        debounceTimerRef.current = window.setTimeout(() => {
             setIsDebouncing(false);
         }, 500);
     };
 
-    const systemStatus = stats?.system_status || 'stopped';
+    // Derivar estado global do sistema
+    const systemStatus: string = stats?.system_status || 'stopped';
     const isRunning = systemStatus === 'running';
     const isPaused = systemStatus === 'paused';
     const isStopped = systemStatus === 'stopped';
+
     const isDisabled = isProcessing || isDebouncing;
 
     return (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <div className="flex items-center gap-2 mb-4">
-                <RotateCcw className="w-5 h-5 text-purple-600" />
-                <h3 className="font-semibold text-gray-900 text-sm">Controles de Stream</h3>
-            </div>
+        <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-800">
+                Controles de Stream
+            </h3>
 
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
                 {/* INICIAR - só aparece quando stopped */}
                 {isStopped && (
                     <button
+                        type="button"
                         onClick={() => handleAction(startStream)}
                         disabled={isDisabled}
                         className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${isDisabled
-                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                            : 'bg-green-600 text-white hover:bg-green-700'
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-green-600 text-white hover:bg-green-700'
                             }`}
                     >
-                        <Play className="w-4 h-4" />
+                        <Play className="h-4 w-4" />
                         {isProcessing ? 'Iniciando...' : 'Iniciar'}
                     </button>
                 )}
@@ -65,23 +80,19 @@ export default function StreamControls() {
                 {/* PAUSAR/RETOMAR - aparece quando running ou paused */}
                 {(isRunning || isPaused) && (
                     <button
+                        type="button"
                         onClick={() => handleAction(pauseStream)}
                         disabled={isDisabled}
                         className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${isDisabled
-                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                            : 'bg-yellow-600 text-white hover:bg-yellow-700'
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-yellow-600 text-white hover:bg-yellow-700'
                             }`}
                     >
+                        <Pause className="h-4 w-4" />
                         {isPaused ? (
-                            <>
-                                <Play className="w-4 h-4" />
-                                {isProcessing ? 'Retomando...' : 'Retomar'}
-                            </>
+                            <span>{isProcessing ? 'Retomando...' : 'Retomar'}</span>
                         ) : (
-                            <>
-                                <Pause className="w-4 h-4" />
-                                {isProcessing ? 'Pausando...' : 'Pausar'}
-                            </>
+                            <span>{isProcessing ? 'Pausando...' : 'Pausar'}</span>
                         )}
                     </button>
                 )}
@@ -89,35 +100,26 @@ export default function StreamControls() {
                 {/* PARAR - aparece quando running ou paused */}
                 {(isRunning || isPaused) && (
                     <button
+                        type="button"
                         onClick={() => handleAction(stopStream)}
                         disabled={isDisabled}
                         className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${isDisabled
-                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                            : 'bg-red-600 text-white hover:bg-red-700'
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-red-600 text-white hover:bg-red-700'
                             }`}
                     >
-                        <Square className="w-4 h-4" />
+                        <Square className="h-4 w-4" />
                         {isProcessing ? 'Parando...' : 'Parar'}
                     </button>
                 )}
             </div>
 
-            {/* Status visual */}
-            <div className="mt-4 pt-3 border-t border-gray-200">
-                <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-500">Status:</span>
-                    <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${systemStatus === 'running' ? 'bg-green-500 animate-pulse' :
-                            systemStatus === 'paused' ? 'bg-yellow-500' :
-                                'bg-red-500'
-                            }`} />
-                        <span className="font-medium text-gray-900">
-                            {systemStatus === 'running' && 'Rodando'}
-                            {systemStatus === 'paused' && 'Pausado'}
-                            {systemStatus === 'stopped' && 'Parado'}
-                        </span>
-                    </div>
-                </div>
+            {/* Status textual */}
+            <div className="text-xs text-gray-600">
+                <span className="font-medium">Status:</span>{' '}
+                {systemStatus === 'running' && 'Rodando'}
+                {systemStatus === 'paused' && 'Pausado'}
+                {systemStatus === 'stopped' && 'Parado'}
             </div>
         </div>
     );

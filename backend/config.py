@@ -1,29 +1,37 @@
 """
-backend/config.py - v4.7 (COCO INTEGRATED)
+backend/config.py - v3.2 (COMPLETE)
 
-Configuracoes FastAPI + YOLO + RAG
+Configuracoes ARK Vision - FastAPI + YOLO + RAG
 Carrega .env automaticamente via Pydantic Settings
+
+Changelog:
+v3.2 (2026-01-14):
+- ADICIONADO: MEMORY_PERCENT_THRESHOLD, MEMORY_MIN_AVAILABLE_MB configuráveis
+- ADICIONADO: SNAPSHOT_PATH configurável
+- ADICIONADO: ZONE_RETENTION_DAYS (CFR21 Part 11)
+- ADICIONADO: STREAM_TARGET_FPS configurável
 
 v4.7 (2026-01-09):
 - ADICIONADO: Integração com coco_classes.py
-- ADICIONADO: field_validator para parsear YOLO_CLASSES do .env
-- ADICIONADO: yolo_classes_names property para debug
-- CORRIGIDO: Type hints e suporte a configuração via .env
+- ADICIONADO: field_validator para YOLO_CLASSES
+- ADICIONADO: yolo_classes_names property
 
 v4.6 (2026-01-06):
-- ADICIONADO: GC_INTERVAL, MEMORY_PERCENT_THRESHOLD, MEMORY_MIN_AVAILABLE_MB
-- ADICIONADO: MAX_CONCURRENT_STREAMS, DEFAULT_STREAM_QUALITY
-- ADICIONADO: PERSON_CLASS_ID, MAX_RECONNECTION_ATTEMPTS, RECONNECTION_DELAY
-- ADICIONADO: FRAME_POOL_SIZE para pre-alocacao de frames
+- ADICIONADO: GC_INTERVAL, MAX_CONCURRENT_STREAMS
+- ADICIONADO: PERSON_CLASS_ID, MAX_RECONNECTION_ATTEMPTS
+- ADICIONADO: FRAME_POOL_SIZE
 """
 
 import os
 from pathlib import Path
 from typing import Optional, List, Union
-from pydantic import field_validator, ConfigDict
+from pydantic import Field, field_validator, ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# ✅ Importar constantes do COCO
+
+# ============================================================================
+# COCO CLASSES (Importacao condicional)
+# ============================================================================
 try:
     from backend.coco_classes import (
         PERSON_CLASS_ID,
@@ -36,7 +44,6 @@ try:
     )
     COCO_AVAILABLE = True
 except ImportError:
-    # Fallback se coco_classes.py não existir
     PERSON_CLASS_ID = 0
     VEHICLE_CLASS_IDS = {1, 2, 3, 5, 7}
     ANIMAL_CLASS_IDS = {16, 17, 18}
@@ -49,213 +56,260 @@ except ImportError:
         return COCO_CLASSES.get(class_id, f"class_{class_id}")
 
 
-# ============================================
-# CONFIGURACAO DE CLASSE SETTINGS
-# ============================================
+# ============================================================================
+# SETTINGS CLASS
+# ============================================================================
 class Settings(BaseSettings):
     """Configuracoes validadas com Pydantic"""
     
-    # ============================================
-    # APP CONFIG
-    # ============================================
+    # ========================================================================
+    # 1. APPLICATION CORE
+    # ========================================================================
     APP_NAME: str = "ARK Vision"
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     
-    # ============================================
-    # SECURITY & AUTH
-    # ============================================
+    # ========================================================================
+    # 2. SECURITY & AUTHENTICATION
+    # ========================================================================
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 dias
     
-    # ============================================
-    # DATABASE - POSTGRESQL
-    # ============================================
+    # ========================================================================
+    # 3. DATABASE - POSTGRESQL
+    # ========================================================================
     DATABASE_URL: str
     DB_ECHO: bool = False
     ENABLE_PGVECTOR: bool = False
     
-    # ============================================
-    # OPENAI (RAG)
-    # ============================================
+    # ========================================================================
+    # 4. YOLO MODEL & COMPUTER VISION
+    # ========================================================================
+    YOLO_MODEL_PATH: str = "yolo_models/yolo11l.engine"
+    YOLO_TARGET_WIDTH: int = 960
+    YOLO_FRAME_STEP: int = 1
+    TRACKER: str = "botsort.yaml"
+
+    # YOLO Classes com parsing automático
+    YOLO_CLASSES: Optional[List[int]] = [PERSON_CLASS_ID]
+
+    @field_validator('YOLO_CLASSES', mode='before')
+    @classmethod
+    def parse_yolo_classes(cls, v):
+        """
+        Parseia YOLO_CLASSES do .env (DETECÇÃO GLOBAL):
+        - None ou "None" -> None (todas as classes)
+        - "[0,2,3]" -> [0, 2, 3]
+        - "0,2,3" -> [0, 2, 3]
+        - [0, 2, 3] -> [0, 2, 3] (já é lista)
+        
+        IMPORTANTE: YOLO_CLASSES define quais classes o YOLO detecta GLOBALMENTE.
+        Cada zona pode filtrar classes específicas via metadata.detection_classes.
+        """
+        if v is None or (isinstance(v, str) and v.upper() == "NONE"):
+            return None
+        
+        if isinstance(v, str):
+            v = v.strip().replace('[', '').replace(']', '').replace(' ', '')
+            if not v:
+                return [PERSON_CLASS_ID]
+            try:
+                return [int(x) for x in v.split(',') if x]
+            except ValueError:
+                return [PERSON_CLASS_ID]
+        
+        if isinstance(v, list):
+            return v
+        
+        return [PERSON_CLASS_ID]
+
+    # Classes padrão para novas zonas
+    DEFAULT_ZONE_CLASSES: List[int] = Field(
+        default=[PERSON_CLASS_ID],
+        description="Classes padrão ao criar nova zona (pode ser sobrescrito por zona)"
+    )
+
+    @field_validator('DEFAULT_ZONE_CLASSES', mode='before')
+    @classmethod
+    def parse_default_zone_classes(cls, v):
+        """Parseia DEFAULT_ZONE_CLASSES do .env (mesmo formato que YOLO_CLASSES)"""
+        if v is None or (isinstance(v, str) and v.upper() == "NONE"):
+            return [PERSON_CLASS_ID]
+        
+        if isinstance(v, str):
+            v = v.strip().replace('[', '').replace(']', '').replace(' ', '')
+            if not v:
+                return [PERSON_CLASS_ID]
+            try:
+                return [int(x) for x in v.split(',') if x]
+            except ValueError:
+                return [PERSON_CLASS_ID]
+        
+        if isinstance(v, list):
+            return v
+        
+        return [PERSON_CLASS_ID]
+    
+    # ========================================================================
+    # 6. INFERENCE & DETECTION
+    # ========================================================================
+    # REDUZIR de 0.25 para 0.10-0.15 (detecta mais objetos)
+    YOLO_CONF_THRESHOLD: float = 0.25   # Balanceado (padrão)
+    #YOLO_CONF_THRESHOLD: float = 0.10  # Muito sensível (mais falsos positivos)
+    #YOLO_CONF_THRESHOLD: float = 0.35  # Apenas alta confiança
+
+    # ADICIONAR (se não existir): IOU threshold para NMS
+    YOLO_IOU_THRESHOLD: float = 0.45    # Padrão
+    #YOLO_IOU_THRESHOLD: float = 0.40   # Menos agressivo no NMS
+    #YOLO_IOU_THRESHOLD: float = 0.50   # NMS agressivo
+
+    # ADICIONAR (se não existir): Tamanho de inferência
+    YOLO_IMG_SIZE: int = 640            # Resolução para inferência (640, 1280)
+
+    # ADICIONAR (se não existir): Classes máximas
+    YOLO_MAX_DETECTIONS: int = 10       # Máximo de objetos por frame
+    
+    # ========================================================================
+    # 7. TRACKING & DETECTION
+    # ========================================================================
+    TRACKING_IOU_THRESHOLD: float = 0.3
+    TRACKING_TTL_SECONDS: float = 10.0
+
+    
+    MAX_RECONNECTION_ATTEMPTS: int = 5
+    RECONNECTION_DELAY: float = 0.5
+    FRAME_POOL_SIZE: int = 10
+    
+    # ========================================================================
+    # 8. CAMERA & VIDEO SOURCE
+    # ========================================================================
+    VIDEO_SOURCE: str = "0"
+    
+    CAM_WIDTH: int = 960
+    CAM_HEIGHT: int = 540
+    CAM_FPS: int = 60
+    
+    CAMERA_USERNAME: str = "admin"
+    CAMERA_PASSWORD: str = "camera-password"
+    
+    # ========================================================================
+    # 9. STREAM CONFIGURATION
+    # ========================================================================
+    STREAM_TARGET_FPS: int = Field(
+        default=60,
+        ge=1,
+        le=60,
+        description="FPS alvo do streaming"
+    )
+    
+    MAX_CONCURRENT_STREAMS: int = 3
+    DEFAULT_STREAM_QUALITY: str = "MEDIUM"
+    
+
+    # ============================================================================
+    # VIDEO SETTINGS
+    # ============================================================================
+    JPEG_QUALITY: int = 85
+    FLIP_HORIZONTAL: bool = True  # Espelha vídeo horizontalmente
+
+
+    # ========================================================================
+    # 10. MEMORY & PERFORMANCE
+    # ========================================================================
+    BUFFER_SIZE: int = 40
+    GC_INTERVAL: int = 50
+    MEMORY_WARNING_THRESHOLD: int = 1024
+    BUFFER_DURATION_SECONDS: float = 30
+    
+    MEMORY_PERCENT_THRESHOLD: int = Field(
+        default=95,
+        ge=50,
+        le=99,
+        description="Bloqueio de stream se uso de RAM > X%"
+    )
+    
+    MEMORY_MIN_AVAILABLE_MB: int = Field(
+        default=100,
+        ge=50,
+        le=2000,
+        description="Bloqueio de stream se RAM disponível < X MB"
+    )
+    # ========================================================================
+    # 9. ZONE DETECTION & ALERTS
+    # ========================================================================
+    MAX_OUT_TIME: float = 20.0
+    EMAIL_COOLDOWN: float = 120.0
+    ZONE_EMPTY_TIMEOUT: float = 5.0
+    ZONE_FULL_TIMEOUT: float = 10.0
+    ZONE_FULL_THRESHOLD: int = 3
+    
+    # ========================================================================
+    # 10. STORAGE & DATA RETENTION
+    # ========================================================================
+    SNAPSHOT_PATH: str = Field(
+        default="data/zone_snapshots",
+        description="Diretório para snapshots de zonas"
+    )
+    
+    ZONE_RETENTION_DAYS: int = Field(
+        default=1825,
+        ge=365,
+        le=3650,
+        description="Retenção de zonas deletadas (CFR21: 5 anos)"
+    )
+    
+    # ========================================================================
+    # 11. EMAIL NOTIFICATIONS
+    # ========================================================================
+    SMTP_SERVER: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USE_TLS: bool = True
+    EMAIL_SENDER: str
+    EMAIL_APP_PASSWORD: str
+    
+    # ========================================================================
+    # 12. API INTEGRATION
+    # ========================================================================
+    API_INTEGRATION_ENABLED: bool = True
+    API_BASE_URL: str = "http://localhost:8000"
+    API_USERNAME: str = "admin"
+    API_PASSWORD: str = "admin123"
+    
+    # ========================================================================
+    # 13. CORS (FRONTEND ORIGINS)
+    # ========================================================================
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+    
+    # ========================================================================
+    # 14. LLM & RAG (OPTIONAL)
+    # ========================================================================
+    # OpenAI
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4-turbo-preview"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     OPENAI_MAX_TOKENS: int = 4096
     OPENAI_TEMPERATURE: float = 0.7
     
-    # ============================================
-    # OLLAMA (Alternative Local LLM)
-    # ============================================
+    # Ollama
     OLLAMA_ENABLED: bool = False
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2"
     
-    # ============================================
-    # RAG SETTINGS
-    # ============================================
+    # RAG
     RAG_ENABLED: bool = False
     RAG_CHUNK_SIZE: int = 1000
     RAG_CHUNK_OVERLAP: int = 200
     RAG_TOP_K: int = 5
     RAG_SIMILARITY_THRESHOLD: float = 0.7
     
-    # ============================================
-    # VECTOR STORE
-    # ============================================
+    # Vector Store
     VECTOR_STORE_TYPE: str = "pgvector"
     CHROMA_PERSIST_DIRECTORY: str = "./data/chroma"
     
-    # ============================================
-    # v4.7: YOLO MODEL & COCO CLASSES CONFIG
-    # ============================================
-    YOLO_MODEL_PATH: str = "yolo_models/yolo11n.engine"
-    YOLO_CONF_THRESHOLD: float = 0.87
-    YOLO_TARGET_WIDTH: int = 960
-    YOLO_FRAME_STEP: int = 1
-    TRACKER: str = "botsort.yaml"
-    JPEG_QUALITY: int = 70
-    
-    # ✅ v4.7: YOLO Classes com parsing automático do .env
-    YOLO_CLASSES: Optional[List[int]] = [PERSON_CLASS_ID]  # Default: apenas pessoa
-    
-    @field_validator('YOLO_CLASSES', mode='before')
-    @classmethod
-    def parse_yolo_classes(cls, v):
-        """
-        Parseia YOLO_CLASSES do .env:
-        - None ou "None" -> None (todas as classes)
-        - "[0,2,3]" -> [0, 2, 3]
-        - "0,2,3" -> [0, 2, 3]
-        - [0, 2, 3] -> [0, 2, 3] (já é lista)
-        """
-        if v is None or (isinstance(v, str) and v.upper() == "NONE"):
-            return None
-        
-        if isinstance(v, str):
-            # Remove espaços e brackets
-            v = v.strip().replace('[', '').replace(']', '').replace(' ', '')
-            if not v:
-                return [PERSON_CLASS_ID]  # Fallback
-            # Split por vírgula e converte para int
-            try:
-                return [int(x) for x in v.split(',') if x]
-            except ValueError:
-                return [PERSON_CLASS_ID]  # Fallback em caso de erro
-        
-        if isinstance(v, list):
-            return v
-        
-        # Fallback final
-        return [PERSON_CLASS_ID]
-    
-    # ============================================
-    # v4.9: TRACKING CONFIGURATION (IoU-based)
-    # ============================================
-    TRACKING_IOU_THRESHOLD: float = 0.3  # 30% overlap = mesmo objeto
-    TRACKING_TTL_SECONDS: float = 10.0 # 10 segundos (tempo para voltar)
-    
-    # ============================================
-    # VIDEO SOURCE CONFIG (Fallback do .env)
-    # ============================================
-    VIDEO_SOURCE: str = "0"
-    
-    # ============================================
-    # CAMERA SETTINGS (Resolucao)
-    # ============================================
-    CAM_WIDTH: int = 960
-    CAM_HEIGHT: int = 540
-    CAM_FPS: int = 30
-    
-    # Camera authentication
-    CAMERA_USERNAME: str = "admin"
-    CAMERA_PASSWORD: str = "camera-password"
-    
-    # ============================================
-    # v4.6: MEMORY MANAGEMENT (OPTIMIZED)
-    # ============================================
-    BUFFER_SIZE: int = 40
-    GC_INTERVAL: int = 100
-    MEMORY_WARNING_THRESHOLD: int = 512
-    
-    MEMORY_PERCENT_THRESHOLD: int = 85
-    MEMORY_MIN_AVAILABLE_MB: int = 200
-    
-    # ============================================
-    # v4.6: STREAM CONFIG (OPTIMIZED)
-    # ============================================
-    MAX_CONCURRENT_STREAMS: int = 3
-    DEFAULT_STREAM_QUALITY: str = "MEDIUM"
-    
-    # ============================================
-    # ZONE DETECTION CONFIG
-    # ============================================
-    MAX_OUT_TIME: float = 20.0
-    EMAIL_COOLDOWN: float = 120.0
-    BUFFER_DURATION_SECONDS: float = 2.0
-    ZONE_EMPTY_TIMEOUT: float = 5.0
-    ZONE_FULL_TIMEOUT: float = 10.0
-    ZONE_FULL_THRESHOLD: int = 3
-    
-    # ============================================
-    # v4.6: YOLO DETECTION CONFIG
-    # ============================================
-    MAX_RECONNECTION_ATTEMPTS: int = 5
-    RECONNECTION_DELAY: float = 0.5
-    FRAME_POOL_SIZE: int = 10
-    
-    # ============================================
-    # EMAIL NOTIFICATIONS
-    # ============================================
-    SMTP_SERVER: str = "smtp.gmail.com"
-    SMTP_PORT: int = 587
-    EMAIL_SENDER: str
-    EMAIL_APP_PASSWORD: str
-    SMTP_USE_TLS: bool = True
-    
-    # ============================================
-    # API INTEGRATION (YOLO -> FastAPI)
-    # ============================================
-    API_INTEGRATION_ENABLED: bool = True
-    API_BASE_URL: str = "http://localhost:8000"
-    API_USERNAME: str = "admin"
-    API_PASSWORD: str = "admin123"
-    
-    # ============================================
-    # CORS (Frontend origins)
-    # ============================================
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
-    
-    # ============================================
-    # LOGGING
-    # ============================================
-    LOG_LEVEL: str = "INFO"
-    LOG_FILE: str = "logs/ark_yolo.log"
-    RAG_LOG_QUERIES: bool = True
-    RAG_LOG_RESPONSES: bool = False
-    
-    # ============================================
-    # GPU CONFIG
-    # ============================================
-    USE_GPU: bool = True
-    CUDA_VISIBLE_DEVICES: str = "0"
-    RAG_USE_GPU: bool = False
-    RAG_GPU_DEVICE: str = "cuda:0"
-    
-    # ============================================
-    # CONVERSATION & MEMORY
-    # ============================================
-    CONVERSATION_MAX_HISTORY: int = 50
-    CONVERSATION_TIMEOUT_MINUTES: int = 30
-    MEMORY_TYPE: str = "buffer"
-    MEMORY_MAX_TOKENS: int = 2000
-    
-    # ============================================
-    # ADVANCED RAG SETTINGS
-    # ============================================
+    # Advanced RAG
     RERANK_ENABLED: bool = False
     RERANK_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     HYBRID_SEARCH_ENABLED: bool = False
@@ -263,9 +317,31 @@ class Settings(BaseSettings):
     MULTI_QUERY_ENABLED: bool = False
     MULTI_QUERY_COUNT: int = 3
     
-    # ============================================
-    # PYDANTIC CONFIG (Carrega .env automaticamente)
-    # ============================================
+    # Conversation Memory
+    CONVERSATION_MAX_HISTORY: int = 50
+    CONVERSATION_TIMEOUT_MINUTES: int = 30
+    MEMORY_TYPE: str = "buffer"
+    MEMORY_MAX_TOKENS: int = 2000
+    
+    # ========================================================================
+    # 15. GPU & ACCELERATION
+    # ========================================================================
+    USE_GPU: bool = True
+    CUDA_VISIBLE_DEVICES: str = "0"
+    RAG_USE_GPU: bool = False
+    RAG_GPU_DEVICE: str = "cuda:0"
+    
+    # ========================================================================
+    # 16. LOGGING & OBSERVABILITY
+    # ========================================================================
+    LOG_LEVEL: str = "INFO"
+    LOG_FILE: str = "logs/ark_yolo.log"
+    RAG_LOG_QUERIES: bool = True
+    RAG_LOG_RESPONSES: bool = False
+    
+    # ========================================================================
+    # PYDANTIC CONFIG
+    # ========================================================================
     BASE_DIR: Path = Path(__file__).resolve().parent.parent
     ENV_FILE: Path = BASE_DIR / ".env"
     
@@ -276,35 +352,30 @@ class Settings(BaseSettings):
         extra="ignore"
     )
     
-    # ============================================
-    # v4.7: COMPUTED PROPERTIES - YOLO CLASSES
-    # ============================================
+    # ========================================================================
+    # COMPUTED PROPERTIES
+    # ========================================================================
     
     @property
     def yolo_classes_names(self) -> List[str]:
-        """
-        Retorna nomes das classes configuradas
-        
-        Returns:
-            List[str]: Lista de nomes (ex: ['person', 'car'])
-        """
+        """Retorna nomes das classes YOLO configuradas"""
         if self.YOLO_CLASSES is None:
             return ["ALL 80 COCO CLASSES"]
-        
         return [get_class_name(cid) for cid in self.YOLO_CLASSES]
     
-    # ============================================
-    # COMPUTED PROPERTIES (Helper methods)
-    # ============================================
-    
+    @property
+    def default_zone_classes_names(self) -> List[str]:
+        """Retorna nomes das classes padrão para novas zonas"""
+        return [get_class_name(cid) for cid in self.DEFAULT_ZONE_CLASSES]
+
     @property
     def active_preset(self) -> str:
-        """Retorna preset ativo (usado para compatibilidade)"""
+        """Preset ativo (compatibilidade)"""
         return self.DEFAULT_STREAM_QUALITY
     
     @property
     def video_source_parsed(self) -> str | int:
-        """Converte VIDEO_SOURCE para int (webcam) ou mantém como str (URL/RTSP)"""
+        """Converte VIDEO_SOURCE para int ou str"""
         try:
             return int(self.VIDEO_SOURCE)
         except (ValueError, TypeError):
@@ -312,79 +383,74 @@ class Settings(BaseSettings):
     
     @property
     def cors_origins_list(self) -> list[str]:
-        """Converte CORS_ORIGINS (string) para lista"""
+        """Converte CORS_ORIGINS para lista"""
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
     
     @property
     def database_url_sync(self) -> str:
-        """Converte DATABASE_URL para versão síncrona (psycopg2)"""
+        """Converte DATABASE_URL para versão síncrona"""
         return self.DATABASE_URL.replace("postgresql+asyncpg", "postgresql+psycopg2")
     
     def __str__(self) -> str:
-        """String representation amigável"""
         return f"<Settings app={self.APP_NAME} env={self.ENVIRONMENT}>"
     
     def __repr__(self) -> str:
-        """Representação detalhada (para debugging)"""
         return (
             f"Settings("
             f"APP_NAME='{self.APP_NAME}', "
             f"ENVIRONMENT='{self.ENVIRONMENT}', "
-            f"YOLO_CLASSES={self.YOLO_CLASSES}, "
-            f"VIDEO_SOURCE='{self.VIDEO_SOURCE}')"
+            f"YOLO_CLASSES={self.YOLO_CLASSES})"
         )
 
 
-# ============================================
-# INSTANCIA GLOBAL (Singleton)
-# ============================================
+# ============================================================================
+# SINGLETON INSTANCE
+# ============================================================================
 settings = Settings()
 
 
-# ============================================
-# DEBUG OUTPUT (Apenas em desenvolvimento)
-# ============================================
+# ============================================================================
+# DEBUG OUTPUT
+# ============================================================================
 if settings.DEBUG and settings.ENVIRONMENT == "development":
     print("=" * 70)
-    print("ARK YOLO FastAPI v4.7 - Configuration Loaded")
+    print("ARK VISION v3.2 - Configuration Loaded")
     print("=" * 70)
-    print(f"App Name: {settings.APP_NAME}")
+    print(f"App: {settings.APP_NAME}")
     print(f"Environment: {settings.ENVIRONMENT}")
-    print(f"Debug Mode: {settings.DEBUG}")
     print(f"Host: {settings.HOST}:{settings.PORT}")
     print("-" * 70)
     print(f"Database: {settings.DATABASE_URL.split('@')[-1] if '@' in settings.DATABASE_URL else 'N/A'}")
     print(f"YOLO Model: {settings.YOLO_MODEL_PATH}")
     print(f"YOLO Confidence: {settings.YOLO_CONF_THRESHOLD}")
-    print(f"YOLO Target Width: {settings.YOLO_TARGET_WIDTH}px")
+    print(f"Target Width: {settings.YOLO_TARGET_WIDTH}px")
     print("-" * 70)
-    print(f"✅ YOLO Classes (v4.7):")
-    print(f"  Class IDs: {settings.YOLO_CLASSES}")
-    print(f"  Class Names: {', '.join(settings.yolo_classes_names)}")
+    print(f"YOLO Classes (Global): {settings.YOLO_CLASSES}")
+    print(f"  └─ Detecting: {', '.join(settings.yolo_classes_names)}")
+    print(f"Default Zone Classes: {settings.DEFAULT_ZONE_CLASSES}")
+    print(f"  └─ New zones default to: {', '.join(settings.default_zone_classes_names)}")
     print("-" * 70)
-    print(f"Video Source (Fallback): {settings.VIDEO_SOURCE}")
-    print(f"Camera Resolution: {settings.CAM_WIDTH}x{settings.CAM_HEIGHT}")
-    print(f"Camera FPS: {settings.CAM_FPS}")
+    print(f"Video Source: {settings.VIDEO_SOURCE}")
+    print(f"Camera: {settings.CAM_WIDTH}x{settings.CAM_HEIGHT} @ {settings.CAM_FPS} FPS")
+    print(f"Stream Target: {settings.STREAM_TARGET_FPS} FPS")
     print("-" * 70)
-    print(f"v4.6 Optimizations:")
-    print(f"  GC Interval: {settings.GC_INTERVAL} frames")
-    print(f"  Memory Percent Threshold: {settings.MEMORY_PERCENT_THRESHOLD}%")
-    print(f"  Memory Min Available: {settings.MEMORY_MIN_AVAILABLE_MB}MB")
-    print(f"  Max Concurrent Streams: {settings.MAX_CONCURRENT_STREAMS}")
-    print(f"  Max Reconnection Attempts: {settings.MAX_RECONNECTION_ATTEMPTS}")
-    print(f"  Frame Pool Size: {settings.FRAME_POOL_SIZE}")
+    print(f"Memory Threshold: {settings.MEMORY_PERCENT_THRESHOLD}%")
+    print(f"Memory Min: {settings.MEMORY_MIN_AVAILABLE_MB}MB")
+    print(f"Max Streams: {settings.MAX_CONCURRENT_STREAMS}")
     print("-" * 70)
-    print(f"GPU Enabled: {settings.USE_GPU}")
-    print(f"Email Configured: {bool(settings.EMAIL_SENDER and settings.EMAIL_APP_PASSWORD)}")
-    print(f"API Integration: {settings.API_INTEGRATION_ENABLED}")
-    print(f"RAG Enabled: {settings.RAG_ENABLED}")
+    print(f"Snapshot Path: {settings.SNAPSHOT_PATH}")
+    print(f"Zone Retention: {settings.ZONE_RETENTION_DAYS} days")
+    print("-" * 70)
+    print(f"GPU: {settings.USE_GPU}")
+    print(f"Email: {bool(settings.EMAIL_SENDER and settings.EMAIL_APP_PASSWORD)}")
+    print(f"RAG: {settings.RAG_ENABLED}")
     print("=" * 70)
     print()
 
 
-# ============================================
-# VALIDACOES (Executadas na importacao)
-# ============================================
+# ============================================================================
+# VALIDATIONS
+# ============================================================================
 def validate_settings():
     """Valida configuracoes criticas"""
     errors = []
@@ -393,10 +459,10 @@ def validate_settings():
         errors.append("SECRET_KEY deve ter pelo menos 32 caracteres")
     
     if not settings.DATABASE_URL or not settings.DATABASE_URL.startswith("postgresql"):
-        errors.append("DATABASE_URL deve ser uma conexao PostgreSQL valida")
+        errors.append("DATABASE_URL deve ser PostgreSQL valido")
     
     if settings.EMAIL_SENDER and not settings.EMAIL_APP_PASSWORD:
-        errors.append("EMAIL_APP_PASSWORD e obrigatorio quando EMAIL_SENDER esta configurado")
+        errors.append("EMAIL_APP_PASSWORD obrigatorio quando EMAIL_SENDER configurado")
     
     model_path = Path(settings.YOLO_MODEL_PATH)
     if not model_path.exists() and not model_path.is_absolute():
@@ -405,8 +471,29 @@ def validate_settings():
             errors.append(f"YOLO_MODEL_PATH nao encontrado: {settings.YOLO_MODEL_PATH}")
     
     if settings.RAG_ENABLED and not settings.OLLAMA_ENABLED and not settings.OPENAI_API_KEY:
-        errors.append("OPENAI_API_KEY e obrigatorio quando RAG_ENABLED=true")
+        errors.append("OPENAI_API_KEY obrigatorio quando RAG_ENABLED=true")
     
+    # Validar DEFAULT_ZONE_CLASSES
+    if settings.DEFAULT_ZONE_CLASSES:
+        invalid_classes = [
+            cid for cid in settings.DEFAULT_ZONE_CLASSES 
+            if cid not in range(80)
+        ]
+        if invalid_classes:
+            errors.append(
+                f"DEFAULT_ZONE_CLASSES contém IDs inválidos: {invalid_classes} "
+                f"(deve ser 0-79)"
+            )
+    
+    # Avisar se YOLO_CLASSES não inclui DEFAULT_ZONE_CLASSES
+    if (settings.YOLO_CLASSES is not None and 
+        settings.DEFAULT_ZONE_CLASSES):
+        missing = set(settings.DEFAULT_ZONE_CLASSES) - set(settings.YOLO_CLASSES)
+        if missing:
+            print(f"\n⚠️  AVISO: DEFAULT_ZONE_CLASSES inclui classes não detectadas "
+                  f"pelo YOLO: {missing}")
+            print(f"   Considere adicionar estas classes ao YOLO_CLASSES")
+
     if errors:
         print("\nERROS DE CONFIGURACAO:")
         for error in errors:
@@ -416,7 +503,7 @@ def validate_settings():
     return len(errors) == 0
 
 
-# Executar validacao
+# Executar validacao em producao
 if settings.ENVIRONMENT == "production":
     if not validate_settings():
-        raise RuntimeError("Configuracao invalida! Corrija os erros acima antes de continuar.")
+        raise RuntimeError("Configuracao invalida!")

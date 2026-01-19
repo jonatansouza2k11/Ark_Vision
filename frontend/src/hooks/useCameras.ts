@@ -1,5 +1,5 @@
 /**
- * useCameras.ts - Custom Hook for Camera Management
+ * useCameras.ts v2.0 - Custom Hook for Camera Management
  * State management and CRUD operations for cameras
  */
 
@@ -37,15 +37,35 @@ interface UseCamerasReturn {
 // CUSTOM HOOK
 // ============================================
 
+/**
+ * Custom hook for managing camera CRUD operations
+ * 
+ * @param autoFetch - Automatically fetch cameras on mount (default: true)
+ * @returns Camera state and CRUD operations
+ * 
+ * @example
+ * ```tsx
+ * const { cameras, loading, createCamera } = useCameras();
+ * 
+ * const handleCreate = async (data) => {
+ *   await createCamera(data);
+ *   toast.success('Camera created!');
+ * };
+ * ```
+ */
 export function useCameras(autoFetch: boolean = true): UseCamerasReturn {
     const [cameras, setCameras] = useState<Camera[]>([]);
-    const [loading, setLoading] = useState<boolean>(false);
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     // ============================================
     // FETCH CAMERAS
     // ============================================
 
+    /**
+     * Fetch all cameras from API
+     * @param activeOnly - If true, fetch only enabled cameras
+     */
     const fetchCameras = useCallback(async (activeOnly: boolean = false) => {
         setLoading(true);
         setError(null);
@@ -67,6 +87,11 @@ export function useCameras(autoFetch: boolean = true): UseCamerasReturn {
     // CREATE CAMERA
     // ============================================
 
+    /**
+     * Create a new camera
+     * @param payload - Camera creation data
+     * @returns Created camera object
+     */
     const createCamera = useCallback(async (payload: CreateCameraPayload): Promise<Camera> => {
         setLoading(true);
         setError(null);
@@ -89,6 +114,12 @@ export function useCameras(autoFetch: boolean = true): UseCamerasReturn {
     // UPDATE CAMERA
     // ============================================
 
+    /**
+     * Update an existing camera
+     * @param id - Camera ID
+     * @param payload - Camera update data
+     * @returns Updated camera object
+     */
     const updateCamera = useCallback(async (
         id: number,
         payload: UpdateCameraPayload
@@ -116,6 +147,10 @@ export function useCameras(autoFetch: boolean = true): UseCamerasReturn {
     // DELETE CAMERA
     // ============================================
 
+    /**
+     * Delete a camera
+     * @param id - Camera ID to delete
+     */
     const deleteCamera = useCallback(async (id: number): Promise<void> => {
         setLoading(true);
         setError(null);
@@ -137,6 +172,11 @@ export function useCameras(autoFetch: boolean = true): UseCamerasReturn {
     // TOGGLE CAMERA
     // ============================================
 
+    /**
+     * Toggle camera enabled status
+     * @param id - Camera ID to toggle
+     * @returns Updated camera object
+     */
     const toggleCamera = useCallback(async (id: number): Promise<Camera> => {
         setLoading(true);
         setError(null);
@@ -161,6 +201,10 @@ export function useCameras(autoFetch: boolean = true): UseCamerasReturn {
     // BULK DELETE
     // ============================================
 
+    /**
+     * Delete multiple cameras
+     * @param ids - Array of camera IDs to delete
+     */
     const bulkDelete = useCallback(async (ids: number[]): Promise<void> => {
         setLoading(true);
         setError(null);
@@ -182,6 +226,9 @@ export function useCameras(autoFetch: boolean = true): UseCamerasReturn {
     // REFRESH
     // ============================================
 
+    /**
+     * Refresh the cameras list
+     */
     const refresh = useCallback(async () => {
         await fetchCameras();
     }, [fetchCameras]);
@@ -190,6 +237,9 @@ export function useCameras(autoFetch: boolean = true): UseCamerasReturn {
     // CLEAR ERROR
     // ============================================
 
+    /**
+     * Clear the current error state
+     */
     const clearError = useCallback(() => {
         setError(null);
     }, []);

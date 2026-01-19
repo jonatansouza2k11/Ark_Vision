@@ -1,0 +1,1 @@
+python -c "import cv2, platform; print('OS:', platform.system()); backends = [cv2.CAP_ANY, cv2.CAP_DSHOW, cv2.CAP_MSMF]; [print(f'{b}: {cv2.VideoCapture(0, b).isOpened()}') for b in backends]"

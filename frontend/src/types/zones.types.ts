@@ -22,6 +22,7 @@ export enum ZoneMode {
     COUNTING = "counting",        // Contagem de pessoas/objetos
     ALERT = "alert",             // Alerta de intrusão
     TRACKING = "tracking",       // Rastreamento de movimento
+    CAPACITY = "capacity",       // Capacidade / Lotação
 
     // 🔙 Backward compatibility v2.0 (uppercase - legado)
     GENERIC = "GENERIC",
@@ -88,11 +89,14 @@ export interface Zone {
     description?: string;
     color?: string;
     tags?: string[];
+    snapshot_path?: string;
+    metadata?: Record<string, any>;
 
     // Timestamps
     created_at: string;
     updated_at: string;
     deleted_at?: string | null;
+    
 }
 
 /**
@@ -123,6 +127,8 @@ export interface CreateZonePayload {
     description?: string;
     color?: string;
     tags?: string[];
+    snapshot_base64?: string;
+    metadata?: Record<string, any>;
 }
 
 /**
@@ -244,8 +250,8 @@ export interface CanvasVisualConfig {
  * Valores padrão para nova zona v3.0
  */
 export const DEFAULT_ZONE_VALUES: Partial<CreateZonePayload> = {
-    mode: ZoneMode.OCCUPANCY,  // ✅ Mudado de GENERIC para OCCUPANCY
-    coordinate_system: CoordinateSystem.AUTO,  // ✅ Mudado de NORMALIZED para AUTO
+    mode: ZoneMode.OCCUPANCY,                    
+    coordinate_system: CoordinateSystem.AUTO,   
     empty_timeout: 5.0,
     full_timeout: 10.0,
     empty_threshold: 0,
@@ -255,7 +261,8 @@ export const DEFAULT_ZONE_VALUES: Partial<CreateZonePayload> = {
     enabled: true,
     active: true,
     color: "#3B82F6",
-    tags: []
+    tags: [],
+    metadata: {}
 };
 
 /**
@@ -268,6 +275,7 @@ export const ZONE_MODE_COLORS: Record<ZoneMode, string> = {
     [ZoneMode.COUNTING]: "#10B981",    // green-500 - Contagem
     [ZoneMode.ALERT]: "#EF4444",       // red-500 - Alerta
     [ZoneMode.TRACKING]: "#8B5CF6",    // purple-500 - Rastreamento
+    [ZoneMode.CAPACITY]: "#F59E0B",    // amber-500 (lotação)
 
     // 🔙 v2.0 legacy (antigos)
     [ZoneMode.GENERIC]: "#6B7280",     // gray-500 - Genérico
@@ -285,7 +293,8 @@ export const ZONE_MODE_LABELS: Record<ZoneMode, string> = {
     [ZoneMode.COUNTING]: "Contagem",
     [ZoneMode.ALERT]: "Alerta",
     [ZoneMode.TRACKING]: "Rastreamento",
-
+    [ZoneMode.CAPACITY]: "Capacidade Máxima",
+    
     // v2.0 legacy
     [ZoneMode.GENERIC]: "Genérico",
     [ZoneMode.EMPTY]: "Alerta Vazio",
@@ -302,6 +311,7 @@ export const ZONE_MODE_DESCRIPTIONS: Record<ZoneMode, string> = {
     [ZoneMode.COUNTING]: "Contagem de pessoas ou objetos entrando e saindo da zona",
     [ZoneMode.ALERT]: "Alertas de intrusão em áreas restritas ou proibidas",
     [ZoneMode.TRACKING]: "Rastreamento de movimento e trajetórias de objetos",
+    [ZoneMode.CAPACITY]: "Controle de capacidade máxima (eventos, elevadores, lojas, COVID)",  
 
     // v2.0 legacy
     [ZoneMode.GENERIC]: "Monitoramento geral de ocupação (modo legado)",
@@ -319,6 +329,7 @@ export const ZONE_MODE_ICONS: Record<ZoneMode, string> = {
     [ZoneMode.COUNTING]: "TrendingUp",
     [ZoneMode.ALERT]: "ShieldAlert",
     [ZoneMode.TRACKING]: "Eye",
+    [ZoneMode.CAPACITY]: "UserPlus",
 
     // v2.0 legacy
     [ZoneMode.GENERIC]: "AlertCircle",
@@ -336,12 +347,14 @@ export const ZONE_MODE_TAILWIND_CLASSES: Record<ZoneMode, string> = {
     [ZoneMode.COUNTING]: "text-green-600 bg-green-50 border-green-200",
     [ZoneMode.ALERT]: "text-red-600 bg-red-50 border-red-200",
     [ZoneMode.TRACKING]: "text-purple-600 bg-purple-50 border-purple-200",
+    [ZoneMode.CAPACITY]: "text-amber-600 bg-amber-50 border-amber-200",  
 
     // v2.0 legacy
     [ZoneMode.GENERIC]: "text-gray-600 bg-gray-50 border-gray-200",
     [ZoneMode.EMPTY]: "text-teal-600 bg-teal-50 border-teal-200",
     [ZoneMode.FULL]: "text-orange-600 bg-orange-50 border-orange-200"
 };
+
 
 /**
  * Configuração visual padrão do canvas

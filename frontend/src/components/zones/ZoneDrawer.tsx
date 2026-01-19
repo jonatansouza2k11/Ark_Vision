@@ -36,6 +36,8 @@ import {
     ZONE_MODE_DESCRIPTIONS
 } from '../../types/zones.types';
 
+import ClassSelector from './ClassSelector';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -46,7 +48,8 @@ interface ZoneDrawerProps {
     zone?: Zone | null;
     onClose: () => void;
     onSave: (data: CreateZonePayload | UpdateZonePayload, zoneId?: number) => Promise<void>;
-    streamUrl?: string; // URL do stream de vídeo como referência
+    streamUrl?: string;
+    cameraId?: number;
 }
 
 interface CanvasPoint {
@@ -66,7 +69,9 @@ export default function ZoneDrawer({
     zone,
     onClose,
     onSave,
+    cameraId,
 }: ZoneDrawerProps) {
+
     // ==========================================================================
     // STATE
     // ==========================================================================
@@ -75,7 +80,8 @@ export default function ZoneDrawer({
         name: '',
         mode: 'GENERIC' as ZoneMode,
         points: [],
-        ...DEFAULT_ZONE_VALUES
+        ...DEFAULT_ZONE_VALUES,
+        metadata: {}
     });
 
     const { cameras, loading: camerasLoading } = useCameras();
@@ -99,24 +105,120 @@ export default function ZoneDrawer({
     // CANVAS DIMENSIONS
     // ==========================================================================
 
-    const CANVAS_WIDTH = 640;
-    const CANVAS_HEIGHT = 480;
+    const CANVAS_WIDTH = 960;
+    const CANVAS_HEIGHT = 540;
     const POINT_RADIUS = 6;
     const HOVER_RADIUS = 8;
+
+
+    // ==========================================================================
+    // ✅ NOVO v3.3: HELPER - CAMPOS VISÍVEIS POR MODO
+    // ==========================================================================
+
+    /**
+     * ✅ v3.3: Configuração de campos visíveis por modo
+     */
+    const ZONE_MODE_FIELDS: Record<string, {     //max_out_time: boolean, 
+        threshold_empty: boolean;
+        threshold_full: boolean;
+        timeout_empty: boolean;
+        timeout_full: boolean;
+        email_cooldown: boolean;
+        capacity: boolean;
+    }> = {
+        // v3.3 Modes
+        'occupancy': {
+            threshold_empty: true,
+            threshold_full: true,
+            timeout_empty: true,
+            timeout_full: true,
+            email_cooldown: true,
+            capacity: false
+        },
+        'counting': {
+            threshold_empty: false,
+            threshold_full: true,
+            timeout_empty: false,
+            timeout_full: false,
+            email_cooldown: false,
+            capacity: false
+        },
+        'alert': {
+            threshold_empty: false,
+            threshold_full: true,
+            timeout_empty: false,
+            timeout_full: true,
+            email_cooldown: true,
+            capacity: false
+        },
+        'tracking': {
+            threshold_empty: false,
+            threshold_full: false,
+            timeout_empty: false,
+            timeout_full: false,
+            email_cooldown: false,
+            capacity: false
+        },
+        'capacity': {
+            threshold_empty: false,
+            threshold_full: false,
+            timeout_empty: false,
+            timeout_full: true,
+            email_cooldown: true,
+            capacity: true
+        },
+        // v2.0 Legacy
+        'GENERIC': {
+            threshold_empty: true,
+            threshold_full: true,
+            timeout_empty: true,
+            timeout_full: true,
+            email_cooldown: true,
+            capacity: false
+        },
+        'EMPTY': {
+            threshold_empty: true,
+            threshold_full: false,
+            timeout_empty: true,
+            timeout_full: false,
+            email_cooldown: true,
+            capacity: false
+        },
+        'FULL': {
+            threshold_empty: false,
+            threshold_full: true,
+            timeout_empty: false,
+            timeout_full: true,
+            email_cooldown: true,
+            capacity: false
+        }
+    };
+
+
+    /**
+     * Verifica se um campo deve ser exibido para o modo atual
+     */
+    const shouldShowField = (field: keyof typeof ZONE_MODE_FIELDS['occupancy']): boolean => {
+        const config = ZONE_MODE_FIELDS[formData.mode];
+        if (!config) return true;  // Default: mostrar tudo
+        return config[field];
+    };
+
 
     // ==========================================================================
     // EFFECTS
     // ==========================================================================
 
     /**
-     * Carrega dados da zona quando em modo edit
+     * Carrega dados da zona quando em modo edit ou view
      */
     useEffect(() => {
-        if (mode === 'edit' && zone) {
+        if ((mode === 'edit' || mode === 'view') && zone) { 
             setFormData({
                 name: zone.name,
                 mode: zone.mode,
                 points: zone.points,
+                camera_id: zone.camera_id,
                 empty_timeout: zone.empty_timeout,
                 full_timeout: zone.full_timeout,
                 empty_threshold: zone.empty_threshold,
@@ -128,7 +230,8 @@ export default function ZoneDrawer({
                 active: zone.active,
                 description: zone.description,
                 color: zone.color,
-                tags: zone.tags
+                tags: zone.tags,
+                metadata: zone.metadata || {}
             });
 
             // Converte pontos normalizados para canvas
@@ -137,6 +240,42 @@ export default function ZoneDrawer({
                 y: y * CANVAS_HEIGHT
             }));
             setCanvasPoints(canvasPoints);
+
+            // ✅ Carregar snapshot se existir
+            if (zone.snapshot_path) {
+                const snapshotPath = zone.snapshot_path;
+
+                const loadSnapshot = async () => {
+                    try {
+                        const filename = snapshotPath.split('/').pop();
+
+                        if (filename) {
+                            const response = await fetch(
+                                `http://localhost:8000/api/v1/zones/snapshots/${filename}`,
+                                {
+                                    headers: {
+                                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                                    }
+                                }
+                            );
+
+                            if (response.ok) {
+                                const blob = await response.blob();
+                                const url = URL.createObjectURL(blob);
+                                setSnapshotUrl(url);
+                                console.log('✅ Snapshot carregado:', filename);
+                            } else {
+                                console.warn('⚠️ Snapshot não encontrado (404)');
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('⚠️ Erro ao carregar snapshot:', err);
+                    }
+                };
+
+                loadSnapshot();
+            }
+
         } else {
             // Reset para modo create
             setFormData({
@@ -149,13 +288,41 @@ export default function ZoneDrawer({
         }
     }, [mode, zone, isOpen]);
 
+
+    /**
+     * ✅ v3.3: Inicializar metadata quando mudar para modo CAPACITY
+     */
+    useEffect(() => {
+        if (formData.mode === 'capacity' && !formData.metadata?.max_capacity) {
+            setFormData(prev => ({
+                ...prev,
+                metadata: {
+                    ...(prev.metadata || {}),
+                    max_capacity: 50
+                }
+            }));
+        }
+    }, [formData.mode]);
+
+
     /**
      * Valida polígono quando pontos mudam
      */
     useEffect(() => {
-        if (!snapshotUrl) {
+        if (mode === 'edit') {
+            if (canvasPoints.length >= 3) {
+                setIsValidPolygon(true);
+                setValidationMessage(`Polígono válido com ${canvasPoints.length} pontos`);
+            } else if (canvasPoints.length > 0) {
+                setIsValidPolygon(false);
+                setValidationMessage(`Adicione ${3 - canvasPoints.length} pontos para completar`);
+            } else {
+                setIsValidPolygon(false);
+                setValidationMessage("Clique no canvas para adicionar pontos");
+            }
+        } else if (!snapshotUrl) {
             setIsValidPolygon(false);
-            setValidationMessage('Capture uma foto antes de desenhar');
+            setValidationMessage("Capture uma foto antes de desenhar");
         } else if (canvasPoints.length >= 3) {
             setIsValidPolygon(true);
             setValidationMessage(`Polígono válido com ${canvasPoints.length} pontos`);
@@ -164,9 +331,10 @@ export default function ZoneDrawer({
             setValidationMessage(`Adicione ${3 - canvasPoints.length} pontos para completar`);
         } else {
             setIsValidPolygon(false);
-            setValidationMessage('Clique no canvas para adicionar pontos');
+            setValidationMessage("Clique no canvas para adicionar pontos");
         }
-    }, [canvasPoints, snapshotUrl]);
+    }, [canvasPoints, snapshotUrl, mode]);
+
 
 
     /**
@@ -407,7 +575,12 @@ export default function ZoneDrawer({
     const handleCaptureSnapshot = async () => {
         setCapturingSnapshot(true);
         try {
-            const response = await fetch('http://localhost:8000/api/v1/stream/snapshot', {
+            // ✅ Usa cameraId se disponível, senão fallback para endpoint global
+            const snapshotUrl = cameraId
+                ? `http://localhost:8000/api/v1/stream/snapshot/${cameraId}`
+                : 'http://localhost:8000/api/v1/stream/snapshot';
+
+            const response = await fetch(snapshotUrl, {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('access_token')}`
                 }
@@ -426,7 +599,7 @@ export default function ZoneDrawer({
 
             setSnapshotUrl(url);
 
-            // ✅ PARA stream para economizar memória (não precisa mais dele)
+            // ✅ PARAR stream para economizar memória (não precisa mais dele)
             try {
                 await fetch('http://localhost:8000/api/v1/stream/stop', {
                     method: 'POST',
@@ -446,6 +619,7 @@ export default function ZoneDrawer({
             setCapturingSnapshot(false);
         }
     };
+    
 
 
 
@@ -484,6 +658,10 @@ export default function ZoneDrawer({
             return;
         }
 
+        // ✅ LOG TEMPORÁRIO
+        //console.log('🔍 formData ANTES de salvar:', formData);
+        //console.log('🔍 formData.metadata:', formData.metadata);
+
         // Converte pontos do canvas para normalizados (0-1)
         const normalizedPoints: Polygon = canvasPoints.map(p => [
             p.x / CANVAS_WIDTH,
@@ -493,10 +671,30 @@ export default function ZoneDrawer({
         setIsSaving(true);
 
         try {
+            let snapshotBase64: string | undefined = undefined;
+            if (snapshotUrl && mode === 'create') {
+                try {
+                    const response = await fetch(snapshotUrl);
+                    const blob = await response.blob();
+                    const reader = new FileReader();
+                    snapshotBase64 = await new Promise<string>((resolve) => {
+                        reader.onloadend = () => {
+                            const base64 = (reader.result as string).split(',')[1];
+                            resolve(base64);
+                        };
+                        reader.readAsDataURL(blob);
+                    });
+                    console.log('✅ Snapshot convertido para base64');
+                } catch (err) {
+                    console.warn('⚠️ Erro ao converter snapshot:', err);
+                }
+            }
+
             const payload = {
                 ...formData,
                 points: normalizedPoints,
-                coordinate_system: 'normalized' as CoordinateSystem
+                coordinate_system: 'normalized' as CoordinateSystem,
+                snapshot_base64: snapshotBase64
             };
 
             await onSave(payload, zone?.id);
@@ -511,6 +709,7 @@ export default function ZoneDrawer({
             setIsSaving(false);
         }
     };
+
 
     // ==========================================================================
     // RENDER
@@ -623,6 +822,10 @@ export default function ZoneDrawer({
                                         className="absolute inset-0 w-full h-full object-contain bg-gray-900"
                                         onLoad={drawCanvas}
                                     />
+                                ) : mode === 'edit' ? (
+                                    <div className="absolute inset-0 w-full h-full bg-gray-800 flex items-center justify-center">
+                                        <div className="text-gray-400 text-sm">Editando polígono da zona</div>
+                                    </div>
                                 ) : (
                                     <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center pointer-events-none">
                                         <div className="text-center text-gray-400">
@@ -643,15 +846,21 @@ export default function ZoneDrawer({
                                     ref={canvasRef}
                                     width={CANVAS_WIDTH}
                                     height={CANVAS_HEIGHT}
-                                    onClick={snapshotUrl ? handleCanvasClick : undefined}
-                                    onContextMenu={snapshotUrl ? handleCanvasContextMenu : undefined}
-                                    onMouseMove={snapshotUrl ? handleCanvasMouseMove : undefined}
-                                    onMouseDown={snapshotUrl ? handleCanvasMouseDown : undefined}
-                                    onMouseUp={snapshotUrl ? handleCanvasMouseUp : undefined}
-                                    onMouseLeave={snapshotUrl ? handleCanvasMouseLeave : undefined}
-                                    className={`absolute inset-0 w-full h-full ${snapshotUrl ? 'cursor-crosshair' : 'cursor-not-allowed'}`}
-                                    style={{ imageRendering: 'crisp-edges', pointerEvents: snapshotUrl ? 'auto' : 'none' }}
+                                    onClick={mode !== 'view' && (snapshotUrl || mode === 'edit') ? handleCanvasClick : undefined}
+                                    onContextMenu={mode !== 'view' && (snapshotUrl || mode === 'edit') ? handleCanvasContextMenu : undefined}
+                                    onMouseMove={mode !== 'view' && (snapshotUrl || mode === 'edit') ? handleCanvasMouseMove : undefined}
+                                    onMouseDown={mode !== 'view' && (snapshotUrl || mode === 'edit') ? handleCanvasMouseDown : undefined}
+                                    onMouseUp={mode !== 'view' && (snapshotUrl || mode === 'edit') ? handleCanvasMouseUp : undefined}
+                                    onMouseLeave={mode !== 'view' && (snapshotUrl || mode === 'edit') ? handleCanvasMouseLeave : undefined}
+                                    className={`absolute inset-0 w-full h-full ${mode === 'view' ? 'cursor-default' :
+                                            (snapshotUrl || mode === 'edit') ? 'cursor-crosshair' : 'cursor-not-allowed'
+                                        }`}
+                                    style={{
+                                        imageRendering: 'crisp-edges',
+                                        pointerEvents: mode === 'view' ? 'none' : (snapshotUrl || mode === 'edit' ? 'auto' : 'none')
+                                    }}
                                 />
+
                             </div>
 
 
@@ -676,7 +885,7 @@ export default function ZoneDrawer({
                             {/* Nome */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Nome da Zona *
+                                    Nome da Zona
                                 </label>
                                 <input
                                     type="text"
@@ -688,10 +897,27 @@ export default function ZoneDrawer({
                                 />
                             </div>
 
-                            {/* Modo */}
+                            {/* Seletor de Classes COCO (ACIMA do modo) */}
+                            <ClassSelector
+                                selectedClasses={formData.metadata?.detection_classes || [0]}
+                                onChange={(classes) => {
+                                    setFormData(prev => ({
+                                        ...prev,
+                                        metadata: {
+                                            ...(prev.metadata || {}),
+                                            detection_classes: classes
+                                        }
+                                    }));
+                                }}
+                                disabled={mode === 'view'}
+                                showSearch={true}
+                                maxHeight="250px"
+                            />
+
+                            {/* Modos de operacao */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Modo de Operação *
+                                    Modo de Operação
                                 </label>
                                 <select
                                     value={formData.mode}
@@ -722,7 +948,7 @@ export default function ZoneDrawer({
                                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                     disabled={mode === 'view' || camerasLoading}
                                 >
-                                    <option value="">Nenhuma (zona global)</option>
+                                    <option value="">Nenhuma</option>
                                     {cameras.map(camera => (
                                         <option key={camera.id} value={camera.id}>
                                             {camera.name} {!camera.enabled && '(Inativa)'}
@@ -731,80 +957,227 @@ export default function ZoneDrawer({
                                 </select>
                                 <p className="mt-1 text-sm text-gray-600">
                                     {formData.camera_id
-                                        ? 'Zona vinculada a uma câmera específica'
-                                        : 'Zona global - não vinculada a nenhuma câmera'}
+                                        ? 'Zona vinculada a câmera específica'
+                                        : 'Não vinculada a câmera'}
                                 </p>
                             </div>
 
-                            {/* Thresholds */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Threshold Vazio
+                            {/* ✅ v3.3: Thresholds (condicional por modo) */}
+                            {(shouldShowField('threshold_empty') || shouldShowField('threshold_full')) && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    {shouldShowField('threshold_empty') && (
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Threshold Vazio
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                value={formData.empty_threshold || 0}
+                                                onChange={(e) => handleFieldChange('empty_threshold', parseInt(e.target.value))}
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                disabled={mode === 'view'}
+                                            />
+                                            <p className="mt-1 text-xs text-gray-500">
+                                                Mínimo de objetos para ser considerado vazio
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {shouldShowField('threshold_full') && (
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                {formData.mode === 'counting' ? 'Threshold Contagem'
+                                                    : formData.mode === 'alert' ? 'Threshold Alerta'
+                                                        : 'Threshold Cheio'}
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min={(formData.empty_threshold ?? 0) + 1}
+                                                value={formData.full_threshold ?? 3}
+                                                onChange={(e) => {
+                                                    const value = parseInt(e.target.value);
+                                                    const minValue = (formData.empty_threshold ?? 0) + 1;
+
+                                                    if (value < minValue) {
+                                                        warning(`Threshold Cheio deve ser maior que ${formData.empty_threshold ?? 0}`);
+                                                        return;
+                                                    }
+
+                                                    handleFieldChange('full_threshold', value);
+                                                }}
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                disabled={mode === 'view'}
+                                            />
+                                            <p className="mt-1 text-xs text-gray-500">
+                                                {formData.mode === 'counting' ? 'Mínimo para registrar entrada/saída'
+                                                    : formData.mode === 'alert' ? 'Pessoas para disparar alerta'
+                                                        : `Número de pessoas para considerar cheio (mínimo: ${(formData.empty_threshold ?? 0) + 1})`}
+                                            </p>
+                                        </div>
+
+                                    )}
+                                </div>
+                            )}
+
+
+                            {/* ✅ v3.3: Timeouts (condicional por modo) */}
+                            {(shouldShowField('timeout_empty') || shouldShowField('timeout_full')) && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    {shouldShowField('timeout_empty') && (
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Timeout Vazio (s)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                step={0.5}
+                                                value={formData.empty_timeout || 5}
+                                                onChange={(e) => handleFieldChange('empty_timeout', parseFloat(e.target.value))}
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                disabled={mode === 'view'}
+                                            />
+                                            <p className="mt-1 text-xs text-gray-500">
+                                                Tempo vazio antes de alertar
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {shouldShowField('timeout_full') && (
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                {formData.mode === 'alert' ? 'Timeout Alerta (s)'
+                                                    : formData.mode === 'capacity' ? 'Timeout de Lotação (s)'
+                                                        : 'Timeout Cheio (s)'}                                            
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                step={0.5}
+                                                value={formData.full_timeout || 10}
+                                                onChange={(e) => handleFieldChange('full_timeout', parseFloat(e.target.value))}
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                disabled={mode === 'view'}
+                                            />
+                                            <p className="mt-1 text-xs text-gray-500">
+                                                {formData.mode === 'alert' ? 'Tolerância antes de disparar alerta'
+                                                    : formData.mode === 'capacity' ? 'Tempo na capacidade antes de alertar (0 = imediato)'
+                                                        : 'Tempo cheio antes de alertar'}                                            
+                                                </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+
+                            {/* ✅ NOVO v3.3: Capacidade Máxima (só para modo CAPACITY) */}
+                            {shouldShowField('capacity') && (
+                                <div className="bg-amber-50 border-2 border-amber-200 rounded-lg p-4">
+                                    <label className="flex items-center gap-2 text-sm font-medium text-amber-900 mb-2">
+                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                        </svg>
+                                        Capacidade Máxima
                                     </label>
                                     <input
                                         type="number"
-                                        min="0"
-                                        value={formData.empty_threshold}
-                                        onChange={(e) => handleFieldChange('empty_threshold', parseInt(e.target.value))}
+                                        min={1}
+                                        max={1000}
+                                        value={formData.metadata?.max_capacity || 50}
+                                        onChange={(e) => {
+                                            const value = parseInt(e.target.value);
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                metadata: {
+                                                    ...(prev.metadata || {}),
+                                                    max_capacity: value
+                                                }
+                                            }));
+                                        }}
+                                        className="w-full px-4 py-2 bg-white border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent font-bold text-lg text-amber-900"
+                                        disabled={mode === 'view'}
+                                        placeholder="50"
+                                    />
+                                    <p className="mt-2 text-sm text-amber-800 font-medium">
+                                        📊 Lotação máxima: {formData.metadata?.max_capacity || 50} pessoas
+                                    </p>
+
+                                    {/* ✅ NOVO v3.4: Slider para percentual de alerta (0% a 100%) */}
+                                    <div className="mt-4 pt-4 border-t border-amber-300">
+                                        <label className="block text-sm font-medium text-amber-900 mb-3">
+                                            ⚠️ Percentual de Alerta: <span className="text-lg font-bold">{formData.metadata?.alert_percentage || 90}%</span>
+                                        </label>
+                                        <input
+                                            type="range"
+                                            min={0}
+                                            max={100}
+                                            step={5}
+                                            value={formData.metadata?.alert_percentage || 90}
+                                            onChange={(e) => {
+                                                const value = parseInt(e.target.value);
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    metadata: {
+                                                        ...(prev.metadata || {}),
+                                                        alert_percentage: value
+                                                    }
+                                                }));
+                                            }}
+                                            className="w-full h-2 bg-amber-200 rounded-lg appearance-none cursor-pointer accent-amber-600 hover:accent-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            disabled={mode === 'view'}
+                                        />
+                                        <div className="flex justify-between text-xs text-amber-700 mt-1">
+                                            <span>0%</span>
+                                            <span>25%</span>
+                                            <span>50%</span>
+                                            <span>75%</span>
+                                            <span>100%</span>
+                                        </div>
+                                        <p className="mt-2 text-xs text-amber-700 bg-amber-100 px-3 py-2 rounded-lg border border-amber-300">
+                                            🔔 Sistema alertará quando atingir <span className="font-bold">{formData.metadata?.alert_percentage || 90}%</span> da capacidade
+                                            (<span className="font-bold">{Math.floor(((formData.metadata?.max_capacity || 50) * (formData.metadata?.alert_percentage || 90)) / 100)}</span> pessoas)
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+
+                            {/* Email Cooldown (alguns modos) - ✅ v3.4: Agora em MINUTOS */}
+                            {shouldShowField('email_cooldown') && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        {formData.mode === 'capacity' ? '⏱️ Cooldown de Alerta de Lotação (min)' : 'Cooldown de Email (min)'}
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        max={60}
+                                        step={1}
+                                        value={Math.round((formData.email_cooldown || 600) / 60)}
+                                        onChange={(e) => {
+                                            // Converte minutos para segundos antes de salvar
+                                            const minutes = parseFloat(e.target.value);
+                                            handleFieldChange('email_cooldown', minutes * 60);
+                                        }}
                                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                         disabled={mode === 'view'}
+                                        placeholder="10"
                                     />
                                     <p className="mt-1 text-xs text-gray-500">
-                                        Mínimo de pessoas para considerar vazio
+                                        {formData.mode === 'capacity'
+                                            ? 'Tempo mínimo entre alertas de lotação crítica por email (padrão: 10 minutos)'
+                                            : 'Tempo mínimo entre alertas por email (padrão: 10 minutos)'
+                                        }
                                     </p>
                                 </div>
+                            )}
 
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Threshold Cheio
-                                    </label>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        value={formData.full_threshold}
-                                        onChange={(e) => handleFieldChange('full_threshold', parseInt(e.target.value))}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        disabled={mode === 'view'}
-                                    />
-                                    <p className="mt-1 text-xs text-gray-500">
-                                        Número de pessoas para considerar cheio
-                                    </p>
-                                </div>
-                            </div>
 
-                            {/* Timeouts */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Timeout Vazio (s)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        step="0.5"
-                                        value={formData.empty_timeout}
-                                        onChange={(e) => handleFieldChange('empty_timeout', parseFloat(e.target.value))}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        disabled={mode === 'view'}
-                                    />
-                                </div>
 
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Timeout Cheio (s)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        step="0.5"
-                                        value={formData.full_timeout}
-                                        onChange={(e) => handleFieldChange('full_timeout', parseFloat(e.target.value))}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        disabled={mode === 'view'}
-                                    />
-                                </div>
-                            </div>
+
+
+
 
                             {/* Cor */}
                             <div>
