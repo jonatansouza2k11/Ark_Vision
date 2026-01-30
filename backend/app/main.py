@@ -113,7 +113,28 @@ async def lifespan(app: FastAPI):
             logger.info("✅ VisionSystem initialized successfully")
         except Exception as e:
             logger.error(f"⚠️ VisionSystem init failed: {e}")
-            # Não levanta, mantém API funcional
+
+        # ✅ v3.9: Inicia background task de sync de metadata
+        from backend.services.camera_sync import sync_zone_metadata_to_db
+        
+        async def metadata_sync_loop():
+            """Loop de sincronização de metadata de zonas."""
+            logger.info("🔄 Starting metadata sync background task...")
+            
+            while True:
+                try:
+                    await asyncio.sleep(5)  # Aguarda 5 segundos
+                    await sync_zone_metadata_to_db()
+                except asyncio.CancelledError:
+                    logger.info("⏹️ Metadata sync task cancelled")
+                    break
+                except Exception as e:
+                    logger.error(f"❌ Error in metadata sync loop: {e}")
+                    await asyncio.sleep(5)
+        
+        # Inicia task em background
+        metadata_task = asyncio.create_task(metadata_sync_loop())
+        logger.info("✅ Background tasks started")
 
     except Exception as e:
         logger.error(f"❌ Database init failed: {e}")
@@ -121,9 +142,17 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    # Cleanup
     logger.info("🛑 Shutting down...")
+    metadata_task.cancel()  # ✅ Cancela task antes de fechar
+    try:
+        await metadata_task
+    except asyncio.CancelledError:
+        pass
+    
     await database.close_db_pool()
     logger.info("✅ Database closed")
+
 
 
 

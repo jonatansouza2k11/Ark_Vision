@@ -20,20 +20,24 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Save, Trash2, RefreshCw, AlertCircle, CheckCircle2, Camera } from 'lucide-react';
 import { useToast } from '../../hooks/useToast';
 import { useCameras } from '../../hooks/useCameras';
+
 import type {
     Zone,
     CreateZonePayload,
     UpdateZonePayload,
     Polygon,
     Point,
-    ZoneMode,
     CoordinateSystem
 } from '../../types/zones.types';
+
+import { ZoneMode } from '../../types/zones.types';
+
 import {
     DEFAULT_ZONE_VALUES,
     ZONE_MODE_COLORS,
     ZONE_MODE_LABELS,
-    ZONE_MODE_DESCRIPTIONS
+    ZONE_MODE_DESCRIPTIONS,
+    ZONE_MODE_FIELDS
 } from '../../types/zones.types';
 
 import ClassSelector from './ClassSelector';
@@ -94,6 +98,7 @@ export default function ZoneDrawer({
     const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
     const [capturingSnapshot, setCapturingSnapshot] = useState(false);
     const [streamActive, setStreamActive] = useState(false);
+    const [isLoadingZone, setIsLoadingZone] = useState(false); 
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const imgRef = useRef<HTMLImageElement>(null);
@@ -110,110 +115,39 @@ export default function ZoneDrawer({
     const POINT_RADIUS = 6;
     const HOVER_RADIUS = 8;
 
-
-    // ==========================================================================
-    // ✅ NOVO v3.3: HELPER - CAMPOS VISÍVEIS POR MODO
-    // ==========================================================================
-
     /**
-     * ✅ v3.3: Configuração de campos visíveis por modo
+     * Verifica se um campo deve ser exibido para o modo atual
      */
-    const ZONE_MODE_FIELDS: Record<string, {     //max_out_time: boolean, 
-        threshold_empty: boolean;
-        threshold_full: boolean;
-        timeout_empty: boolean;
-        timeout_full: boolean;
-        email_cooldown: boolean;
-        capacity: boolean;
-    }> = {
-        // v3.3 Modes
-        'occupancy': {
-            threshold_empty: true,
-            threshold_full: true,
-            timeout_empty: true,
-            timeout_full: true,
-            email_cooldown: true,
-            capacity: false
-        },
-        'counting': {
-            threshold_empty: false,
-            threshold_full: true,
-            timeout_empty: false,
-            timeout_full: false,
-            email_cooldown: false,
-            capacity: false
-        },
-        'alert': {
-            threshold_empty: false,
-            threshold_full: true,
-            timeout_empty: false,
-            timeout_full: true,
-            email_cooldown: true,
-            capacity: false
-        },
-        'tracking': {
-            threshold_empty: false,
-            threshold_full: false,
-            timeout_empty: false,
-            timeout_full: false,
-            email_cooldown: false,
-            capacity: false
-        },
-        'capacity': {
-            threshold_empty: false,
-            threshold_full: false,
-            timeout_empty: false,
-            timeout_full: true,
-            email_cooldown: true,
-            capacity: true
-        },
-        // v2.0 Legacy
-        'GENERIC': {
-            threshold_empty: true,
-            threshold_full: true,
-            timeout_empty: true,
-            timeout_full: true,
-            email_cooldown: true,
-            capacity: false
-        },
-        'EMPTY': {
-            threshold_empty: true,
-            threshold_full: false,
-            timeout_empty: true,
-            timeout_full: false,
-            email_cooldown: true,
-            capacity: false
-        },
-        'FULL': {
-            threshold_empty: false,
-            threshold_full: true,
-            timeout_empty: false,
-            timeout_full: true,
-            email_cooldown: true,
-            capacity: false
-        }
-    };
-
+    //const shouldShowField = (field: keyof typeof ZONE_MODE_FIELDS['occupancy']): boolean => {
+    //    const config = ZONE_MODE_FIELDS[formData.mode];
+    //    if (!config) return true;  // Default: mostrar tudo
+    //    return config[field];
+    //};
 
     /**
      * Verifica se um campo deve ser exibido para o modo atual
      */
-    const shouldShowField = (field: keyof typeof ZONE_MODE_FIELDS['occupancy']): boolean => {
+    const shouldShowField = (field: 'threshold_empty' | 'threshold_full' | 'timeout_empty' | 'timeout_full' | 'email_cooldown' | 'capacity'): boolean => {
         const config = ZONE_MODE_FIELDS[formData.mode];
-        if (!config) return true;  // Default: mostrar tudo
-        return config[field];
+       if (!config) return true;  // Default: mostrar tudo
+      return config[field];
     };
+    
 
-
-    // ==========================================================================
-    // EFFECTS
-    // ==========================================================================
+// ==========================================================================
+// EFFECTS
+// ==========================================================================
 
     /**
      * Carrega dados da zona quando em modo edit ou view
      */
     useEffect(() => {
-        if ((mode === 'edit' || mode === 'view') && zone) { 
+        if ((mode === 'edit' || mode === 'view') && zone) {
+            setIsLoadingZone(true);
+
+            // ✅ v3.9: Extrai campos do metadata para popular formulário
+            const metadata = zone.metadata || {};
+
             setFormData({
                 name: zone.name,
                 mode: zone.mode,
@@ -231,7 +165,28 @@ export default function ZoneDrawer({
                 description: zone.description,
                 color: zone.color,
                 tags: zone.tags,
-                metadata: zone.metadata || {}
+
+                // ✅ v3.9: Reconstrói metadata com valores do banco OU defaults
+                metadata: {
+                    // Campos do modo counting
+                    count_direction: metadata.count_direction || 'both',
+                    reset_interval: metadata.reset_interval || 'never',
+                    alert_enabled: metadata.alert_enabled ?? false,
+                    alert_threshold: metadata.alert_threshold,
+                    count_in: metadata.count_in ?? 0,
+                    count_out: metadata.count_out ?? 0,
+
+                    // ✅ NOVO: Percentual mínimo da bbox dentro da zona (0.0–1.0)
+                    intersection_threshold:
+                        metadata.intersection_threshold ?? 0.7,
+
+                    // Campos do modo capacity
+                    max_capacity: metadata.max_capacity,
+                    alert_percentage: metadata.alert_percentage,
+
+                    // Outros campos que possam existir
+                    ...metadata
+                }
             });
 
             // Converte pontos normalizados para canvas
@@ -263,7 +218,6 @@ export default function ZoneDrawer({
                                 const blob = await response.blob();
                                 const url = URL.createObjectURL(blob);
                                 setSnapshotUrl(url);
-                                console.log('✅ Snapshot carregado:', filename);
                             } else {
                                 console.warn('⚠️ Snapshot não encontrado (404)');
                             }
@@ -276,8 +230,14 @@ export default function ZoneDrawer({
                 loadSnapshot();
             }
 
+            // ✅ v3.9: Marca load como completo após um tick
+            setTimeout(() => {
+                setIsLoadingZone(false);
+            }, 0);
+
         } else {
             // Reset para modo create
+            setIsLoadingZone(false);
             setFormData({
                 name: '',
                 mode: 'GENERIC' as ZoneMode,
@@ -287,22 +247,113 @@ export default function ZoneDrawer({
             setCanvasPoints([]);
         }
     }, [mode, zone, isOpen]);
+    
 
 
-    /**
-     * ✅ v3.3: Inicializar metadata quando mudar para modo CAPACITY
-     */
+
+    // ============================================================================
+    // ✅ v3.9: Normaliza campos E metadata ao mudar modo (COM PROTEÇÃO DE LOAD)
+    // ============================================================================
     useEffect(() => {
-        if (formData.mode === 'capacity' && !formData.metadata?.max_capacity) {
-            setFormData(prev => ({
-                ...prev,
-                metadata: {
-                    ...(prev.metadata || {}),
-                    max_capacity: 50
-                }
-            }));
+        // ✅ v3.9: Não normaliza enquanto está carregando zona inicial
+        if (isLoadingZone) {
+            return;
         }
-    }, [formData.mode]);
+
+        // ✅ v3.9: Não normaliza em modo edit/view (preserva valores do banco)
+        if (mode === 'edit' || mode === 'view') {
+            return;
+        }
+
+        if (!formData.mode) return;
+
+        const config = ZONE_MODE_FIELDS[formData.mode];
+        if (!config) return;
+
+
+        setFormData(prev => {
+            const updated = { ...prev };
+
+            // ========================================================================
+            // 1️⃣ Remove campos não utilizados (thresholds/timeouts)
+            // ========================================================================
+
+            // Threshold Empty
+            if (!config.threshold_empty) {
+                updated.empty_threshold = undefined;
+            } else if (updated.empty_threshold === undefined || updated.empty_threshold === 0) {
+                updated.empty_threshold = 0;  // 0 é válido para empty
+            }
+
+            // Threshold Full
+            if (!config.threshold_full) {
+                updated.full_threshold = undefined;
+            } else if (updated.full_threshold === undefined || updated.full_threshold === 0) {
+                updated.full_threshold = 1;  // Backend exige >= 1
+            }
+
+            // Timeout Empty
+            if (!config.timeout_empty) {
+                updated.empty_timeout = undefined;
+            }
+
+            // Timeout Full
+            if (!config.timeout_full) {
+                updated.full_timeout = undefined;
+            }
+
+            // Email Cooldown
+            if (!config.email_cooldown) {
+                updated.email_cooldown = undefined;
+            }
+            // ========================================================================
+            // 2️⃣ Normaliza metadata por modo (PRESERVANDO DADOS EXISTENTES)
+            // ========================================================================
+
+            if (formData.mode === 'capacity') {
+                // ✅ MODO CAPACITY: Garante estrutura completa
+                updated.metadata = {
+                    ...updated.metadata,  // ✅ Preserva outros campos
+                    max_capacity: updated.metadata?.max_capacity ?? 50,
+                    alert_percentage: updated.metadata?.alert_percentage ?? 90,
+                };
+            } else if (formData.mode === ZoneMode.COUNTING) {
+                // MODO COUNTING – preserva configurações de contagem + alerta
+                updated.metadata = {
+                    ...updated.metadata,
+                    // Direção e reset
+                    count_direction: updated.metadata?.count_direction ?? 'both',
+                    reset_interval: updated.metadata?.reset_interval ?? 'daily',
+
+                    // Alerta por limite de contagem
+                    alert_enabled: updated.metadata?.alert_enabled ?? false,
+                    alert_threshold: updated.metadata?.alert_threshold,
+
+                    // Contadores atuais
+                    count_in: updated.metadata?.count_in ?? 0,
+                    count_out: updated.metadata?.count_out ?? 0,
+
+                    // Tempo de confirmação (usado pelo backend como confirmation_time)
+                    confirmation_time: updated.metadata?.confirmation_time ?? 0,
+
+                    // Percentual mínimo da bbox dentro da zona (interseção)
+                    intersection_threshold: updated.metadata?.intersection_threshold ?? 0.7,
+
+                    // detectionclasses sempre preservado
+                    detection_classes: updated.metadata?.detection_classes ?? 0,
+                };
+            } else {
+                // OUTROS MODOS – preserva apenas detectionclasses, limpa o resto
+                updated.metadata = {
+                    detection_classes: updated.metadata?.detection_classes ?? 0,
+                };
+            }
+
+            return updated;
+        });
+    }, [formData.mode, isLoadingZone, mode]);  
+    
+    
 
 
     /**
@@ -643,6 +694,7 @@ export default function ZoneDrawer({
         warning('Pontos limpos');
     };
 
+
     /**
      * Salva zona
      */
@@ -658,44 +710,89 @@ export default function ZoneDrawer({
             return;
         }
 
-        // ✅ LOG TEMPORÁRIO
-        //console.log('🔍 formData ANTES de salvar:', formData);
-        //console.log('🔍 formData.metadata:', formData.metadata);
-
         // Converte pontos do canvas para normalizados (0-1)
-        const normalizedPoints: Polygon = canvasPoints.map(p => [
+        const normalized_points: Polygon = canvasPoints.map((p) => [
             p.x / CANVAS_WIDTH,
-            p.y / CANVAS_HEIGHT
+            p.y / CANVAS_HEIGHT,
         ]);
 
         setIsSaving(true);
 
         try {
-            let snapshotBase64: string | undefined = undefined;
+            let snapshot_base64: string | undefined = undefined;
+
             if (snapshotUrl && mode === 'create') {
                 try {
                     const response = await fetch(snapshotUrl);
                     const blob = await response.blob();
                     const reader = new FileReader();
-                    snapshotBase64 = await new Promise<string>((resolve) => {
+
+                    snapshot_base64 = await new Promise<string>((resolve) => {
                         reader.onloadend = () => {
                             const base64 = (reader.result as string).split(',')[1];
                             resolve(base64);
                         };
                         reader.readAsDataURL(blob);
                     });
-                    console.log('✅ Snapshot convertido para base64');
                 } catch (err) {
                     console.warn('⚠️ Erro ao converter snapshot:', err);
                 }
             }
 
-            const payload = {
+            // Config do modo atual
+            const config = ZONE_MODE_FIELDS[formData.mode];
+
+            const payload: any = {
                 ...formData,
-                points: normalizedPoints,
+                // nomes em snake_case, alinhados com backend
+                points: normalized_points,
                 coordinate_system: 'normalized' as CoordinateSystem,
-                snapshot_base64: snapshotBase64
+                snapshot_base64,
+                // garante metadata completo para COUNTING
+                metadata: {
+                    ...(formData.metadata || {}),
+                    ...(formData.mode === ZoneMode.COUNTING
+                        ? {
+                            // percentual mínimo da bbox dentro da zona
+                            intersection_threshold:
+                                formData.metadata?.intersection_threshold ?? 0.7,
+                            // tempo de confirmação em segundos
+                            confirmation_time:
+                                formData.metadata?.confirmation_time ?? 0,
+                        }
+                        : {}),
+                },
             };
+
+            // Remove campos não utilizados pelo modo atual
+            if (config) {
+                if (!config.threshold_empty) delete payload.empty_threshold;
+                if (!config.threshold_full) delete payload.full_threshold;
+                if (!config.timeout_empty) delete payload.empty_timeout;
+                if (!config.timeout_full) delete payload.full_timeout;
+                if (!config.email_cooldown) delete payload.email_cooldown;
+
+                if (!config.capacity && payload.metadata) {
+                    const { max_capacity, alert_percentage, ...rest } = payload.metadata;
+                    payload.metadata =
+                        Object.keys(rest).length > 0 ? rest : undefined;
+                }
+            }
+
+            // Garante thresholds válidos para o backend
+            if (payload.full_threshold !== undefined && payload.full_threshold < 1) {
+                payload.full_threshold = 1;
+            }
+            if (payload.empty_threshold !== undefined && payload.empty_threshold < 0) {
+                payload.empty_threshold = 0;
+            }
+
+            // Remove undefined/null
+            Object.keys(payload).forEach((key) => {
+                if (payload[key] === undefined || payload[key] === null) {
+                    delete payload[key];
+                }
+            });
 
             await onSave(payload, zone?.id);
 
@@ -704,11 +801,11 @@ export default function ZoneDrawer({
             onClose();
         } catch (err) {
             console.error('Erro ao salvar zona:', err);
-            // O erro já é tratado pelo hook useZones
         } finally {
             setIsSaving(false);
         }
     };
+      
 
 
     // ==========================================================================
@@ -936,7 +1033,7 @@ export default function ZoneDrawer({
                                 </p>
                             </div>
 
-                            {/* ✅ NEW v3.1: Câmera Associada */}
+                            {/* Câmera Associada */}
                             <div>
                                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
                                     <Camera className="w-4 h-4" />
@@ -962,7 +1059,8 @@ export default function ZoneDrawer({
                                 </p>
                             </div>
 
-                            {/* ✅ v3.3: Thresholds (condicional por modo) */}
+
+                            {/* Thresholds (condicional por modo) */}
                             {(shouldShowField('threshold_empty') || shouldShowField('threshold_full')) && (
                                 <div className="grid grid-cols-2 gap-4">
                                     {shouldShowField('threshold_empty') && (
@@ -1012,7 +1110,7 @@ export default function ZoneDrawer({
                                             <p className="mt-1 text-xs text-gray-500">
                                                 {formData.mode === 'counting' ? 'Mínimo para registrar entrada/saída'
                                                     : formData.mode === 'alert' ? 'Pessoas para disparar alerta'
-                                                        : `Número de pessoas para considerar cheio (mínimo: ${(formData.empty_threshold ?? 0) + 1})`}
+                                                        : `Número de objetos para considerar cheio (mínimo: ${(formData.empty_threshold ?? 0) + 1})`}
                                             </p>
                                         </div>
 
@@ -1021,7 +1119,7 @@ export default function ZoneDrawer({
                             )}
 
 
-                            {/* ✅ v3.3: Timeouts (condicional por modo) */}
+                            {/* Timeouts (condicional por modo) */}
                             {(shouldShowField('timeout_empty') || shouldShowField('timeout_full')) && (
                                 <div className="grid grid-cols-2 gap-4">
                                     {shouldShowField('timeout_empty') && (
@@ -1034,7 +1132,9 @@ export default function ZoneDrawer({
                                                 min={0}
                                                 step={0.5}
                                                 value={formData.empty_timeout || 5}
-                                                onChange={(e) => handleFieldChange('empty_timeout', parseFloat(e.target.value))}
+                                                onChange={(e) =>
+                                                    handleFieldChange('empty_timeout', parseFloat(e.target.value))
+                                                }
                                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                                 disabled={mode === 'view'}
                                             />
@@ -1047,31 +1147,60 @@ export default function ZoneDrawer({
                                     {shouldShowField('timeout_full') && (
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                {formData.mode === 'alert' ? 'Timeout Alerta (s)'
-                                                    : formData.mode === 'capacity' ? 'Timeout de Lotação (s)'
-                                                        : 'Timeout Cheio (s)'}                                            
+                                                {formData.mode === 'alert'
+                                                    ? 'Timeout Alerta (s)'
+                                                    : formData.mode === 'capacity'
+                                                        ? 'Timeout de Lotação (s)'
+                                                        : formData.mode === 'counting'
+                                                            ? 'Tempo de Confirmação (s)'
+                                                            : 'Timeout Cheio (s)'}
                                             </label>
+
+                                            {/* 👇 AQUI é o ajuste: quando counting usa metadata.confirmation_time */}
                                             <input
                                                 type="number"
                                                 min={0}
                                                 step={0.5}
-                                                value={formData.full_timeout || 10}
-                                                onChange={(e) => handleFieldChange('full_timeout', parseFloat(e.target.value))}
+                                                value={
+                                                    formData.mode === 'counting'
+                                                        ? formData.metadata?.confirmation_time ?? 0
+                                                        : formData.full_timeout || 10
+                                                }
+                                                onChange={(e) => {
+                                                    const value = parseFloat(e.target.value);
+                                                    if (formData.mode === 'counting') {
+                                                        setFormData((prev) => ({
+                                                            ...prev,
+                                                            metadata: {
+                                                                ...(prev.metadata || {}),
+                                                                confirmation_time: isNaN(value) ? 0 : value,
+                                                            },
+                                                        }));
+                                                    } else {
+                                                        handleFieldChange('full_timeout', value);
+                                                    }
+                                                }}
                                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                                 disabled={mode === 'view'}
                                             />
+
                                             <p className="mt-1 text-xs text-gray-500">
-                                                {formData.mode === 'alert' ? 'Tolerância antes de disparar alerta'
-                                                    : formData.mode === 'capacity' ? 'Tempo na capacidade antes de alertar (0 = imediato)'
-                                                        : 'Tempo cheio antes de alertar'}                                            
-                                                </p>
+                                                {formData.mode === 'alert'
+                                                    ? 'Tolerância antes de disparar alerta'
+                                                    : formData.mode === 'capacity'
+                                                        ? 'Tempo na capacidade antes de alertar (0 = imediato)'
+                                                        : formData.mode === 'counting'
+                                                            ? 'Tempo que o objeto deve permanecer para ser contado'
+                                                            : 'Tempo cheio antes de alertar'}
+                                            </p>
                                         </div>
                                     )}
                                 </div>
                             )}
 
 
-                            {/* ✅ NOVO v3.3: Capacidade Máxima (só para modo CAPACITY) */}
+
+                            {/* Capacidade Máxima (só para modo CAPACITY) */}
                             {shouldShowField('capacity') && (
                                 <div className="bg-amber-50 border-2 border-amber-200 rounded-lg p-4">
                                     <label className="flex items-center gap-2 text-sm font-medium text-amber-900 mb-2">
@@ -1103,7 +1232,7 @@ export default function ZoneDrawer({
                                         📊 Lotação máxima: {formData.metadata?.max_capacity || 50} pessoas
                                     </p>
 
-                                    {/* ✅ NOVO v3.4: Slider para percentual de alerta (0% a 100%) */}
+                                    {/* Slider para percentual de alerta (0% a 100%) */}
                                     <div className="mt-4 pt-4 border-t border-amber-300">
                                         <label className="block text-sm font-medium text-amber-900 mb-3">
                                             ⚠️ Percentual de Alerta: <span className="text-lg font-bold">{formData.metadata?.alert_percentage || 90}%</span>
@@ -1141,6 +1270,239 @@ export default function ZoneDrawer({
                                     </div>
                                 </div>
                             )}
+
+
+                            {/* COUNTING MODE - Direção, Reset e Alertas */}
+                            {formData.mode === 'counting' && (
+                                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 space-y-4">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                        </svg>
+                                        <h4 className="text-sm font-medium text-blue-900">
+                                            Configurações de Contagem
+                                        </h4>
+                                    </div>
+
+
+                                    {/* Direção de Contagem */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-blue-900 mb-3">
+                                            📍 Direção de Contagem
+                                        </label>
+
+
+                                        <div className="space-y-2">
+                                            <label className="flex items-center gap-3 p-3 border-2 border-blue-200 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors">
+                                                <input
+                                                    type="radio"
+                                                    name="count_direction"
+                                                    value="in"
+                                                    checked={formData.metadata?.count_direction === 'in'}
+                                                    onChange={() => {
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            metadata: {
+                                                                ...prev.metadata,
+                                                                count_direction: 'in',
+                                                            }
+                                                        }));
+                                                    }}
+                                                    disabled={mode === 'view'}
+                                                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                                                />
+                                                <div className="flex-1">
+                                                    <span className="text-sm font-medium text-blue-900">
+                                                        🔽 Apenas Entradas
+                                                    </span>
+                                                    <p className="text-xs text-blue-700 mt-0.5">
+                                                        Conta apenas objetos entrando na zona
+                                                    </p>
+                                                </div>
+                                            </label>
+
+
+                                            <label className="flex items-center gap-3 p-3 border-2 border-blue-200 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors">
+                                                <input
+                                                    type="radio"
+                                                    name="count_direction"
+                                                    value="out"
+                                                    checked={formData.metadata?.count_direction === 'out'}
+                                                    onChange={() => {
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            metadata: {
+                                                                ...prev.metadata,
+                                                                count_direction: 'out',
+                                                            }
+                                                        }));
+                                                    }}
+                                                    disabled={mode === 'view'}
+                                                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                                                />
+                                                <div className="flex-1">
+                                                    <span className="text-sm font-medium text-blue-900">
+                                                        🔼 Apenas Saídas
+                                                    </span>
+                                                    <p className="text-xs text-blue-700 mt-0.5">
+                                                        Conta apenas objetos saindo da zona
+                                                    </p>
+                                                </div>
+                                            </label>
+
+
+                                            <label className="flex items-center gap-3 p-3 border-2 border-blue-300 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors bg-white">
+                                                <input
+                                                    type="radio"
+                                                    name="count_direction"
+                                                    value="both"
+                                                    checked={formData.metadata?.count_direction === 'both' || !formData.metadata?.count_direction}
+                                                    onChange={() => {
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            metadata: {
+                                                                ...prev.metadata,
+                                                                count_direction: 'both',
+                                                            }
+                                                        }));
+                                                    }}
+                                                    disabled={mode === 'view'}
+                                                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                                                />
+                                                <div className="flex-1">
+                                                    <span className="text-sm font-medium text-blue-900">
+                                                        ↕️ Ambas Direções
+                                                    </span>
+                                                    <p className="text-xs text-blue-700 mt-0.5">
+                                                        Contadores separados IN/OUT (recomendado)
+                                                    </p>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+
+
+                                    {/* Período de Reset */}
+                                    <div className="pt-3 border-t border-blue-300">
+                                        <label className="block text-sm font-medium text-blue-900 mb-2">
+                                            🔄 Período de Reset do Contador
+                                        </label>
+                                        <select
+                                            value={formData.metadata?.reset_interval || 'daily'}
+                                            onChange={(e) => {
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    metadata: {
+                                                        ...prev.metadata,
+                                                        reset_interval: e.target.value
+                                                    }
+                                                }));
+                                            }}
+                                            disabled={mode === 'view'}
+                                            className="w-full px-4 py-2 bg-white border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        >
+                                            <option value="none">Nunca (acumula sempre)</option>
+                                            <option value="hourly">A cada 1 hora</option>
+                                            <option value="daily">Diariamente às 00:00</option>
+                                            <option value="weekly">Semanalmente (Segunda 00:00)</option>
+                                            <option value="monthly">Mensalmente (dia 1 às 00:00)</option>
+                                        </select>
+                                        <p className="mt-1 text-xs text-blue-700">
+                                            Zera automaticamente para gerar relatórios periódicos
+                                        </p>
+                                    </div>
+
+
+                                    {/* Percentual mínimo da bbox dentro da zona */}
+                                    <div className="pt-3 border-t border-blue-300">
+                                        <label className="block text-sm font-medium text-blue-900 mb-2">
+                                            📏 Percentual mínimo do objeto dentro da zona
+                                        </label>
+                                        <input
+                                            type="range"
+                                            min={30}
+                                            max={90}
+                                            step={5}
+                                            value={(formData.metadata?.intersection_threshold ?? 0.7) * 100}
+                                            onChange={(e) => {
+                                                const value = Number(e.target.value) / 100;
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    metadata: {
+                                                        ...prev.metadata,
+                                                        intersection_threshold: value,
+                                                    },
+                                                }));
+                                            }}
+                                            disabled={mode === 'view'}
+                                            className="w-full"
+                                        />
+                                        <p className="mt-1 text-xs text-blue-700">
+                                            A zona só contará entrada/saída quando pelo menos{' '}
+                                            {((formData.metadata?.intersection_threshold ?? 0.7) * 100).toFixed(0)}%
+                                            da bbox estiver dentro do polígono.
+                                        </p>
+                                    </div>
+
+
+                                    {/* Alerta por Limite */}
+                                    <div className="pt-3 border-t border-blue-300">
+                                        <label className="flex items-center gap-2 mb-3 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={formData.metadata?.alert_enabled || false}
+                                                onChange={(e) => {
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        metadata: {
+                                                            ...prev.metadata,
+                                                            alert_enabled: e.target.checked
+                                                        }
+                                                    }));
+                                                }}
+                                                disabled={mode === 'view'}
+                                                className="w-4 h-4 text-blue-600 border-blue-300 rounded focus:ring-blue-500"
+                                            />
+                                            <span className="text-sm font-medium text-blue-900">
+                                                🔔 Alerta por Limite de Contagem
+                                            </span>
+                                        </label>
+
+
+                                        {formData.metadata?.alert_enabled && (
+                                            <div className="ml-6">
+                                                <label className="block text-sm font-medium text-blue-900 mb-2">
+                                                    Disparar alerta quando atingir
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    max={10000}
+                                                    value={formData.metadata?.alert_threshold || 100}
+                                                    onChange={(e) => {
+                                                        const value = parseInt(e.target.value);
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            metadata: {
+                                                                ...prev.metadata,
+                                                                alert_threshold: value
+                                                            }
+                                                        }));
+                                                    }}
+                                                    disabled={mode === 'view'}
+                                                    className="w-full px-4 py-2 bg-white border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-bold text-lg text-blue-900"
+                                                    placeholder="100"
+                                                />
+                                                <p className="mt-1 text-xs text-blue-700 bg-blue-100 px-3 py-2 rounded-lg border border-blue-300">
+                                                    Sistema enviará alerta por email quando contador atingir{' '}
+                                                    <span className="font-bold">{formData.metadata?.alert_threshold || 100}</span> eventos
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
 
 
                             {/* Email Cooldown (alguns modos) - ✅ v3.4: Agora em MINUTOS */}

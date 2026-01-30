@@ -935,6 +935,35 @@ async def get_zones_by_camera_id(camera_id: int, active_only: bool = True) -> Li
 
 
 
+# ============================================
+# ZONE METADATA PERSISTENCE
+# ============================================
+
+async def update_zone_metadata(zone_id: int, metadata: dict) -> None:
+    """
+    Atualiza apenas o campo metadata de uma zona.
+    
+    ✅ v3.9: Usado por camera_sync para persistir count_in/count_out
+    
+    Args:
+        zone_id: ID da zona
+        metadata: Dict com metadata atualizado (será serializado para JSON)
+    """
+    pool = await get_db_pool()
+    
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                UPDATE zones 
+                SET metadata = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND deleted_at IS NULL
+                """,
+                (json.dumps(metadata), zone_id)
+            )
+            await conn.commit()
+
+
 
 # ============================================
 # CAMERAS FUNCTIONS v3.1

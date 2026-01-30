@@ -451,7 +451,7 @@ export default function Dashboard() {
 
 
                     {/* ========================================== */}
-                    {/* ✅ NOVO: SEÇÃO DE GERENCIAMENTO DE ZONAS  */}
+                    {/* SEÇÃO DE GERENCIAMENTO DE ZONAS  */}
                     {/* ========================================== */}
 
                     {/* Tabela de Zonas com Header e Botão */}
@@ -486,32 +486,43 @@ export default function Dashboard() {
 
                             {/* Tabela de Zonas */}
                             <div className="p-6">
-                                <ZoneTable
-                                    zones={zones
-                                        .filter((z) => z.enabled)
-                                        .map((zone) => {
-                                            // ✅ Busca métricas em tempo real
-                                            const metrics = zoneMetrics.find(m => m.zone_id === zone.id);
+                            <ZoneTable
+                                zones={zones
+                                    .filter((z) => z.enabled)
+                                    .map((zone) => {
+                                        const metrics = zoneMetrics.find(m => m.zone_id === zone.id);
 
-                                            return {
-                                                zone_id: zone.id,
-                                                zone_name: zone.name,
-                                                mode: zone.mode,
-                                                current_count: metrics?.current_count ?? 0,
-                                                time_empty: metrics?.time_empty ?? 0,
-                                                time_full: metrics?.time_full ?? 0,
-                                                //state: metrics?.state ?? 'normal',
-                                                state: normalizeState(metrics?.state ?? 'normal'),
-                                                max_capacity: metrics?.max_capacity,
-                                                camera_id: zone.camera_id,
-                                                full_timeout: zone.full_timeout,
-                                            };
-                                        })}
-                                />
+                                        const backendState = metrics?.state ?? 'normal';
+                                        const normalizedState = normalizeState(backendState);
+
+                                        const hasAlert = metrics?.alert === true;
+
+                                        return {
+                                            zone_id: zone.id,
+                                            zone_name: zone.name,
+                                            mode: zone.mode,
+                                            current_count: metrics?.current_count ?? 0,
+                                            time_empty: metrics?.time_empty ?? 0,
+                                            time_full: metrics?.time_full ?? 0,
+                                            state: hasAlert ? 'alert' : normalizedState,
+                                            max_capacity: metrics?.max_capacity,
+                                            camera_id: zone.camera_id,
+                                            full_timeout: zone.full_timeout,
+                                            count_in: metrics?.count_in,
+                                            count_out: metrics?.count_out,
+                                            count_direction: metrics?.count_direction,
+                                            alert: metrics?.alert ?? false,
+                                            alert_message: metrics?.alert_message ?? null,
+                                            reset_interval: metrics?.reset_interval,
+                                            last_reset: metrics?.last_reset ?? null,
+                                        };
+                                    })}
+                            />
+
                             </div>
                         </div>
                     )}
-                    {/* ✅ NOVO: Mensagem quando não há zonas */}
+                    {/* Mensagem quando não há zonas */}
                     {zones.length === 0 && !zonesLoading && (
                         <div className="bg-white rounded-lg shadow border border-gray-200 p-12">
                             <div className="text-center space-y-3">

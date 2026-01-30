@@ -1,33 +1,33 @@
 [
   {
-    "id": 53,
-    "name": "CAPACIDADE",
+    "id": 66,
+    "name": "Test",
     "points": [
       [
-        0.19745767612561635,
-        0.37536294177799484
+        0.22358025393160708,
+        0.15357485886814898
       ],
       [
-        0.4710452608983234,
-        0.37864452731418224
+        0.6617618885947866,
+        0.16012425219281656
       ],
       [
-        0.4820622106207143,
-        0.9627667527555432
+        0.7057633916571979,
+        0.8281623713089082
       ],
       [
-        0.16073451038431344,
-        0.9660483382917309
+        0.17774535490826196,
+        0.8281623713089082
       ]
     ],
-    "mode": "capacity",
+    "mode": "counting",
     "camera_id": 13,
-    "empty_timeout": 10.0,
-    "full_timeout": 5.0,
-    "empty_threshold": 1,
+    "empty_timeout": 5.0,
+    "full_timeout": 10.0,
+    "empty_threshold": 0,
     "full_threshold": 3,
     "max_out_time": 30.0,
-    "email_cooldown": 600.0,
+    "email_cooldown": null,
     "enabled": true,
     "active": true,
     "description": null,
@@ -35,46 +35,7 @@
     "tags": [],
     "snapshot_path": null,
     "metadata": {},
-    "created_at": "2026-01-19T10:45:54.146758",
-    "updated_at": "2026-01-19T13:15:24.273155"
-  },
-  {
-    "id": 49,
-    "name": "PESSOA",
-    "points": [
-      [
-        0.5761564303923875,
-        0.3435072652835084
-      ],
-      [
-        0.8309984689621864,
-        0.35333135527050974
-      ],
-      [
-        0.8933339316339358,
-        0.9820731144385962
-      ],
-      [
-        0.590823598079858,
-        0.9853478111009297
-      ]
-    ],
-    "mode": "capacity",
-    "camera_id": 13,
-    "empty_timeout": 5.0,
-    "full_timeout": 10.0,
-    "empty_threshold": 0,
-    "full_threshold": 1,
-    "max_out_time": 30.0,
-    "email_cooldown": 600.0,
-    "enabled": false,
-    "active": true,
-    "description": null,
-    "color": "#3B82F6",
-    "tags": [],
-    "snapshot_path": null,
-    "metadata": {},
-    "created_at": "2026-01-18T16:07:22.795613",
-    "updated_at": "2026-01-19T11:46:21.467473"
+    "created_at": "2026-01-29T16:12:35.801425",
+    "updated_at": "2026-01-29T16:12:35.801425"
   }
 ]

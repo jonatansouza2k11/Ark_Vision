@@ -800,6 +800,41 @@ class ZoneResponse(ZoneBase):
     model_config = ConfigDict(from_attributes=True)
     
     # ========================================================================
+    # ✅ NEW v3.7: Validadores por modo (field validators)
+    # ========================================================================
+    
+    @field_validator('full_threshold')
+    @classmethod
+    def validate_full_threshold_by_mode(cls, v: int, info) -> int:
+        """
+        ✅ Valida full_threshold baseado no modo da zona
+        
+        Modos que USAM full_threshold devem ter >= 1
+        Modos que NÃO usam podem ter 0 (será ignorado)
+        """
+        mode = info.data.get('mode')
+        
+        # Modos que USAM full_threshold (exigem >= 1)
+        modes_using_full = ['occupancy', 'counting', 'alert', 'capacity', 'GENERIC', 'FULL']
+        
+        if mode in modes_using_full and v < 1:
+            # Força mínimo válido para modos que usam o campo
+            return 1
+        
+        # Para outros modos (tracking, EMPTY), aceita 0
+        return max(0, v)
+    
+    @field_validator('empty_threshold')
+    @classmethod
+    def validate_empty_threshold_by_mode(cls, v: int, info) -> int:
+        """
+        ✅ Valida empty_threshold baseado no modo da zona
+        
+        Sempre permite >= 0
+        """
+        return max(0, v)
+    
+    # ========================================================================
     # NEW: Response Enhancement Methods
     # ========================================================================
     

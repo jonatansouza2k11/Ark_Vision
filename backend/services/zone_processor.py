@@ -55,6 +55,10 @@ class ZoneState:
         self.objects_inside: List[int] = []
         self.status: str = "EMPTY"
         
+         # Counting mode - Tracking de direção
+        self.object_positions: Dict[int, bool] = {}  # {track_id: was_inside}
+        self.pending_crossings: Dict[int, Dict] = {}  # {track_id: {timestamp, direction}}
+
         # Timing for alerts
         self.last_alert_time: Optional[datetime] = None
         self.empty_since: Optional[datetime] = None
@@ -76,6 +80,7 @@ class ZoneProcessor:
     Each mode has its own processing logic.
     """
     
+
     def __init__(self, camera_id: int, zones: List[Dict]):
         """
         Initialize processor with injected zones.
@@ -100,6 +105,7 @@ class ZoneProcessor:
             f"with {len(self.zones)} zones"
         )
     
+
     def update_zones(self, zones: List[Dict]):
         """
         Update zones when configuration changes.
@@ -121,6 +127,7 @@ class ZoneProcessor:
         for zone_id in orphaned:
             del self.zone_states[zone_id]
     
+
     def process_frame(
         self,
         detections: List[Dict],
@@ -185,13 +192,14 @@ class ZoneProcessor:
         
         return zone_metrics
     
+
     def get_objects_in_zone(
         self, zone: Dict, track_state: Dict, frame_shape: Tuple[int, int]
     ) -> List[int]:
         """
         Find which tracked objects are inside a zone.
         
-        ✅ v3.6: Filtra por classes configuradas em zone.detection_classes
+        ✅ v4.0 ENTERPRISE: Filtra por classes configuradas em zone.detection_classes
         """
         objects_inside = []
         
@@ -200,82 +208,104 @@ class ZoneProcessor:
         
         h, w = self.last_frame_shape
         
-        # ✅ v3.6: Obter classes permitidas (prioriza zone.detection_classes direto)
-        allowed_classes = zone.get("detection_classes")
+        # ====================================================================
+        # 1. OBTER CLASSES PERMITIDAS (BUSCA EM MÚLTIPLAS FONTES)
+        # ====================================================================
+        zone_metadata = zone.get("metadata", {})
+        allowed_classes = zone_metadata.get("detection_classes")
         
-        # Fallback: tentar buscar em metadata se não encontrou direto
+        # Fallback 1: Tentar buscar direto na zona (campo legacy)
         if not allowed_classes:
-            zone_metadata = zone.get("metadata", {})
-            allowed_classes = zone_metadata.get("detection_classes")
+            allowed_classes = zone.get("detection_classes")
         
-        # ⚠️ Se não há classes configuradas, não filtra nada (aceita tudo)
-        # Isso evita o warning quando o usuário não quer filtrar por classe
+        # Fallback 2: Se ainda não encontrou, aceitar tudo (sem filtro)
         if not allowed_classes or not isinstance(allowed_classes, list):
-            # Sem filtro configurado - processa todos os objetos
             allowed_classes_set = None
         else:
-            # Converter para set para lookup O(1)
             allowed_classes_set = set(allowed_classes)
         
-        # 🐛 DEBUG: Log classes configuradas (apenas uma vez por zona)
-        #zone_id = zone.get("id")
-        #if not hasattr(self, '_logged_zone_classes'):
-        #    self._logged_zone_classes = set()
-        #
-        #if zone_id and zone_id not in self._logged_zone_classes:
-        #    from backend.coco_classes import get_class_name
-        #    try:
-        #        class_names = [get_class_name(cid) for cid in allowed_classes]
-        #        logger.info(
-        #            f"✅ Zone '{zone.get('name')}' (ID: {zone_id}) - "
-        #            f"Classes permitidas: {allowed_classes} = ({', '.join(class_names)})"
-        #        )
-        #    except Exception as e:
-        #        logger.warning(f"⚠️ Error getting class names: {e}")
-        #        logger.info(
-        #            f"✅ Zone '{zone.get('name')}' (ID: {zone_id}) - "
-        #            f"Classes permitidas: {allowed_classes}"
-        #        )
-        #    self._logged_zone_classes.add(zone_id)
+        # ====================================================================
+        # 2. LOG DE DEBUG - APENAS 1X POR ZONA
+        # ====================================================================
+        zone_id = zone.get("id")
+        if not hasattr(self, '_logged_zone_classes'):
+            self._logged_zone_classes = set()
         
+        if zone_id and zone_id not in self._logged_zone_classes:
+            if allowed_classes_set is not None:
+                try:
+                    from backend.coco_classes import COCO_CLASSES
+                    class_names = [COCO_CLASSES.get(cid, f"class_{cid}") for cid in allowed_classes]
+                    logger.info(
+                        f"🎯 Zone '{zone.get('name')}' (ID: {zone_id}) - "
+                        f"FILTRO ATIVO: classes {allowed_classes} = ({', '.join(class_names)})"
+                    )
+                except ImportError:
+                    logger.info(
+                        f"🎯 Zone '{zone.get('name')}' (ID: {zone_id}) - "
+                        f"FILTRO ATIVO: classes {allowed_classes}"
+                    )
+            else:
+                logger.warning(
+                    f"⚠️⚠️⚠️ Zone '{zone.get('name')}' (ID: {zone_id}) - "
+                    f"NENHUM FILTRO CONFIGURADO! "
+                    f"Todos os objetos detectados serão processados (pessoa, celular, garrafa, etc.)"
+                )
+            
+            self._logged_zone_classes.add(zone_id)
+        
+        # ====================================================================
+        # 3. FILTRAR OBJETOS POR CLASSE E POSIÇÃO
+        # ====================================================================
         zone_points = zone.get("points", [])
-        filtered_count = 0  # Contador de objetos filtrados
-        detected_but_filtered = []  # Classes detectadas mas filtradas
+        filtered_count = 0
+        detected_but_filtered = []
+        accepted_count = 0
         
         for obj_id, obj_data in track_state.items():
             if "bbox" not in obj_data:
                 continue
             
-            # ✅ v3.6: Filtrar por classe ANTES de verificar polígono (performance)
-            if allowed_classes_set is not None:  # Só filtra se há filtro configurado
-                obj_class_id = obj_data.get("class_id", 0)
-                
+            obj_class_id = obj_data.get("class_id", 0)
+            
+            # ✅ FILTRO DE CLASSE (se configurado)
+            if allowed_classes_set is not None:
                 if obj_class_id not in allowed_classes_set:
                     filtered_count += 1
                     if obj_class_id not in detected_but_filtered:
                         detected_but_filtered.append(obj_class_id)
-                    continue  # ⛔ Objeto de classe não permitida
+                    continue  # ⛔ Objeto de classe não permitida - REJEITAR
             
-            # Calcular centro do bounding box
+            # ✅ FILTRO DE POSIÇÃO (polígono)
             bbox = obj_data["bbox"]
             cx = (bbox[0] + bbox[2]) / 2
             cy = (bbox[1] + bbox[3]) / 2
             
-            # Verificar se centro está dentro do polígono
             if self.point_in_polygon((cx, cy), zone_points, (h, w)):
                 objects_inside.append(obj_id)
+                accepted_count += 1
         
-        # 🐛 DEBUG: Log detalhado quando filtrar objetos
-        #if filtered_count > 0:
-        #    from backend.coco_classes import get_class_name
-        #    filtered_names = [get_class_name(cid) for cid in detected_but_filtered]
-        #    logger.info(
-        #        f"🔍 Zone '{zone.get('name')}': "
-        #        f"✅ {len(objects_inside)} aceitos | "
-        #        f"⛔ {filtered_count} filtrados (classes: {detected_but_filtered} = {filtered_names})"
-        #    )
+        # ====================================================================
+        # 4. LOG DE DEBUG - OBJETOS FILTRADOS (SEMPRE)
+        # ====================================================================
+        if filtered_count > 0:
+            try:
+                from backend.coco_classes import COCO_CLASSES
+                filtered_names = [COCO_CLASSES.get(cid, f"class_{cid}") for cid in detected_but_filtered]
+                logger.info(
+                    f"🔍 Zone '{zone.get('name')}': "
+                    f"✅ {accepted_count} aceitos | "
+                    f"⛔ {filtered_count} filtrados (classes: {detected_but_filtered} = {filtered_names})"
+                )
+            except ImportError:
+                logger.info(
+                    f"🔍 Zone '{zone.get('name')}': "
+                    f"✅ {accepted_count} aceitos | "
+                    f"⛔ {filtered_count} filtrados (classes: {detected_but_filtered})"
+                )
         
         return objects_inside
+
 
     @staticmethod
     def point_in_polygon(
@@ -316,9 +346,11 @@ class ZoneProcessor:
         return inside
     
 
-    # ========================================================================
-    # MODE-SPECIFIC PROCESSORS
-    # ========================================================================
+
+
+# ========================================================================
+# MODE-SPECIFIC PROCESSORS
+# ========================================================================
     
 
     # ========================================================================
@@ -444,20 +476,38 @@ class ZoneProcessor:
         now = datetime.now()
         
         # ✅ Determinar status RAW (baseado em threshold)
-        if count < empty_threshold:   raw_status = "EMPTY"
-        elif count >= full_threshold: raw_status = "FULL"
-        else:                         raw_status = "OCCUPIED"
+        if count <= empty_threshold:   
+            raw_status = "EMPTY"
+            #logger.info(f"🔍 Zona vazia detectada: count={count} < threshold={empty_threshold}")
+        elif count >= full_threshold: 
+            raw_status = "FULL"
+        else: raw_status = "OCCUPIED"
         
         # ✅ Atualizar timing
         if raw_status == "EMPTY":
             if state.empty_since is None:
                 state.empty_since = now
+                #logger.info(f"⏱️ Timer vazio INICIADO: {now}")
+            else:
+                elapsed = (now - state.empty_since).total_seconds()
+                #logger.info(f"⏱️ Timer vazio RODANDO: {elapsed:.1f}s")
             state.full_since = None
+            
         elif raw_status == "FULL":
             if state.full_since is None:
                 state.full_since = now
+                #logger.info(f"⏱️ Timer cheio INICIADO: {now}")
+            else:
+                elapsed = (now - state.full_since).total_seconds()
+                #logger.info(f"⏱️ Timer cheio RODANDO: {elapsed:.1f}s")
             state.empty_since = None
-        else:
+            
+        else: 
+            # OCCUPIED
+            #if state.empty_since is not None:
+            #    logger.info(f"⏱️ Timer vazio RESETADO (saiu de EMPTY)")
+            #if state.full_since is not None:
+            #    logger.info(f"⏱️ Timer cheio RESETADO (saiu de FULL)")
             state.empty_since = None
             state.full_since = None
         
@@ -514,6 +564,14 @@ class ZoneProcessor:
         
         state.status = confirmed_status
         
+        # ✅ LOG para confirmar valores
+        #logger.info(
+            #f"📤 Retornando: empty_duration="
+            #f"{((now - state.empty_since).total_seconds() if (state.empty_since and confirmed_status == 'EMPTY_PENDING') else 0):.1f}s, "
+            #f"full_duration="
+            #"{((now - state.full_since).total_seconds() if (state.full_since and confirmed_status == 'FULL_PENDING') else 0):.1f}s"
+        #)
+
         return {
             "zone_id": state.zone_id,
             "zone_name": zone["name"],
@@ -522,50 +580,437 @@ class ZoneProcessor:
             "status": confirmed_status,
             "alert": alert and can_alert,
             "alert_message": alert_message,
-            "empty_duration": (now - state.empty_since).total_seconds() if state.empty_since else 0,
-            "full_duration": (now - state.full_since).total_seconds() if state.full_since else 0,
+            "empty_duration": (now - state.empty_since).total_seconds() if (state.empty_since and confirmed_status == "EMPTY_PENDING") else 0,
+            "full_duration": (now - state.full_since).total_seconds() if (state.full_since and confirmed_status == "FULL_PENDING") else 0,        
         }
 
-    
 
-    def _process_counting_mode(self, zone: Dict, state: ZoneState) -> Dict:
+
+
+
+
+
+
+    # ========================================================================
+    # CONTAGEM
+    # ========================================================================    
+    def process_zones(
+        self,
+        camera_id: int,
+        zones: List[Dict],
+        detections: List[Dict],
+        frame_shape: Tuple[int, int]
+    ) -> Dict[int, Dict]:
         """
-        Counting mode: Simple threshold-based counting.
-        
-        Lógica:
-        - full_threshold: mínimo de pessoas para registrar
-        - Usado para contagem de entrada/saída simples
+        Process zones com validação de área de interseção para counting mode.
+            
+        ✅ Counting mode: valida ÁREA (>50% da bbox dentro)
+        ✅ Intrusion mode: valida BBOX (qualquer parte)
         """
-        count = state.object_count
-        full_threshold = zone.get("fullthreshold", 1)
+        if not zones:
+            return {}
+
+        if camera_id not in self._frame_shapes:
+            self._frame_shapes[camera_id] = frame_shape
+
+        track_state = {}
+        for det in detections:
+            track_id = det.get("track_id")
+            if track_id is not None:
+                track_state[track_id] = det
+
+        results = {}
+
+        for zone in zones:
+            zone_id = zone.get("id")
+            if not zone_id:
+                continue
+
+            state = self._get_or_create_state(camera_id, zone_id, zone["name"])
+
+            state.objects_inside.clear()
+
+            polygon = self._get_zone_polygon(zone)
+            if polygon is None:
+                logger.warning(f"Zone '{zone['name']}': sem polígono definido")
+                continue
+
+            zone_mode = zone.get("mode", "intrusion")
+            intersection_threshold = zone.get("metadata", {}).get("intersection_threshold", 0.5)
+
+            for det in detections:
+                track_id = det.get("track_id")
+                if track_id is None:
+                    continue
+
+                bbox = det.get("bbox")
+                if not bbox or len(bbox) != 4:
+                    continue
+
+                try:
+                    if zone_mode == "counting":
+                        intersection_ratio = self._calculate_bbox_intersection_ratio(
+                            bbox, polygon
+                        )
+                        inside = intersection_ratio >= intersection_threshold
+                    else:
+                        inside = self._bbox_intersects_polygon(bbox, polygon)
+
+                    if inside:
+                        state.objects_inside.add(track_id)
+
+                except Exception as e:
+                    logger.error(
+                        f"Error validating track #{track_id} in zone '{zone['name']}': {e}"
+                    )
+                    continue
+
+            if zone_mode == "counting":
+                metrics = self._process_counting_mode(zone, state)
+            elif zone_mode == "intrusion":
+                metrics = self._process_intrusion_mode(zone, state, track_state)
+            elif zone_mode == "loitering":
+                metrics = self._process_loitering_mode(zone, state, track_state)
+            else:
+                metrics = self._default_metrics(zone, state)
+
+            results[zone_id] = metrics
+
+        return results
+
+
+
+
+
+    # ========================================================================
+    # CONTAGEM
+    # ========================================================================   
+    def _calculate_bbox_intersection_ratio(
+        self,
+        bbox: tuple,
+        polygon: np.ndarray
+    ) -> float:
+        """
+        Calcula porcentagem da bbox que está dentro do polígono.
         
-        # Status baseado apenas no threshold
-        if count >= full_threshold:
-            new_status = "DETECTED"
-            alert = True
-        else:
-            new_status = "IDLE"
-            alert = False
+        Estratégia SIMPLES e ROBUSTA:
+        - Testa grid de pontos dentro da bbox
+        - Conta quantos estão dentro do polígono
+        - Retorna ratio
         
-        # Log status changes
+        Args:
+            bbox: (x1, y1, x2, y2)
+            polygon: np.ndarray [[x, y], ...]
+        
+        Returns:
+            float: 0.0 a 1.0 (0% a 100%)
+        """
+        try:
+            x1, y1, x2, y2 = float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
+
+            bbox_width = x2 - x1
+            bbox_height = y2 - y1
+
+            if bbox_width <= 0 or bbox_height <= 0:
+                return 0.0
+
+            grid_size = 9
+            points_inside = 0
+            total_points = 0
+
+            for i in range(grid_size):
+                for j in range(grid_size):
+                    ratio_x = i / (grid_size - 1)
+                    ratio_y = j / (grid_size - 1)
+
+                    px = x1 + ratio_x * bbox_width
+                    py = y1 + ratio_y * bbox_height
+
+                    if cv2.pointPolygonTest(polygon, (px, py), False) >= 0:
+                        points_inside += 1
+
+                    total_points += 1
+
+            ratio = points_inside / total_points if total_points > 0 else 0.0
+            return ratio
+
+        except Exception as e:
+            logger.error(f"Error calculating intersection ratio: {e}", exc_info=True)
+            return 0.0
+
+
+
+
+
+
+    # ========================================================================
+    # CONTAGEM
+    # ========================================================================   
+    def _bbox_intersects_polygon(self, bbox: tuple, polygon: np.ndarray) -> bool:        
+        """
+        Verifica se bbox intersecta polígono (usado para intrusion/loitering modes).
+        
+        Args:
+            bbox: (x1, y1, x2, y2)
+            polygon: np.ndarray [[x, y], ...]
+        
+        Returns:
+            bool: True se houver interseção
+        """
+        try:
+            x1, y1, x2, y2 = bbox
+
+            bbox_points = np.array([
+                [x1, y1],
+                [x2, y1],
+                [x2, y2],
+                [x1, y2]
+            ], dtype=np.float32)
+
+            for point in bbox_points:
+                if cv2.pointPolygonTest(polygon, tuple(point), False) >= 0:
+                    return True
+
+            for point in polygon:
+                px, py = float(point[0]), float(point[1])
+                if x1 <= px <= x2 and y1 <= py <= y2:
+                    return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Error checking bbox intersection: {e}")
+            return False
+
+
+
+
+    # ========================================================================
+    # CONTAGEM  REVISADA (tempo de confirmação + alerta consistente)
+    # ========================================================================
+    def _process_counting_mode(
+        self,
+        zone: Dict,
+        state: ZoneState,
+    ) -> Dict:
+        """
+        Counting mode - objects_inside já validado por centróide + classe.
+
+        - Usa tempo de confirmação (confirmation_time) antes de contar IN/OUT.
+        - Cada track só gera 1 evento IN depois de confirmado.
+        - Mantém alerta ativo enquanto o contador estiver >= threshold.
+        """
+        metadata = zone.get("metadata", {}) or {}
+
+        count_direction = metadata.get("count_direction", "both")
+        reset_interval = metadata.get("reset_interval", "daily")
+        alert_enabled = metadata.get("alert_enabled", False)
+        alert_threshold = metadata.get("alert_threshold", 100)
+        email_cooldown = zone.get("email_cooldown", 600.0)
+
+        confirmation_time = float(metadata.get("confirmation_time", 0))
+
+        count_in = int(metadata.get("count_in", 0))
+        count_out = int(metadata.get("count_out", 0))
+        last_reset_str = metadata.get("last_reset")
+
+        now = datetime.now()
+
+        # 1. RESET AUTOMÁTICO
+        should_reset = False
+
+        if reset_interval != "none" and last_reset_str:
+            try:
+                last_reset = datetime.fromisoformat(last_reset_str)
+
+                if reset_interval == "hourly":
+                    should_reset = (now - last_reset).total_seconds() >= 3600
+                elif reset_interval == "daily":
+                    should_reset = now.date() > last_reset.date()
+                elif reset_interval == "weekly":
+                    should_reset = (now.date() > last_reset.date() and now.weekday() == 0)
+                elif reset_interval == "monthly":
+                    should_reset = (now.date() > last_reset.date() and now.day == 1)
+            except Exception as e:
+                logger.warning(f"[COUNTING] erro ao parsear last_reset: {e}")
+                should_reset = False
+        elif reset_interval != "none" and not last_reset_str:
+            metadata["last_reset"] = now.isoformat()
+
+        if should_reset:
+            logger.info(
+                f"Zone '{zone['name']}': reset automático ({reset_interval}) "
+                f"(antes in={count_in}, out={count_out})"
+            )
+            count_in = 0
+            count_out = 0
+            metadata["count_in"] = 0
+            metadata["count_out"] = 0
+            metadata["last_reset"] = now.isoformat()
+
+        # 2. OBJETOS ATUAIS
+        current_objects = set(state.objects_inside)
+
+        # 3. TEMPO DE PERMANÊNCIA / ENTRADAS CONTADAS
+        if not hasattr(state, "entry_times"):
+            state.entry_times = {}
+
+        if not hasattr(state, "counted_entries"):
+            state.counted_entries = set()
+
+        for obj_id in list(state.entry_times.keys()):
+            if obj_id not in current_objects:
+                del state.entry_times[obj_id]
+                if obj_id in state.counted_entries:
+                    state.counted_entries.remove(obj_id)
+
+        for obj_id in current_objects:
+            if obj_id not in state.entry_times:
+                state.entry_times[obj_id] = now
+
+        # 4. DETECTAR ENTRADAS / SAÍDAS
+        if not hasattr(state, "object_positions"):
+            state.object_positions = {}
+
+        previous_objects = set(state.object_positions.keys())
+        raw_leaving = previous_objects - current_objects
+
+        entering = set()
+        for obj_id in current_objects:
+            first_seen = state.entry_times.get(obj_id)
+            if not first_seen:
+                continue
+
+            elapsed = (now - first_seen).total_seconds()
+
+            if elapsed >= confirmation_time and obj_id not in state.counted_entries:
+                entering.add(obj_id)
+                state.counted_entries.add(obj_id)
+
+        leaving = raw_leaving
+
+        # 5. ATUALIZAR CONTADORES
+        new_entries = 0
+        new_exits = 0
+
+        if count_direction in ["in", "both"]:
+            new_entries = len(entering)
+            if new_entries > 0:
+                count_in += new_entries
+                metadata["count_in"] = count_in
+
+        if count_direction in ["out", "both"]:
+            new_exits = len(leaving)
+            if new_exits > 0:
+                count_out += new_exits
+                metadata["count_out"] = count_out
+
+        state.object_positions = {obj_id: True for obj_id in current_objects}
+
+        # 6. STATUS
+        current_occupancy = len(current_objects)
+        new_status = "COUNTING" if current_occupancy > 0 else "IDLE"
+
+        # 7. ALERTAS
+        alert = False
+        alert_message = None
+
+        if alert_enabled:
+            if count_direction == "in":
+                check_count = count_in
+            elif count_direction == "out":
+                check_count = count_out
+            else:
+                check_count = max(count_in, count_out)
+
+            if check_count >= alert_threshold:
+                alert = True
+                alert_message = (
+                    f"Limite atingido: {check_count} eventos (limite: {alert_threshold})"
+                )
+
+        can_notify = True
+        if alert and state.last_alert_time:
+            elapsed_alert = (now - state.last_alert_time).total_seconds()
+            can_notify = elapsed_alert >= email_cooldown
+
+        if alert and can_notify:
+            state.last_alert_time = now
+            logger.warning(f"Zone '{zone['name']}': {alert_message}")
+
         if new_status != state.status:
             logger.info(
-                f"🔢 Zone {zone['name']} (camera {self.camera_id}): "
-                f"{state.status} → {new_status} ({count} pessoas)"
+                f"Zone '{zone['name']}': {state.status} → {new_status} "
+                f"(IN: {count_in}, OUT: {count_out}, ocupação: {current_occupancy})"
             )
-        
+
         state.status = new_status
-        
+
         return {
             "zone_id": state.zone_id,
             "zone_name": zone["name"],
             "mode": "counting",
-            "count": count,
+            "count": current_occupancy,
+            "count_in": count_in,
+            "count_out": count_out,
+            "count_direction": count_direction,
+            "reset_interval": reset_interval,
+            "last_reset": metadata.get("last_reset"),
             "status": new_status,
             "alert": alert,
-            "alert_message": f"{count} pessoas detectadas" if alert else None,
+            "alert_message": alert_message,
+            "metadata_updated": metadata,
         }
-    
+
+
+
+    def _get_zone_polygon(self, zone: Dict) -> Optional[np.ndarray]:
+        """
+        Obtém polígono da zona com cache.
+        
+        Returns:
+            np.ndarray [[x, y], ...] ou None
+        """
+        try:
+            zone_id = zone.get("id")
+            
+            # ✅ Verificar cache
+            if hasattr(self, '_polygon_cache') and zone_id in self._polygon_cache:
+                return self._polygon_cache[zone_id]
+            
+            # ✅ Extrair pontos
+            points = zone.get("points", [])
+            if not points or len(points) < 3:
+                return None
+            
+            # ✅ Converter pontos
+            coords = []
+            for p in points:
+                if isinstance(p, dict):
+                    x = p.get("x")
+                    y = p.get("y")
+                    if x is not None and y is not None:
+                        coords.append([float(x), float(y)])
+                elif isinstance(p, (list, tuple)) and len(p) >= 2:
+                    coords.append([float(p[0]), float(p[1])])
+            
+            if len(coords) < 3:
+                return None
+            
+            polygon = np.array(coords, dtype=np.int32)
+            
+            # ✅ Salvar no cache
+            if not hasattr(self, '_polygon_cache'):
+                self._polygon_cache = {}
+            self._polygon_cache[zone_id] = polygon
+            
+            return polygon
+            
+        except Exception as e:
+            logger.error(f"❌ Error creating polygon for zone '{zone.get('name')}': {e}")
+            return None
+
+
 
 
     def _process_alert_mode(self, zone: Dict, state: ZoneState) -> Dict:
@@ -577,9 +1022,9 @@ class ZoneProcessor:
         - full_timeout: tolerância antes de alertar
         """
         count = state.object_count
-        full_threshold = zone.get("fullthreshold", 1)
+        full_threshold = zone.get("full_threshold", 1)
         empty_timeout = zone.get('empty_timeout', 5.0)
-        full_timeout = zone.get("fulltimeout", 10.0)  
+        full_timeout = zone.get("full_timeout", 10.0)  
         
         now = datetime.now()
         
@@ -601,7 +1046,7 @@ class ZoneProcessor:
             alert = False
         
         # Email cooldown
-        email_cooldown = zone.get("emailcooldown", 120.0)
+        email_cooldown = zone.get("email_cooldown", 120.0)
         can_alert = True
         
         if alert and state.last_alert_time:
@@ -662,12 +1107,13 @@ class ZoneProcessor:
         }
     
 
+
     def _process_generic_mode(self, zone: Dict, state: ZoneState) -> Dict:
         """
         Generic/legacy mode: Basic occupancy logic.
         """
         count = state.object_count
-        full_threshold = zone.get("fullthreshold", 3)
+        full_threshold = zone.get("full_threshold", 3)
         
         if count >= full_threshold:
             new_status = "FULL"
@@ -689,6 +1135,11 @@ class ZoneProcessor:
     
 
     
+
+
+
+
+
     # ========================================================================
     # VISUALIZATION
     # ========================================================================
@@ -768,8 +1219,13 @@ class ZoneProcessor:
             # ========== DESENHAR BOUNDING BOXES DOS OBJETOS NA ZONA ==========
             if track_state:
                 # Obter lista de classes permitidas na zona (se houver filtro)
-                detection_classes = zone.get("detection_classes", [])
+                #detection_classes = zone.get("detection_classes", [])
+                detection_classes = zone.get("detection_classes")
                 
+                if not detection_classes:
+                    zone_metadata = zone.get("metadata", {})
+                    detection_classes = zone_metadata.get("detection_classes", [])
+
                 for obj_id in state.objects_inside:
                     if obj_id not in track_state:
                         continue
@@ -794,7 +1250,7 @@ class ZoneProcessor:
                     
                     # Importar COCO classes para obter nome da classe
                     try:
-                        from backend.services.coco_classes import COCO_CLASSES
+                        from backend.coco_classes import COCO_CLASSES
                         class_name = COCO_CLASSES.get(class_id, f"class_{class_id}")
                     except:
                         class_name = f"class_{class_id}"
@@ -902,7 +1358,6 @@ class ZoneProcessor:
         return frame
 
     
-    
     @staticmethod
     def _get_status_color(mode: str, status: str) -> Tuple[int, int, int]:
         """
@@ -941,6 +1396,7 @@ class ZoneProcessor:
         # Default: blue
         return (255, 130, 0)
     
+
     @staticmethod
     def _hex_to_bgr(hex_color: str) -> Tuple[int, int, int]:
         """
@@ -958,6 +1414,11 @@ class ZoneProcessor:
         b = int(hex_color[4:6], 16)
         return (b, g, r)
     
+
+
+
+
+
     # ========================================================================
     # METRICS AGGREGATION
     # ========================================================================

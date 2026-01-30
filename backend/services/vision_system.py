@@ -196,7 +196,7 @@ class VisionSystem:
 
     async def reload_cameras(self, cameras_data: List[dict]):
         try:
-            logger.info("🔄 Reloading cameras from DB snapshot...")
+            #logger.info("🔄 Reloading cameras from DB snapshot...")
 
             new_ids = {c["id"] for c in cameras_data}
             cur_ids = set(self.camera_contexts.keys())
@@ -217,7 +217,7 @@ class VisionSystem:
                     zones_from_db = cam.get("zones", [])
                     self.camera_contexts[cid].zones = zones_from_db
                 
-                    # ✅ CRÍTICO: Atualiza zone_processor com nova config do DB
+                    # ✅ Atualiza zone_processor com nova config do DB
                     if self.camera_contexts[cid].zone_processor:
                         self.camera_contexts[cid].zone_processor.update_zones(zones_from_db)
                         logger.info(f"🔄 ZoneProcessor updated for camera {cid} with {len(zones_from_db)} zones")
@@ -423,7 +423,7 @@ class VisionSystem:
     @property
     def track_state(self) -> dict:
         return {}
-
+  
     def get_detection_count(self) -> int:
         return int(sum(ctx.metrics.get("detected_count", 0) for ctx in self.camera_contexts.values()))
 
@@ -457,64 +457,152 @@ class VisionSystem:
 
     def get_zone_metrics(self, camera_id: int) -> List[Dict]:
         """
-        Retorna métricas em tempo real de todas as zonas de uma câmera.
+        Retorna métricas em tempo real das zonas, garantindo governança de parâmetros.
+        ✅ v5.4: Capping at limit - O tempo para de contar ao atingir o parâmetro.
+        ✅ v5.5: Inclui count_in, count_out, count_direction do metadata
+        ✅ v6.0: Expõe alert/status do ZoneProcessor (sem duplicar regra)
         """
         ctx = self.camera_contexts.get(camera_id)
         if not ctx or not ctx.zone_processor:
             return []
-        
-        metrics = []
+
+        metrics: List[Dict] = []
+        now = datetime.now()
+
+        # Pode não existir se ainda não processou nenhum frame
+        last_zone_metrics = getattr(ctx, "last_zone_metrics", {}) or {}
+
         for zone_id, state in ctx.zone_processor.zone_states.items():
             # Busca zona correspondente
             zone = next((z for z in ctx.zones if z.get("id") == zone_id), None)
             if not zone:
                 continue
-            
-            # Calcula duração em estados
-            from datetime import datetime
-            now = datetime.now()
-            
+
+            # ✅ GOVERNANÇA: Obter limites configurados no banco
+            e_limit = zone.get("empty_timeout", 5.0)
+            f_limit = zone.get("full_timeout", 10.0)
+
+            # --- LÓGICA TEMPO VAZIA (CAPPED) ---
             time_empty = 0
             if state.empty_since:
-                time_empty = int((now - state.empty_since).total_seconds())
-            
+                elapsed = (now - state.empty_since).total_seconds()
+                if state.status == "EMPTY":
+                    time_empty = int(e_limit)
+                else:
+                    time_empty = int(elapsed)
+
+            # --- LÓGICA TEMPO CHEIA (CAPPED) ---
             time_full = 0
             if state.full_since:
-                time_full = int((now - state.full_since).total_seconds())
-            
-            # ✅ Extrai max_capacity do metadata (se modo Capacity)
+                elapsed = (now - state.full_since).total_seconds()
+                if state.status in ["FULL", "CRITICAL", "ALERT"]:
+                    time_full = int(f_limit)
+                else:
+                    time_full = int(elapsed)
+
+            # ✅ Extrai metadata original
+            metadata = zone.get("metadata", {}) or {}
+
+            # ✅ max_capacity para modo Capacity
             max_capacity = None
             if zone.get("mode") == "capacity":
-                max_capacity = zone.get("metadata", {}).get("max_capacity", 50)
-            
-            metric = {
+                max_capacity = metadata.get("max_capacity", 50)
+
+            # ✅ Métricas ricas vindas do ZoneProcessor (se já existirem)
+            zp_metrics = last_zone_metrics.get(zone_id, {})  # dict retornado por _process_*_mode
+
+            # Fallbacks seguros
+            zp_status = zp_metrics.get("status")
+            zp_alert = zp_metrics.get("alert", False)
+            zp_alert_message = zp_metrics.get("alert_message")
+            zp_count_in = zp_metrics.get("count_in")
+            zp_count_out = zp_metrics.get("count_out")
+            zp_count_direction = zp_metrics.get("count_direction")
+            zp_reset_interval = zp_metrics.get("reset_interval")
+            zp_last_reset = zp_metrics.get("last_reset")
+
+            # Monta payload base
+            metric: Dict[str, Any] = {
                 "zone_id": zone_id,
                 "zone_name": zone["name"],
                 "mode": zone.get("mode", "occupancy"),
                 "current_count": state.object_count,
                 "time_empty": time_empty,
                 "time_full": time_full,
-                "state": state.status.lower(),
+                # Usa status do processor se disponível, senão o do state
+                "state": (zp_status or state.status).lower(),
+                "camera_id": zone.get("camera_id"),
+                "full_timeout": f_limit,
             }
-            
-            # ✅ Adiciona max_capacity apenas se for modo Capacity
+
+            # ✅ Campos específicos de COUNTING (sem duplicar lógica)
+            if zone.get("mode") == "counting":
+                metric["count_in"] = zp_count_in if zp_count_in is not None else metadata.get("count_in", 0)
+                metric["count_out"] = zp_count_out if zp_count_out is not None else metadata.get("count_out", 0)
+                metric["count_direction"] = zp_count_direction if zp_count_direction is not None else metadata.get("count_direction", "both")
+                metric["reset_interval"] = zp_reset_interval if zp_reset_interval is not None else metadata.get("reset_interval")
+                metric["last_reset"] = zp_last_reset if zp_last_reset is not None else metadata.get("last_reset")
+                metric["alert"] = bool(zp_alert)
+                metric["alert_message"] = zp_alert_message
+
+            # ✅ Capacity
             if max_capacity is not None:
                 metric["max_capacity"] = max_capacity
-            
+
             metrics.append(metric)
-        
+
         return metrics
+
+
+
+
+
+    def get_zone_metadata_updates(self) -> Dict[int, Dict]:
+        """
+        Coleta metadata atualizado de todas as zonas (para persistência externa).
+        
+        ✅ v3.9: Retorna dict {zone_id: metadata} para camera_sync.py salvar.
+        """
+        metadata_updates = {}
+        
+        for ctx in self.camera_contexts.values():
+            if not ctx.zone_processor:
+                continue
+            
+            for zone in ctx.zones:
+                zone_id = zone.get("id")
+                if not zone_id:
+                    continue
+                
+                # Apenas para zonas de contagem
+                if zone.get("mode") != "counting":
+                    continue
+                
+                # Metadata atual da zona (em memória)
+                current_metadata = zone.get("metadata", {})
+                if not current_metadata:
+                    continue
+                
+                # Adiciona à lista de updates
+                metadata_updates[zone_id] = current_metadata
+        
+        return metadata_updates
+
 
 
 
     def _processing_loop(self, ctx: CameraContext):
         """
         Thread de processamento YOLO + Zonas para uma câmera.
-        
+
         Roda em thread separada para não bloquear captura.
         """
         logger.info(f"🧠 Processing loop started for {ctx.name}")
-        
+
+        # ✅ Garante atributo para guardar últimas métricas de zona
+        if not hasattr(ctx, "last_zone_metrics"):
+            ctx.last_zone_metrics = {}
+
         while ctx.processing_active and ctx.is_running:
             try:
                 # Pega frame do worker
@@ -522,11 +610,11 @@ class VisionSystem:
                 if frame is None:
                     time.sleep(0.01)
                     continue
-                
+
                 # Aplica YOLO
                 if ctx.inference_worker and ctx.model:
                     results = ctx.inference_worker.run(frame)
-                    
+
                     if results and len(results) > 0:
                         # Atualiza track_state com detecções
                         track_state = {}
@@ -537,56 +625,45 @@ class VisionSystem:
                                 "class_id": int(cls),
                                 "confidence": float(conf),
                             }
-                        
-                        # ✅ NOVO: Salva track_state no contexto (thread-safe)
+
+                        # ✅ Salva track_state no contexto (thread-safe)
                         with ctx.track_state_lock:
                             ctx.track_state = track_state
-                        
-                        # ✅ DEBUG: Log classes detectadas com confidence
-                        #if len(track_state) > 0:
-                        #    from backend.coco_classes import get_class_name
-                            
-                        #    # Mostrar cada objeto com confidence
-                        #    details = []
-                        #    for obj in track_state.values():
-                        #        cls_id = obj["class_id"]
-                        #        conf = obj["confidence"]
-                        #        details.append(f"{cls_id}={get_class_name(cls_id)}({conf:.2f})")
-                            
-                        #    logger.info(
-                        #        f"🎯 {ctx.name}: {len(track_state)} objetos - "
-                        #        f"{', '.join(details)}"  # ✅ Usar details (com confidence)
-                        #    )
-                        
+
                         # Processa zonas
                         if ctx.zone_processor and track_state:
                             frame_shape = (frame.shape[0], frame.shape[1])
                             zone_metrics = ctx.zone_processor.process_frame(
                                 detections=[],
                                 track_state=track_state,
-                                frame_shape=frame_shape
+                                frame_shape=frame_shape,
                             )
-                            
-                            # Atualiza métricas do context
+
+                            # ✅ Salva últimas métricas de zona no contexto
+                            ctx.last_zone_metrics = zone_metrics
+
+                            # Atualiza métricas do context (agregado)
                             total_in_zones = sum(
                                 m.get("count", 0) for m in zone_metrics.values()
                             )
-                            
+
                             ctx.update_metrics(
                                 detected_count=len(track_state),
                                 inzone=total_in_zones,
                                 outzone=len(track_state) - total_in_zones,
                                 active_tracks=len(track_state),
                             )
-                
+
                 # Throttle: processa a ~10 FPS
                 time.sleep(0.1)
-                
+
             except Exception as e:
                 logger.error(f"❌ Error in processing loop for {ctx.name}: {e}")
                 time.sleep(0.5)
-        
+
         logger.info(f"🧠 Processing loop stopped for {ctx.name}")
+
+
 
 
 
@@ -645,6 +722,7 @@ class VisionSystem:
 
     async def reload_from_db(self, cameras_data: List[dict]):
         await self.reload_cameras(cameras_data)
+
 
 
 # ============================================================================

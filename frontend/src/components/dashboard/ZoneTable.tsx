@@ -59,6 +59,13 @@ interface ZoneTableItem {
     max_capacity?: number;
     camera_id?: number | null;
     full_timeout?: number;
+    count_in?: number;
+    count_out?: number;
+    count_direction?: 'in' | 'out' | 'both';
+    alert?: boolean;
+    alert_message?: string | null;
+    reset_interval?: 'none' | 'hourly' | 'daily' | 'weekly' | 'monthly';
+    last_reset?: string | null;
 }
 
 interface ZoneTableProps {
@@ -228,17 +235,23 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                 );
         }
     };
+
+
     const renderMetricsCell = (zone: ZoneTableItem) => {
         switch (zone.mode) {
+            
+            
             case ZoneMode.CAPACITY:
                 const maxCap = zone.max_capacity ?? 50;
                 const percent = getOccupancyPercent(zone.current_count, maxCap);
 
-                // Calcular tempo restante até alerta
-                const capacityTimeout = 10;  // TODO: Pegar do backend (zone.full_timeout)
-                const timeElapsed = zone.time_full;  // Tempo já decorrido
+                // ✅ Busca o timeout real da zona
+                const capacityTimeout = zone.full_timeout ?? 10;
+                const timeElapsed = zone.time_full;
                 const timeRemaining = Math.max(0, capacityTimeout - timeElapsed);
-                const isInPending = percent >= 100 && timeRemaining > 0;
+
+                // ✅ Verifica estados de pendência corretamente
+                const isInPending = percent >= 100 && timeRemaining > 0 && (zone.state === 'pending' || zone.state === 'full_pending');
 
                 return (
                     <td className="px-6 py-4 whitespace-nowrap text-center" colSpan={3}>
@@ -258,13 +271,14 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                                 {zone.current_count}/{maxCap} detecções
                             </div>
 
-                            {/* Contador decrescente */}
+                            {/* ✅ Contador decrescente */}
                             {isInPending && (
                                 <div className="text-xs font-semibold text-amber-600 text-center animate-pulse">
-                                    ⏳ Alerta em {timeRemaining}s
+                                    ⏳ Alerta em {Math.ceil(timeRemaining)}s
                                 </div>
                             )}
 
+                            {/* ✅ CORRIGIDO: Só mostra se o estado for 'critical' (confirmado) */}
                             {percent >= 100 && !isInPending && zone.state === 'critical' && (
                                 <div className="text-xs font-bold text-red-600 text-center">
                                     🚨 LOTAÇÃO MÁXIMA!
@@ -273,6 +287,7 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                         </div>
                     </td>
                 );
+
 
             case ZoneMode.OCCUPANCY:
                 return (
@@ -304,17 +319,156 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                     </>
                 );
 
-            case ZoneMode.COUNTING:
+
+            case ZoneMode.COUNTING: {
+                const countIn = zone.count_in ?? 0;
+                const countOut = zone.count_out ?? 0;
+                const balance = countIn - countOut;
+                const direction = zone.count_direction || 'both';
+
+                // 👇 novos campos (vêm da API)
+                const hasAlert = zone.alert === true;
+                const alertMessage = zone.alert_message || null;
+
+                const resetLabelMap: Record<string, string> = {
+                    none: 'Sem reset automático',
+                    hourly: 'Reset horário',
+                    daily: 'Reset diário',
+                    weekly: 'Reset semanal',
+                    monthly: 'Reset mensal',
+                };
+                const resetLabel =
+                    zone.reset_interval
+                        ? resetLabelMap[zone.reset_interval] || 'Reset customizado'
+                        : 'Reset padrão';
+
                 return (
                     <td className="px-6 py-4 whitespace-nowrap text-center" colSpan={3}>
-                        <div className="text-center">
-                            <span className="text-2xl font-bold block text-green-600">
-                                {zone.current_count}
-                            </span>
-                            <div className="text-xs text-gray-500">detecções</div>
+                        <div className="space-y-3">
+                            {/* Grid de contadores */}
+                            <div className="grid grid-cols-3 gap-4">
+                                {/* Entradas */}
+                                {(direction === 'in' || direction === 'both') && (
+                                    <div className="text-center">
+                                        <div className="flex items-center justify-center gap-1 mb-1">
+                                            <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                                            </svg>
+                                            <span className="text-xs font-semibold text-gray-600 uppercase">IN</span>
+                                        </div>
+                                        <div className="text-2xl font-bold text-green-600">
+                                            {countIn}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Saídas */}
+                                {(direction === 'out' || direction === 'both') && (
+                                    <div className="text-center">
+                                        <div className="flex items-center justify-center gap-1 mb-1">
+                                            <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16l-4-4m0 0l4-4m-4 4h18" />
+                                            </svg>
+                                            <span className="text-xs font-semibold text-gray-600 uppercase">OUT</span>
+                                        </div>
+                                        <div className="text-2xl font-bold text-red-600">
+                                            {countOut}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Saldo (apenas se direção = both) */}
+                                {direction === 'both' && (
+                                    <div className="text-center">
+                                        <div className="flex items-center justify-center gap-1 mb-1">
+                                            <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                            </svg>
+                                            <span className="text-xs font-semibold text-gray-600 uppercase">Saldo</span>
+                                        </div>
+                                        <div
+                                            className={`text-2xl font-bold ${balance > 0
+                                                    ? 'text-blue-600'
+                                                    : balance < 0
+                                                        ? 'text-orange-600'
+                                                        : 'text-gray-600'
+                                                }`}
+                                        >
+                                            {balance > 0 ? '+' : ''}
+                                            {balance}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Modo "in" apenas - centraliza e ocupa mais espaço */}
+                                {direction === 'in' && (
+                                    <div className="col-span-2 flex items-center justify-center">
+                                        <div className="text-center">
+                                            <div className="text-xs text-gray-500 mb-1">
+                                                Modo: <span className="font-semibold">Apenas Entradas</span>
+                                            </div>
+                                            <div className="text-sm text-gray-400">
+                                                Saídas não são contabilizadas
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Modo "out" apenas - centraliza e ocupa mais espaço */}
+                                {direction === 'out' && (
+                                    <div className="col-span-2 flex items-center justify-center">
+                                        <div className="text-center">
+                                            <div className="text-xs text-gray-500 mb-1">
+                                                Modo: <span className="font-semibold">Apenas Saídas</span>
+                                            </div>
+                                            <div className="text-sm text-gray-400">
+                                                Entradas não são contabilizadas
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Linha divisória sutil */}
+                            {direction === 'both' && (
+                                <div className="pt-2 border-t border-gray-100">
+                                    <div className="text-xs text-gray-500 text-center">
+                                        {balance > 0 && `${balance} objeto(s) dentro da zona`}
+                                        {balance === 0 && 'Entradas e saídas equilibradas'}
+                                        {balance < 0 && 'Mais saídas que entradas'}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* NOVO: Status de alerta + reset */}
+                            <div className="pt-2 border-t border-gray-100">
+                                {hasAlert && alertMessage ? (
+                                    <div className="flex items-center justify-center gap-2 text-xs font-semibold text-red-600">
+                                        <AlertCircle className="w-4 h-4" />
+                                        <span>{alertMessage}</span>
+                                    </div>
+                                ) : (
+                                    <div className="text-xs text-gray-500 text-center">
+                                        Nenhum alerta ativo
+                                    </div>
+                                )}
+
+                                <div className="mt-1 text-[11px] text-gray-400 text-center">
+                                    {resetLabel}
+                                    {zone.last_reset && (
+                                        <>
+                                            {' · Último: '}
+                                            {new Date(zone.last_reset).toLocaleString()}
+                                        </>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </td>
                 );
+            }
+                  
+
 
             case ZoneMode.ALERT:
                 return (
@@ -446,7 +600,7 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                         const modeColor = ZONE_MODE_COLORS[mode as ZoneMode];
                         const isExpanded = expandedModes.has(mode as ZoneMode);
 
-                        // ✅ NOVO: Verifica se alguma zona do grupo está em alerta
+                        // Verifica se alguma zona do grupo está em alerta
                         const hasAlert = zonesInMode.some(z => z.state === 'alert' || z.state === 'critical');
 
                         return (

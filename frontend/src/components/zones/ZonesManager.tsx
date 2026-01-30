@@ -187,7 +187,7 @@ export default function ZonesManager() {
 
 
     /**
-     * ✅ Adiciona feedback de sucesso/erro
+     * ✅ v3.9: Adiciona refresh após salvar
      */
     const handleSaveZone = async (
         data: CreateZonePayload | UpdateZonePayload,
@@ -198,6 +198,7 @@ export default function ZonesManager() {
                 const result = await createZone(data as CreateZonePayload);
                 if (result) {
                     success('Zona criada com sucesso!');
+                    await refresh();  
                     handleCloseDrawer();
                 } else {
                     showError('Erro ao criar zona');
@@ -206,6 +207,7 @@ export default function ZonesManager() {
                 const result = await updateZone(zoneId, data as UpdateZonePayload);
                 if (result) {
                     success('Zona atualizada com sucesso!');
+                    await refresh();  
                     handleCloseDrawer();
                 } else {
                     showError('Erro ao atualizar zona');
@@ -215,6 +217,7 @@ export default function ZonesManager() {
             showError(err instanceof Error ? err.message : 'Erro ao salvar zona');
         }
     };
+    
 
 
 

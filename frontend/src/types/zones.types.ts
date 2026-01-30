@@ -35,7 +35,7 @@ export enum ZoneMode {
  */
 export enum CoordinateSystem {
     NORMALIZED = "normalized",  // 0-1 range
-    ABSOLUTE = "absolute",       // Pixel coordinates (deprecated)
+    ABSOLUTE = "absolute",      // Pixel coordinates (deprecated)
     AUTO = "auto"               // Auto-detect
 }
 
@@ -96,7 +96,7 @@ export interface Zone {
     created_at: string;
     updated_at: string;
     deleted_at?: string | null;
-    
+
 }
 
 /**
@@ -250,8 +250,8 @@ export interface CanvasVisualConfig {
  * Valores padrão para nova zona v3.0
  */
 export const DEFAULT_ZONE_VALUES: Partial<CreateZonePayload> = {
-    mode: ZoneMode.OCCUPANCY,                    
-    coordinate_system: CoordinateSystem.AUTO,   
+    mode: ZoneMode.OCCUPANCY,
+    coordinate_system: CoordinateSystem.AUTO,
     empty_timeout: 5.0,
     full_timeout: 10.0,
     empty_threshold: 0,
@@ -294,7 +294,7 @@ export const ZONE_MODE_LABELS: Record<ZoneMode, string> = {
     [ZoneMode.ALERT]: "Alerta",
     [ZoneMode.TRACKING]: "Rastreamento",
     [ZoneMode.CAPACITY]: "Capacidade Máxima",
-    
+
     // v2.0 legacy
     [ZoneMode.GENERIC]: "Genérico",
     [ZoneMode.EMPTY]: "Alerta Vazio",
@@ -311,13 +311,198 @@ export const ZONE_MODE_DESCRIPTIONS: Record<ZoneMode, string> = {
     [ZoneMode.COUNTING]: "Contagem de pessoas ou objetos entrando e saindo da zona",
     [ZoneMode.ALERT]: "Alertas de intrusão em áreas restritas ou proibidas",
     [ZoneMode.TRACKING]: "Rastreamento de movimento e trajetórias de objetos",
-    [ZoneMode.CAPACITY]: "Controle de capacidade máxima (eventos, elevadores, lojas, COVID)",  
+    [ZoneMode.CAPACITY]: "Controle de capacidade máxima (eventos, elevadores, lojas, COVID)",
 
     // v2.0 legacy
     [ZoneMode.GENERIC]: "Monitoramento geral de ocupação (modo legado)",
     [ZoneMode.EMPTY]: "Alerta quando zona fica vazia por muito tempo (modo legado)",
     [ZoneMode.FULL]: "Alerta quando zona fica cheia por muito tempo (modo legado)"
 };
+
+// ==========================================================================
+// ✅ NOVO v3.3: HELPER - CAMPOS VISÍVEIS POR MODO
+// ==========================================================================
+
+/**
+ * ✅ Configuração de campos utilizados por modo, define quais campos devem ser zerados quando NÃO são usados pelo modo
+ * Usado para limpar campos ao trocar de modo (ex: capacity → counting)
+ */
+export const ZONE_MODE_FIELDS: Record<ZoneMode, {
+    threshold_empty: boolean;
+    threshold_full: boolean;
+    timeout_empty: boolean;
+    timeout_full: boolean;
+    email_cooldown: boolean;
+    capacity: boolean;
+    counting?: boolean;
+}> = {
+    // v3.3 Modes
+    'occupancy': {
+        threshold_empty: true,
+        threshold_full: true,
+        timeout_empty: true,
+        timeout_full: true,
+        email_cooldown: true,
+        capacity: false
+    },
+    'counting': {
+        threshold_empty: false,
+        threshold_full: true,
+        timeout_empty: false,
+        timeout_full: true,
+        email_cooldown: false,
+        capacity: false,
+        counting: true
+    },
+    'alert': {
+        threshold_empty: false,
+        threshold_full: true,
+        timeout_empty: false,
+        timeout_full: true,
+        email_cooldown: true,
+        capacity: false
+    },
+    'tracking': {
+        threshold_empty: false,
+        threshold_full: false,
+        timeout_empty: false,
+        timeout_full: false,
+        email_cooldown: false,
+        capacity: false
+    },
+    'capacity': {
+        threshold_empty: false,
+        threshold_full: false,
+        timeout_empty: false,
+        timeout_full: true,
+        email_cooldown: true,
+        capacity: true
+    },
+    // v2.0 Legacy
+    'GENERIC': {
+        threshold_empty: true,
+        threshold_full: true,
+        timeout_empty: true,
+        timeout_full: true,
+        email_cooldown: true,
+        capacity: false
+    },
+    'EMPTY': {
+        threshold_empty: true,
+        threshold_full: false,
+        timeout_empty: true,
+        timeout_full: false,
+        email_cooldown: true,
+        capacity: false
+    },
+    'FULL': {
+        threshold_empty: false,
+        threshold_full: true,
+        timeout_empty: false,
+        timeout_full: true,
+        email_cooldown: true,
+        capacity: false
+    }
+};
+
+
+// ============================================================================
+// ✅ v3.9: Counting Mode - Types & Defaults
+// ============================================================================
+
+/**
+ * Direção de contagem
+ */
+export type CountDirection = "in" | "out" | "both";
+
+/**
+ * Período de reset automático
+ */
+export type ResetInterval = "none" | "hourly" | "daily" | "weekly" | "monthly";
+
+/**
+ * Metadata para modo COUNTING
+ */
+export interface CountingMetadata {
+    count_direction: CountDirection;
+    count_in?: number;
+    count_out?: number;
+    reset_interval: ResetInterval;
+    last_reset?: string;
+    alert_enabled?: boolean;
+    alert_threshold?: number;
+    intersection_threshold?: number;
+    confirmation_time?: number;
+}
+
+/**
+ * Metadata para modo CAPACITY
+ */
+export interface CapacityMetadata {
+    max_capacity: number;
+    alert_percentage: number;
+}
+
+/**
+ * Labels das direções (PT-BR)
+ */
+export const COUNT_DIRECTION_LABELS: Record<CountDirection, string> = {
+    "in": "🔽 Apenas Entradas",
+    "out": "🔼 Apenas Saídas",
+    "both": "↕️ Ambas Direções"
+} as const;
+
+/**
+ * Descrições das direções
+ */
+export const COUNT_DIRECTION_DESCRIPTIONS: Record<CountDirection, string> = {
+    "in": "Conta apenas objetos entrando na zona",
+    "out": "Conta apenas objetos saindo da zona",
+    "both": "Conta entradas e saídas separadamente"
+} as const;
+
+/**
+ * Labels dos períodos de reset (PT-BR)
+ */
+export const RESET_INTERVAL_LABELS: Record<ResetInterval, string> = {
+    "none": "Nunca (acumula sempre)",
+    "hourly": "A cada 1 hora",
+    "daily": "Diariamente às 00:00",
+    "weekly": "Semanalmente (Segunda 00:00)",
+    "monthly": "Mensalmente (dia 1 às 00:00)"
+} as const;
+
+/**
+ * ✅ Metadata padrão por modo
+ */
+export const MODE_METADATA_DEFAULTS: Record<string, Record<string, any>> = {
+    // Sem metadata
+    "occupancy": {},
+    "alert": {},
+    "tracking": {},
+    "GENERIC": {},
+    "EMPTY": {},
+    "FULL": {},
+
+    // Capacity
+    "capacity": {
+        max_capacity: 50,
+        alert_percentage: 90,
+    } as CapacityMetadata,
+
+    // Counting
+    "counting": {
+        count_direction: "both",
+        count_in: 0,
+        count_out: 0,
+        reset_interval: "daily",
+        alert_enabled: false,
+        alert_threshold: 100,
+        intersection_threshold: 0.7,
+        confirmation_time: 0,
+    } as CountingMetadata,
+} as const;
+
 
 /**
  * ✅ NOVO v3.0: Ícones dos modos (string names para lucide-react)
@@ -347,7 +532,7 @@ export const ZONE_MODE_TAILWIND_CLASSES: Record<ZoneMode, string> = {
     [ZoneMode.COUNTING]: "text-green-600 bg-green-50 border-green-200",
     [ZoneMode.ALERT]: "text-red-600 bg-red-50 border-red-200",
     [ZoneMode.TRACKING]: "text-purple-600 bg-purple-50 border-purple-200",
-    [ZoneMode.CAPACITY]: "text-amber-600 bg-amber-50 border-amber-200",  
+    [ZoneMode.CAPACITY]: "text-amber-600 bg-amber-50 border-amber-200",
 
     // v2.0 legacy
     [ZoneMode.GENERIC]: "text-gray-600 bg-gray-50 border-gray-200",

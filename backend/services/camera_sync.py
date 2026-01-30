@@ -23,6 +23,7 @@ USAGE:
 
 import logging
 from typing import List, Dict, Any
+import json
 
 from backend import database
 from backend.services.vision_system import get_vision_system
@@ -88,7 +89,7 @@ async def load_cameras_for_vision_system() -> List[dict]:
     Carrega todas as câmeras ativas do banco e converte para DTOs do VisionSystem.
     """
     try:
-        logger.info("📷 Loading cameras from database for VisionSystem...")
+        #logger.info("📷 Loading cameras from database for VisionSystem...")
         cameras_db = await database.get_all_cameras(active_only=True)
         
         if not cameras_db:
@@ -101,7 +102,7 @@ async def load_cameras_for_vision_system() -> List[dict]:
             camera_dto = await map_camera_to_vision_dto(cam)
             cameras_dto.append(camera_dto)
         
-        logger.info(f"✅ Loaded {len(cameras_dto)} active camera(s) for VisionSystem")
+        #logger.info(f"✅ Loaded {len(cameras_dto)} active camera(s) for VisionSystem")
         return cameras_dto
     
     except Exception as e:
@@ -115,7 +116,7 @@ async def sync_vision_system_from_db() -> List[int]:
     Sincroniza o VisionSystem com o estado atual das câmeras no banco.
     """
     try:
-        logger.info("🔄 Starting VisionSystem synchronization from database...")
+        #logger.info("🔄 Starting VisionSystem synchronization from database...")
         cameras_data = await load_cameras_for_vision_system()
         vision_system = get_vision_system()
         await vision_system.reload_from_db(cameras_data)
@@ -144,7 +145,7 @@ async def initialize_vision_system_from_db() -> None:
         logger.info(f"✅ VisionSystem initialized with {len(cameras_data)} camera(s)")
     except Exception as e:
         logger.error(f"❌ Error initializing VisionSystem from database: {e}")
-        # Não levanta para não impedir o startup
+
 
 # ============================================================================ 
 # HOOKS PARA CRUD DE CÂMERAS
@@ -175,3 +176,41 @@ async def on_camera_deleted(camera_id: int) -> None:
         await sync_vision_system_from_db()
     except Exception as e:
         logger.error(f"❌ Error resyncing after camera deletion: {e}")
+
+
+# ============================================================================ 
+# ZONE METADATA PERSISTENCE
+# ============================================================================
+
+async def sync_zone_metadata_to_db() -> None:
+    """
+    Sincroniza metadata de zonas do VisionSystem para o banco.
+    
+    ✅ v3.9: Chamado periodicamente para persistir count_in/count_out
+    
+    Fluxo:
+        1. Coleta metadata atualizado do VisionSystem
+        2. Persiste no banco via UPDATE zones
+        3. Roda a cada 5 segundos (chamado por background task)
+    """
+    try:
+        vision_system = get_vision_system()
+        metadata_updates = vision_system.get_zone_metadata_updates()
+        
+        if not metadata_updates:
+            return  # Nada para atualizar
+        
+        # Persiste cada zona no banco
+        updated_count = 0
+        for zone_id, metadata in metadata_updates.items():
+            try:
+                await database.update_zone_metadata(zone_id, metadata)
+                updated_count += 1
+            except Exception as e:
+                logger.error(f"❌ Error updating metadata for zone {zone_id}: {e}")
+        
+        if updated_count > 0:
+            logger.debug(f"💾 Synced metadata for {updated_count} zone(s)")
+    
+    except Exception as e:
+        logger.error(f"❌ Error in sync_zone_metadata_to_db: {e}")
