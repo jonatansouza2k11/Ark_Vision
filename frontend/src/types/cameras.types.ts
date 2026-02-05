@@ -4,6 +4,14 @@
  * Updated for multi-camera streaming with individual camera_id
  */
 
+import type { TrackerType } from './trackers.types';
+
+export interface CameraMetadata {
+    default_tracker?: TrackerType;
+    // outras chaves livres que você já use
+    [key: string]: any;
+  }
+
 // ============================================
 // ENUMS
 // ============================================
@@ -34,7 +42,8 @@ export interface Camera {
     username: string | null;
     password: string | null;
     enabled: boolean;
-    metadata: Record<string, any>;
+    //metadata: Record<string, any>;
+    metadata: CameraMetadata;
     created_at: string;
     updated_at: string | null;
 }
@@ -46,7 +55,8 @@ export interface CreateCameraPayload {
     username?: string | null;
     password?: string | null;
     enabled?: boolean;
-    metadata?: Record<string, any>;
+    //metadata?: Record<string, any>;
+    metadata?: CameraMetadata;
 }
 
 export interface UpdateCameraPayload {
@@ -56,7 +66,8 @@ export interface UpdateCameraPayload {
     username?: string | null;
     password?: string | null;
     enabled?: boolean;
-    metadata?: Record<string, any>;
+    //metadata?: Record<string, any>;
+    metadata?: CameraMetadata;
 }
 
 // 🔥 RENOMEADO: Para diferenciar da resposta de runtime status
@@ -140,7 +151,9 @@ export interface CameraFormData {
     username: string;
     password: string;
     enabled: boolean;
-    metadata: Record<string, any>;
+    //metadata: Record<string, any>;
+    metadata: CameraMetadata;
+
 }
 
 export interface CameraFilters {
@@ -237,7 +250,7 @@ export function getStreamStatusColor(status: StreamStatus): string {
 }
 
 /**
- * 🔥 NOVO: Retorna texto traduzido do status
+ * Retorna texto traduzido do status
  */
 export function getStreamStatusText(status: StreamStatus): string {
     switch (status) {
@@ -294,14 +307,14 @@ export function validateCameraForm(data: CameraFormData): string[] {
 }
 
 /**
- * 🔥 NOVO: Gera URL de stream para câmera específica
+ * Gera URL de stream para câmera específica
  */
 export function getStreamUrl(cameraId: number): string {
     return `${STREAM_CONFIG.BASE_URL}/video_feed/${cameraId}`;
 }
 
 /**
- * 🔥 NOVO: Gera URL de snapshot para câmera específica
+ * Gera URL de snapshot para câmera específica
  */
 export function getSnapshotUrl(cameraId: number): string {
     return `${STREAM_CONFIG.BASE_URL}/snapshot/${cameraId}`;

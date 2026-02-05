@@ -1,8 +1,8 @@
 from contextlib import asynccontextmanager
 import logging
 
-from backend.database import init_db_pool, close_db_pool
-from backend.config import settings
+from backend.adapters.storage.database import init_db_pool, close_db_pool
+from backend.core.config.config import settings
 
 logger = logging.getLogger("lifespan")
 

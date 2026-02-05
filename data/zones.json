@@ -1,33 +1,33 @@
 [
   {
-    "id": 66,
-    "name": "Test",
+    "id": 74,
+    "name": "Alerta",
     "points": [
       [
-        0.22358025393160708,
-        0.15357485886814898
+        0.3119593613640896,
+        0.2649145453874976
       ],
       [
-        0.6617618885947866,
-        0.16012425219281656
+        0.6053027151134984,
+        0.29766151201083546
       ],
       [
-        0.7057633916571979,
-        0.8281623713089082
+        0.6254700706837703,
+        0.8805575179062488
       ],
       [
-        0.17774535490826196,
-        0.8281623713089082
+        0.2936254017547515,
+        0.893656304555584
       ]
     ],
-    "mode": "counting",
+    "mode": "alert",
     "camera_id": 13,
-    "empty_timeout": 5.0,
-    "full_timeout": 10.0,
+    "empty_timeout": 0.0,
+    "full_timeout": 5.0,
     "empty_threshold": 0,
-    "full_threshold": 3,
-    "max_out_time": 30.0,
-    "email_cooldown": null,
+    "full_threshold": 1,
+    "max_out_time": 1.0,
+    "email_cooldown": 0.0,
     "enabled": true,
     "active": true,
     "description": null,
@@ -35,7 +35,7 @@
     "tags": [],
     "snapshot_path": null,
     "metadata": {},
-    "created_at": "2026-01-29T16:12:35.801425",
-    "updated_at": "2026-01-29T16:12:35.801425"
+    "created_at": "2026-02-03T15:57:45.985032",
+    "updated_at": "2026-02-04T08:11:16.004178"
   }
 ]

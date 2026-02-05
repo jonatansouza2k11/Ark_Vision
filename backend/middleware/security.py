@@ -48,7 +48,7 @@ import hashlib
 import json
 import asyncio
 
-from config import settings
+from backend.core.config.config import settings
 
 logger = logging.getLogger("uvicorn")
 

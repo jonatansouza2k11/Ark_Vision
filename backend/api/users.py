@@ -61,7 +61,7 @@ import io
 
 from models.auth import UserResponse, UserCreate, UserUpdate
 from dependencies import get_current_admin_user, get_current_active_user, get_password_hash
-import database
+import backend.adapters.storage.database as database
 
 logger = logging.getLogger("uvicorn")
 router = APIRouter(prefix="/api/v1/users", tags=["Users"])

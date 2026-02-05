@@ -24,11 +24,11 @@ from datetime import datetime
 import logging
 
 # Database and dependencies
-from backend import database
+from backend.adapters.storage import database
 from backend.dependencies import get_current_active_user, get_current_admin_user
 
 # Hooks
-from backend.services.camera_sync import (
+from backend.runtime.orchestration.camera_sync import (
     on_camera_created,
     on_camera_updated,
     on_camera_deleted,
@@ -42,7 +42,7 @@ logger = logging.getLogger("uvicorn")
 
 router = APIRouter(
     prefix="/api/v1/cameras",
-    tags=["cameras"],
+    tags=["Cameras"],
     responses={404: {"description": "Camera not found"}},
 )
 

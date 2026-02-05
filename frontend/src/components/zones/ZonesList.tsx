@@ -36,7 +36,6 @@ interface ZonesListProps {
     onDelete: (zoneId: number) => void;
     onToggle: (zoneId: number, enabled: boolean) => void;
     onView?: (zone: Zone) => void;
-    // ✅ ADICIONAR: Props para seleção múltipla
     selectedZones?: number[];
     onSelectionChange?: (selectedIds: number[]) => void;
 }
@@ -120,23 +119,6 @@ interface ZoneCardProps {
     onDelete: () => void;
     onToggle: () => void;
     onView?: () => void;
-    isSelected?: boolean;
-    onSelect?: (selected: boolean) => void;
-    showSelection?: boolean;
-    getCameraName?: (cameraId: number | null | undefined) => string | null;
-}
-
-// ============================================================================
-// ZONE CARD COMPONENT
-// ============================================================================
-
-interface ZoneCardProps {
-    zone: Zone;
-    onEdit: () => void;
-    onDelete: () => void;
-    onToggle: () => void;
-    onView?: () => void;
-    // Props de seleção
     isSelected?: boolean;
     onSelect?: (selected: boolean) => void;
     showSelection?: boolean;
@@ -513,7 +495,7 @@ export default function ZonesList({
                         )}
                     </div>
 
-                    {/* ✅ Select All Button */}
+                    {/* Select All Button */}
                     {isSelectionMode && filteredZones.length > 0 && (
                         <button
                             onClick={handleSelectAll}

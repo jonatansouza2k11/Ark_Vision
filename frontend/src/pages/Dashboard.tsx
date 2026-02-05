@@ -1,29 +1,39 @@
 // frontend/src/pages/Dashboard.tsx
+
 import { useState, useEffect } from 'react';
-import { Users, RefreshCw, CheckCircle2, Zap, TrendingUp, Map, Layers, Camera, Video } from 'lucide-react';
+import {
+    Users,
+    RefreshCw,
+    CheckCircle2,
+    Zap,
+    TrendingUp,
+    Map,
+    Layers,
+    Camera,
+    Video,
+} from 'lucide-react';
 
 import MainLayout from '../components/layout/MainLayout';
 import { useAuthStore } from '../store/authStore';
 import VideoStream from '../components/dashboard/VideoStream';
 import StreamControls from '../components/dashboard/StreamControls';
-import SystemInfoBanner from '../components/dashboard/SystemInfoBanner';
+//import SystemInfoBanner from '../components/dashboard/SystemInfoBanner';
 import { useYOLOStream } from '../hooks/useYOLOStream';
 import { streamAPI, type CameraRuntimeStatus } from '../services/streamApi';
 
-
-// ✅ NOVO: Imports para Zonas
+// ✅ Zonas
 import { useZones } from '../hooks/useZones';
-import ZoneTable from '../components/dashboard/ZoneTable';
+import ZoneTable, { type ZoneTableItem } from '../components/dashboard/ZoneTable';
 import ZoneDrawer from '../components/zones/ZoneDrawer';
 import type { Zone, CreateZonePayload, UpdateZonePayload } from '../types/zones.types';
 
-// ✅ NOVO: Imports para Câmeras
+// ✅ Câmeras
 import { useCameras } from '../hooks/useCameras';
-
 
 // ============================================================================
 // StatCard Component
 // ============================================================================
+
 interface StatCardProps {
     icon: React.ElementType;
     iconColor: string;
@@ -31,7 +41,6 @@ interface StatCardProps {
     value: number | string;
     subtitle?: string;
 }
-
 
 function StatCard({ icon: Icon, iconColor, title, value, subtitle }: StatCardProps) {
     return (
@@ -52,16 +61,15 @@ function StatCard({ icon: Icon, iconColor, title, value, subtitle }: StatCardPro
     );
 }
 
+// ============================================================================
+// ZonesSummaryCard Component
+// ============================================================================
 
-// ============================================================================
-// ✅ NOVO: ZonesSummaryCard Component (Mini Card de Resumo)
-// ============================================================================
 interface ZonesSummaryCardProps {
     totalZones: number;
     activeZones: number;
     onOpenMap: () => void;
 }
-
 
 function ZonesSummaryCard({ totalZones, activeZones, onOpenMap }: ZonesSummaryCardProps) {
     return (
@@ -73,7 +81,6 @@ function ZonesSummaryCard({ totalZones, activeZones, onOpenMap }: ZonesSummaryCa
                     <h3 className="text-sm font-semibold text-gray-900">Zonas Configuradas</h3>
                 </div>
             </div>
-
 
             {/* Content */}
             <div className="p-4 space-y-4">
@@ -89,16 +96,14 @@ function ZonesSummaryCard({ totalZones, activeZones, onOpenMap }: ZonesSummaryCa
                     </div>
                 </div>
 
-
-                {/* Map Button */}
+                {/* Button */}
                 <button
                     onClick={onOpenMap}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm hover:shadow-md"
                 >
                     <Map className="w-4 h-4" />
-                    <span className="font-medium">Ver Mapa de Zonas</span>
+                    <span className="font-medium">Mapear Zonas</span>
                 </button>
-
 
                 {/* Info */}
                 <p className="text-xs text-gray-500 text-center">
@@ -109,19 +114,21 @@ function ZonesSummaryCard({ totalZones, activeZones, onOpenMap }: ZonesSummaryCa
     );
 }
 
-
-
 // ============================================================================
-// ✅ NOVO: CamerasSummaryCard Component (Mini Card de Resumo)
+// CamerasSummaryCard Component
 // ============================================================================
+
 interface CamerasSummaryCardProps {
     totalCameras: number;
     activeCameras: number;
     onManageCameras: () => void;
 }
 
-
-function CamerasSummaryCard({ totalCameras, activeCameras, onManageCameras }: CamerasSummaryCardProps) {
+function CamerasSummaryCard({
+    totalCameras,
+    activeCameras,
+    onManageCameras,
+}: CamerasSummaryCardProps) {
     return (
         <div className="bg-white rounded-lg shadow border border-gray-200">
             {/* Header */}
@@ -131,7 +138,6 @@ function CamerasSummaryCard({ totalCameras, activeCameras, onManageCameras }: Ca
                     <h3 className="text-sm font-semibold text-gray-900">Câmeras Configuradas</h3>
                 </div>
             </div>
-
 
             {/* Content */}
             <div className="p-4 space-y-4">
@@ -147,8 +153,7 @@ function CamerasSummaryCard({ totalCameras, activeCameras, onManageCameras }: Ca
                     </div>
                 </div>
 
-
-                {/* Manage Button */}
+                {/* Button */}
                 <button
                     onClick={onManageCameras}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all shadow-sm hover:shadow-md"
@@ -156,7 +161,6 @@ function CamerasSummaryCard({ totalCameras, activeCameras, onManageCameras }: Ca
                     <Camera className="w-4 h-4" />
                     <span className="font-medium">Gerenciar Câmeras</span>
                 </button>
-
 
                 {/* Info */}
                 <p className="text-xs text-gray-500 text-center">
@@ -168,171 +172,373 @@ function CamerasSummaryCard({ totalCameras, activeCameras, onManageCameras }: Ca
 }
 
 // ============================================================================
+// Normalização de estado do backend -> estado do ZoneTable
+// ============================================================================
+function normalizeState(backendState: string | undefined | null): ZoneTableItem['state'] {
+    if (!backendState) return 'normal';
+
+    const key = backendState.toUpperCase().replace(/[\s]/g, '');
+
+    const stateMap: Record<string, ZoneTableItem['state']> = {
+        NORMAL: 'normal',
+        EMPTY: 'empty',
+        EMPTYPENDING: 'emptypending',
+        OCCUPIED: 'normal',
+        FULL: 'critical',
+        FULLPENDING: 'fullpending',
+        WARNING: 'warning',
+        CRITICAL: 'critical',
+        ALERT: 'alert',
+        PENDING: 'pending',
+        DETECTED: 'alert',
+        IDLE: 'normal',
+        TRACKING: 'normal',
+
+        // Estados específicos de fila
+        QUEUENORMAL: 'normal',
+        QUEUEWARNING: 'warning',
+        QUEUECRITICAL: 'critical',
+    };
+
+    return stateMap[key] ?? 'normal';
+  }
+
+// ============================================================================
 // Dashboard Page
 // ============================================================================
 
-//  Normalizar status do backend para frontend
-const normalizeState = (backendState: string): 'empty' | 'normal' | 'warning' | 'alert' | 'critical' | 'pending' | 'empty_pending' | 'full_pending' => {
-    const stateMap: Record<string, any> = {
-        'NORMAL': 'normal',
-        'EMPTY': 'empty',
-        'EMPTY_PENDING': 'empty_pending',
-        'OCCUPIED': 'normal',
-        'FULL': 'critical',
-        'FULL_PENDING': 'full_pending',
-        'WARNING': 'warning',
-        'CRITICAL': 'critical',
-        'ALERT': 'alert',
-        'PENDING': 'pending',
-        'DETECTED': 'alert',
-        'IDLE': 'normal',
-        'TRACKING': 'normal',
-    };
-    return stateMap[backendState.toUpperCase()] || 'normal';
-};
-
 export default function Dashboard() {
-    const { user } = useAuthStore();
-    const { stats } = useYOLOStream(2000, true);
+    const user = useAuthStore((s) => s.user);
 
+    // ✅ usar destructuring do hook (UseYOLOStreamReturn)
+    const {
+        stats,
+        error: streamError,
+    } = useYOLOStream(2000, true);
 
-    // Zonas State e Hook
-    const { zones, loading: zonesLoading, fetchZones, createZone } = useZones();
+    // Zonas
+    const {
+        zones,
+        loading: zonesLoading,
+        fetchZones,
+        createZone,
+    } = useZones();
+
+    // Drawer de zonas
     const [showZoneMap, setShowZoneMap] = useState(false);
     const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
 
-    // Métricas de zonas em tempo real
+    // Métricas de zonas em tempo real (payload da API em snake_case)
     const [zoneMetrics, setZoneMetrics] = useState<any[]>([]);
 
-    // Câmeras Hook
-    const { cameras } = useCameras();
+    // Câmeras (lista de configuração) – hook retorna objeto
+    const {
+        cameras,
+    } = useCameras();
 
-    // State para seleção de câmera no dashboard
-    const [selectedCameraId, setSelectedCameraId] = useState<number | null>(null);
+    // Câmeras disponíveis no VisionSystem (runtime)
     const [availableCameras, setAvailableCameras] = useState<CameraRuntimeStatus[]>([]);
+    const [selectedCameraId, setSelectedCameraId] = useState<number | null>(null);
 
-    const [dashboardStats] = useState({
-        status: 'Sistema Operacional',
-    });
+    // Status do sistema com base no stream (mapeia system_status -> banner)
+    const systemStatus: 'online' | 'offline' | 'paused' | 'stopped' = !stats
+        ? 'offline'
+        : stats.system_status === 'running'
+            ? 'online'
+            : stats.system_status === 'paused'
+                ? 'paused'
+                : stats.system_status === 'stopped'
+                    ? 'stopped'
+                    : 'offline';
 
+    // FPS atual com fallbacks (fps_current -> fps_avg -> fpsavg)
+    const fpsCurrentDisplay = stats
+        ? Math.round(
+            (stats.fps_current ??
+                stats.fps_avg ??
+                stats.fpsavg ??
+                0),
+        )
+        : 0;
 
-    // Calcular status baseado no stream
-    const systemStatus: 'online' | 'offline' | 'paused' | 'stopped' =
-        stats?.system_status === 'running' ? 'online' :
-            stats?.system_status === 'paused' ? 'paused' :
-                stats?.system_status === 'stopped' ? 'stopped' : 'offline';
+    // FPS médio (fps_avg -> fpsavg -> fps_current)
+    const fpsAvgDisplay = stats
+        ? Math.round(
+            (stats.fps_avg ??
+                stats.fpsavg ??
+                stats.fps_current ??
+                0),
+        )
+        : 0;
 
+    // Detecções (campo oficial em YOLOStats)
+    const detectedToday = stats?.detected_count ?? 0;
 
-    // Formatar FPS atual (com fallback para fpsavg)
-    const fpsCurrentDisplay = stats?.fps_current !== undefined
-        ? Math.round(stats.fps_current)
-        : Math.round(stats?.fpsavg || 0);
+    // Zonas e câmeras ativas
+    const activeZonesCount = zones.filter((z) => z.enabled).length;
+    const activeCamerasCount = cameras.filter((c) => c.enabled).length;
 
-
-    // Formatar FPS médio (com fallback para fpsavg)
-    const fpsAvgDisplay = stats?.fps_avg !== undefined
-        ? Math.round(stats.fps_avg)
-        : Math.round(stats?.fpsavg || 0);
-
-
-    // Calcular zonas ativas
-    const activeZonesCount = zones.filter(z => z.enabled).length;
-
-
-    // Calcular câmeras ativas
-    const activeCamerasCount = cameras.filter(c => c.enabled).length;
-
+    // ==========================================================================
+    // Efeitos de carregamento
+    // ==========================================================================
 
     // Buscar zonas ao montar
     useEffect(() => {
-        fetchZones(false); // false = apenas ativas
+        fetchZones(false);
     }, [fetchZones]);
-
 
     // Carregar câmeras disponíveis no VisionSystem
     useEffect(() => {
+        const loadAvailableCameras = async () => {
+            try {
+                // Recarrega do backend para pegar zonas/câmeras atualizadas
+                await streamAPI.reloadCameras().catch((err: unknown) => {
+                    console.warn('Failed to reload cameras', err);
+                });
+
+                const response = await streamAPI.getCameras();
+                setAvailableCameras(response.data);
+
+                // Seleciona primeira câmera por padrão
+                if (!selectedCameraId && response.data.length > 0) {
+                    setSelectedCameraId(response.data[0].camera_id);
+                }
+            } catch (error) {
+                console.error('Error loading cameras', error);
+            }
+        };
+
         loadAvailableCameras();
 
-        // Recarrega quando a página ganha foco (volta de outra aba/página)
+        // Recarrega quando a página ganha foco
         const handleFocus = () => {
             loadAvailableCameras();
         };
 
-        window.addEventListener('focus', handleFocus);
-        document.addEventListener('visibilitychange', () => {
+        const handleVisibility = () => {
             if (!document.hidden) {
                 loadAvailableCameras();
             }
-        });
+        };
+
+        window.addEventListener('focus', handleFocus);
+        document.addEventListener('visibilitychange', handleVisibility);
 
         return () => {
             window.removeEventListener('focus', handleFocus);
+            document.removeEventListener('visibilitychange', handleVisibility);
         };
-    }, []);
+    }, [selectedCameraId]);
 
-    const loadAvailableCameras = async () => {
-        try {
-            // Recarrega do banco para pegar zonas atualizadas
-            await streamAPI.reloadCameras().catch((err: unknown) => {
-                console.warn("Failed to reload cameras:", err);
-            });
-            
-
-            const response = await streamAPI.getCameras();
-            setAvailableCameras(response.data);
-
-            // Seleciona primeira câmera por padrão
-            if (!selectedCameraId && response.data.length > 0) {
-                setSelectedCameraId(response.data[0].camera_id);
-            }
-        } catch (error) {
-            console.error("Error loading cameras:", error);
-        }
-    };
-
-
-    // Carregar métricas de zonas
+    // Carregar métricas de zonas periodicamente
     useEffect(() => {
         if (!selectedCameraId) return;
 
         const loadZoneMetrics = async () => {
             try {
+                const token = localStorage.getItem('access_token');
                 const response = await fetch(
                     `http://localhost:8000/api/v1/stream/zone_metrics/${selectedCameraId}`,
                     {
                         headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-                        }
-                    }
+                            Authorization: token ? `Bearer ${token}` : '',
+                        },
+                    },
                 );
+
                 if (response.ok) {
                     const data = await response.json();
-                    setZoneMetrics(data);
+                    setZoneMetrics(data ?? []);
+                } else {
+                    console.warn('Falha ao carregar métricas de zona', response.status);
                 }
             } catch (error) {
-                console.error('Error loading zone metrics:', error);
+                console.error('Error loading zone metrics', error);
             }
         };
 
         loadZoneMetrics();
         const interval = setInterval(loadZoneMetrics, 2000);
-
         return () => clearInterval(interval);
     }, [selectedCameraId]);
 
+    // ==========================================================================
+    // Handlers
+    // ==========================================================================
 
-    // Handler para abrir mapa
     const handleOpenMap = () => {
         setShowZoneMap(true);
         setSelectedZone(null);
     };
 
-
-    // Handler para gerenciar câmeras
     const handleManageCameras = () => {
         window.location.href = '/cameras';
     };
 
+    const handleManageZones = () => {
+        window.location.href = '/zones';
+    };
+
+    const handleRefreshAll = () => {
+        fetchZones(false);
+        // força reload de câmeras/runtime
+        (async () => {
+            try {
+                await streamAPI.reloadCameras();
+                const response = await streamAPI.getCameras();
+                setAvailableCameras(response.data);
+            } catch (err) {
+                console.error('Erro ao recarregar câmeras', err);
+            }
+        })();
+    };
+
+    // ==========================================================================
+    // Mapeamento das métricas da API -> ZoneTableItem[]
+    // ==========================================================================
+
+    const zoneTableData: ZoneTableItem[] = zones
+        .filter((z) => z.enabled)
+        .map((zone) => {
+            // Métricas em snake_case vindas da API
+            const metrics = zoneMetrics.find(
+                (m) => m.zone_id === zone.id || m.zoneid === zone.id,
+            );
+
+            // if (zone.mode === 'queue') {
+            //   console.log('[QUEUE METRICS]', {
+            //     zoneId: zone.id,
+            //     zoneName: zone.name,
+            //     metrics,
+            //   });
+            // }
+
+            // Usa state ou status, com fallback para 'normal'
+            const backendState: string =
+                (metrics?.state as string) ?? (metrics?.status as string) ?? 'normal';
+            const normalizedState = normalizeState(backendState);
+            const hasAlert = metrics?.alert === true;
+
+            // Objeto base compatível com o ZoneTableItem atual
+            const base: ZoneTableItem = {
+                // Campos exigidos por ZoneTableItem
+                zoneid: zone.id,
+                zonename: zone.name,
+                mode: zone.mode,
+
+                currentcount: metrics?.current_count ?? metrics?.currentcount ?? 0,
+                timeempty: metrics?.time_empty ?? metrics?.timeempty ?? 0,
+                timefull: metrics?.time_full ?? metrics?.timefull ?? 0,
+
+                state: hasAlert ? 'alert' : normalizedState,
+
+                maxcapacity: metrics?.max_capacity ?? metrics?.maxcapacity,
+                cameraid: zone.camera_id ?? null,
+                fulltimeout: metrics?.full_timeout ?? metrics?.fulltimeout,
+
+                countin: metrics?.count_in ?? metrics?.countin,
+                countout: metrics?.count_out ?? metrics?.countout,
+                countdirection: metrics?.count_direction ?? metrics?.countdirection,
+
+                alert: metrics?.alert ?? false,
+                alertmessage:
+                    metrics?.alert_message ?? metrics?.alertmessage ?? null,
+                resetinterval: metrics?.reset_interval ?? metrics?.resetinterval,
+                lastreset: metrics?.last_reset ?? metrics?.lastreset ?? null,
+
+                // Inicializa KPIs de fila como indefinidos
+                queue_length: undefined,
+                avg_wait_time: undefined,
+                max_wait_time: undefined,
+                abandon_count: undefined,
+                abandon_avg_wait: undefined,
+                last_abandon_wait: undefined,
+            };
+
+            // Métricas específicas de FILA (queue) – todas as quantidades disponíveis
+            if (zone.mode === 'queue') {
+                // Comprimento da fila
+                const queueLenRaw =
+                    metrics?.queue_length ??
+                    metrics?.queuelength ?? // legado
+                    metrics?.queueLength ?? // camelCase eventual
+                    metrics?.metadata?.queue_length ??
+                    metrics?.metadata?.queuelength ??
+                    base.currentcount;
+
+                base.queue_length =
+                    queueLenRaw !== undefined && queueLenRaw !== null
+                        ? Number(queueLenRaw)
+                        : base.currentcount;
+
+                // Garantir que venham como number (formatTime exige número finito)
+                const avgWaitRaw =
+                    metrics?.avg_wait_time ??
+                    metrics?.avgwaittime ?? // legado
+                    metrics?.avgWaitTime ?? // camelCase eventual
+                    metrics?.metadata?.avg_wait_time ??
+                    metrics?.metadata?.avgwaittime;
+
+                const maxWaitRaw =
+                    metrics?.max_wait_time ??
+                    metrics?.maxwaittime ?? // legado
+                    metrics?.maxWaitTime ?? // camelCase eventual
+                    metrics?.metadata?.max_wait_time ??
+                    metrics?.metadata?.maxwaittime;
+
+                const abandonCountRaw =
+                    metrics?.abandon_count ??
+                    metrics?.abandoncount ?? // legado
+                    metrics?.abandonCount ??
+                    metrics?.metadata?.abandon_count ??
+                    metrics?.metadata?.abandoncount;
+
+                const abandonAvgRaw =
+                    metrics?.abandon_avg_wait ??
+                    metrics?.abandonavgwait ?? // legado
+                    metrics?.abandonAvgWait ??
+                    metrics?.metadata?.abandon_avg_wait ??
+                    metrics?.metadata?.abandonavgwait;
+
+                const lastAbandonRaw =
+                    metrics?.last_abandon_wait ??
+                    metrics?.lastabandonwait ?? // legado
+                    metrics?.lastAbandonWait ??
+                    metrics?.metadata?.last_abandon_wait ??
+                    metrics?.metadata?.lastabandonwait;
+
+                base.avg_wait_time =
+                    avgWaitRaw !== undefined && avgWaitRaw !== null
+                        ? Number(avgWaitRaw)
+                        : undefined;
+
+                base.max_wait_time =
+                    maxWaitRaw !== undefined && maxWaitRaw !== null
+                        ? Number(maxWaitRaw)
+                        : undefined;
+
+                base.abandon_count =
+                    abandonCountRaw !== undefined && abandonCountRaw !== null
+                        ? Number(abandonCountRaw)
+                        : undefined;
+
+                base.abandon_avg_wait =
+                    abandonAvgRaw !== undefined && abandonAvgRaw !== null
+                        ? Number(abandonAvgRaw)
+                        : undefined;
+
+                base.last_abandon_wait =
+                    lastAbandonRaw !== undefined && lastAbandonRaw !== null
+                        ? Number(lastAbandonRaw)
+                        : undefined;
+            }
+
+            return base;
+        });
+
+    // ==========================================================================
+    // Render
+    // ==========================================================================
 
     return (
         <MainLayout>
@@ -341,37 +547,36 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-                        <p className="text-gray-600 mt-1">Bem-vindo, {user?.username}!</p>
+                        <p className="text-gray-600 mt-1">
+                            Bem-vindo, {user?.username}!
+                        </p>
                     </div>
+
                     <button
-                        onClick={() => {
-                            fetchZones(false);
-                            loadAvailableCameras();
-                        }}
+                        onClick={handleRefreshAll}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                     >
                         <RefreshCw className="h-4 w-4" />
                         Atualizar
                     </button>
-
                 </div>
 
-
-                {/* System Info Banner */}
+                {/* System Info */}
+                {/*
                 <SystemInfoBanner
                     modelName="YOLOv8n"
-                    videoSource={stats?.preset || "BALANCED"}
+                    videoSource={stats?.preset ?? 'BALANCED'}
                     status={systemStatus}
                 />
+                */}
 
-
-                {/* Stats Grid - 4 colunas */}
+                {/* Stats Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <StatCard
                         icon={Users}
                         iconColor="bg-blue-500"
                         title="Detecções Hoje"
-                        value={stats?.detected_count || 0}
+                        value={detectedToday}
                         subtitle="Últimas 24h"
                     />
                     <StatCard
@@ -391,46 +596,48 @@ export default function Dashboard() {
                     <StatCard
                         icon={CheckCircle2}
                         iconColor="bg-purple-500"
-                        title={dashboardStats.status}
-                        value={1}
-                        subtitle="Status Sistema"
+                        title="Status Sistema"
+                        value={systemStatus.toUpperCase()}
+                        subtitle="Baseado no stream"
                     />
                 </div>
 
-
-                {/* Grid Video Stream + Controles + Zonas */}
+                {/* Grid Video + Sidebar */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Video Stream - ocupa 2 colunas */}
+                    {/* Vídeo - 2 colunas */}
                     <div className="lg:col-span-2 space-y-4">
                         {/* Seletor de Câmera */}
-                        {availableCameras.length > 0 && (
-                            <div className="bg-white rounded-lg shadow border border-gray-200 p-4">
-                                <div className="flex items-center gap-3">
-                                    <Video className="w-5 h-5 text-gray-500" />
-                                    <label className="text-sm font-medium text-gray-700">
-                                        Câmera:
-                                    </label>
-                                    <select
-                                        value={selectedCameraId || ""}
-                                        onChange={(e) => setSelectedCameraId(Number(e.target.value))}
-                                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    >
-                                        {availableCameras.map((camera) => (
-                                            <option key={camera.camera_id} value={camera.camera_id}>
-                                                {camera.name} - {camera.running ? "Rodando" : "Parado"}
-                                            </option>
-                                        ))}
-
-
-                                    </select>
-                                </div>
+                        <div className="bg-white rounded-lg shadow border border-gray-200 p-4">
+                            <div className="flex items-center gap-3 mb-3">
+                                <Video className="w-5 h-5 text-gray-500" />
+                                <label className="text-sm font-medium text-gray-700">
+                                    Câmeras
+                                </label>
                             </div>
-                        )}
 
+                            <select
+                                value={selectedCameraId ?? ''}
+                                onChange={(e) =>
+                                    setSelectedCameraId(
+                                        e.target.value ? Number(e.target.value) : null,
+                                    )
+                                }
+                                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                                <option value="">Selecione uma câmera</option>
+                                {availableCameras.map((camera) => (
+                                    <option key={camera.camera_id} value={camera.camera_id}>
+                                        {camera.name} - {camera.running ? 'Rodando' : 'Parado'}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Stream de vídeo */}
                         <VideoStream cameraId={selectedCameraId ?? undefined} />
                     </div>
 
-                    {/* Coluna lateral com StreamControls + ZonesSummary + CamerasSummary */}
+                    {/* Coluna lateral */}
                     <div className="lg:col-span-1 space-y-6">
                         <StreamControls />
 
@@ -447,125 +654,100 @@ export default function Dashboard() {
                         />
                     </div>
                 </div>
-                
 
-
-                    {/* ========================================== */}
-                    {/* SEÇÃO DE GERENCIAMENTO DE ZONAS  */}
-                    {/* ========================================== */}
-
-                    {/* Tabela de Zonas com Header e Botão */}
-                    {zones.length > 0 && (
-                        <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-                            {/* Header com Botão Gerenciar */}
-                            <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
-                                <div className="flex items-center justify-between">
-                                    {/* Título e Info */}
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                                            <Layers className="w-5 h-5 text-white" />
-                                        </div>
-                                        <div>
-                                            <h2 className="text-lg font-bold text-gray-900">Zonas Monitoradas</h2>
-                                            <p className="text-sm text-gray-600">
-                                                {activeZonesCount} de {zones.length} ativas
-                                            </p>
-                                        </div>
+                {/* Seção de gerenciamento de zonas */}
+                <div className="space-y-4">
+                    {/* Header + botão Gerenciar */}
+                    <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+                        <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                                        <Layers className="w-5 h-5 text-white" />
                                     </div>
-
-                                    {/* Botão Gerenciar Zonas */}
-                                    <button
-                                        onClick={() => window.location.href = '/zones'}
-                                        className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all shadow-md hover:shadow-lg font-medium"
-                                    >
-                                        <Layers className="w-4 h-4" />
-                                        <span>Gerenciar Zonas</span>
-                                    </button>
+                                    <div>
+                                        <h2 className="text-lg font-bold text-gray-900">
+                                            Zonas Monitoradas
+                                        </h2>
+                                        <p className="text-sm text-gray-600">
+                                            {activeZonesCount} de {zones.length} ativas
+                                        </p>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Tabela de Zonas */}
-                            <div className="p-6">
-                            <ZoneTable
-                                zones={zones
-                                    .filter((z) => z.enabled)
-                                    .map((zone) => {
-                                        const metrics = zoneMetrics.find(m => m.zone_id === zone.id);
-
-                                        const backendState = metrics?.state ?? 'normal';
-                                        const normalizedState = normalizeState(backendState);
-
-                                        const hasAlert = metrics?.alert === true;
-
-                                        return {
-                                            zone_id: zone.id,
-                                            zone_name: zone.name,
-                                            mode: zone.mode,
-                                            current_count: metrics?.current_count ?? 0,
-                                            time_empty: metrics?.time_empty ?? 0,
-                                            time_full: metrics?.time_full ?? 0,
-                                            state: hasAlert ? 'alert' : normalizedState,
-                                            max_capacity: metrics?.max_capacity,
-                                            camera_id: zone.camera_id,
-                                            full_timeout: zone.full_timeout,
-                                            count_in: metrics?.count_in,
-                                            count_out: metrics?.count_out,
-                                            count_direction: metrics?.count_direction,
-                                            alert: metrics?.alert ?? false,
-                                            alert_message: metrics?.alert_message ?? null,
-                                            reset_interval: metrics?.reset_interval,
-                                            last_reset: metrics?.last_reset ?? null,
-                                        };
-                                    })}
-                            />
-
-                            </div>
-                        </div>
-                    )}
-                    {/* Mensagem quando não há zonas */}
-                    {zones.length === 0 && !zonesLoading && (
-                        <div className="bg-white rounded-lg shadow border border-gray-200 p-12">
-                            <div className="text-center space-y-3">
-                                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
-                                    <Layers className="w-8 h-8 text-gray-400" />
-                                </div>
-                                <h3 className="text-lg font-semibold text-gray-900">
-                                    Nenhuma Zona Configurada
-                                </h3>
-                                <p className="text-gray-600">
-                                    Configure zonas para monitorar áreas específicas no vídeo
-                                </p>
                                 <button
-                                    onClick={() => window.location.href = '/zones'}
-                                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={handleManageZones}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all shadow-md hover:shadow-lg font-medium"
                                 >
                                     <Layers className="w-4 h-4" />
-                                    Ir para Zonas
+                                    <span>Gerenciar Zonas</span>
                                 </button>
                             </div>
                         </div>
-                    )}
 
+                        {/* Tabela de Zonas / Empty state */}
+                        <div className="p-6">
+                            {zones.length > 0 ? (
+                                <ZoneTable zones={zoneTableData} />
+                            ) : !zonesLoading ? (
+                                <div className="bg-white rounded-lg border border-gray-200 p-12">
+                                    <div className="text-center space-y-3">
+                                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
+                                            <Layers className="w-8 h-8 text-gray-400" />
+                                        </div>
+                                        <h3 className="text-lg font-semibold text-gray-900">
+                                            Nenhuma Zona Configurada
+                                        </h3>
+                                        <p className="text-gray-600">
+                                            Configure zonas para monitorar áreas específicas no vídeo.
+                                        </p>
+                                        <button
+                                            onClick={handleManageZones}
+                                            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                        >
+                                            <Layers className="w-4 h-4" />
+                                            <span>Ir para Zonas</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-gray-500">Carregando zonas...</p>
+                            )}
+                        </div>
+                    </div>
 
-                    {/* Atividade Recente */}
+                    {/* Atividade recente (placeholder) */}
                     <div className="bg-white rounded-lg shadow">
                         <div className="p-6 border-b border-gray-200">
-                            <h2 className="text-lg font-semibold text-gray-900">Atividade Recente</h2>
+                            <h2 className="text-lg font-semibold text-gray-900">
+                                Atividade Recente
+                            </h2>
                         </div>
                         <div className="p-6">
-                            <p className="text-gray-500 text-center py-8">Nenhuma atividade recente</p>
+                            <p className="text-gray-500 text-center py-8">
+                                Nenhuma atividade recente
+                            </p>
+                            {streamError && (
+                                <p className="mt-2 text-xs text-red-500 text-center">
+                                    Erro do stream: {streamError}
+                                </p>
+                            )}
                         </div>
                     </div>
                 </div>
+            </div>
 
-
-            {/* Modal de Visualização/Criação de Zonas */}
+            {/* Modal de visualização/criação de zonas */}
             {showZoneMap && (
                 <ZoneDrawer
-                    isOpen={true}
+                    isOpen
                     mode="create"
-                    zone={selectedZone || undefined}
-                    streamUrl={selectedCameraId ? streamAPI.getStreamUrl(selectedCameraId) : "http://localhost:8000/api/v1/stream/video_feed"}
+                    zone={selectedZone ?? undefined}
+                    streamUrl={
+                        selectedCameraId
+                            ? streamAPI.getStreamUrl(selectedCameraId)
+                            : 'http://localhost:8000/api/v1/stream/video_feed'
+                    }
                     cameraId={selectedCameraId ?? undefined}
                     onClose={() => {
                         setShowZoneMap(false);
@@ -573,24 +755,22 @@ export default function Dashboard() {
                     }}
                     onSave={async (data: CreateZonePayload | UpdateZonePayload) => {
                         try {
-                            // ✅ USA O createZone JÁ INSTANCIADO NO TOPO
+                            // Usa o createZone já instanciado no hook
                             const result = await createZone(data as CreateZonePayload);
-
                             if (result) {
-                                console.log('✅ Zona criada com sucesso:', result);
+                                console.log('Zona criada com sucesso', result);
                                 setShowZoneMap(false);
                                 setSelectedZone(null);
-                                await fetchZones(false);  // Atualiza lista
+                                await fetchZones(false);
                             } else {
-                                console.error('❌ Falha ao criar zona (retornou null)');
+                                console.error('Falha ao criar zona - retorno null');
                             }
                         } catch (err) {
-                            console.error('❌ Erro ao criar zona:', err);
+                            console.error('Erro ao criar zona', err);
                         }
                     }}
                 />
             )}
-
         </MainLayout>
     );
 }

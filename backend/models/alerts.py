@@ -3,26 +3,6 @@
 backend/models/alerts.py - ULTRA OPTIMIZED v3.0
 Pydantic Models para Sistema de Alertas
 ============================================================================
-NEW Features in v3.0:
-- Alert state machine (lifecycle management)
-- Alert priority scoring
-- Alert aggregation and grouping
-- Bulk alert operations
-- Alert statistics and metrics
-- Enhanced validation rules
-- Alert filtering helpers
-- Alert export formats (JSON, CSV, Email)
-- Alert resolution workflow
-- Alert history tracking
-- Alert deduplication
-- Time-based alert analysis
-
-Previous Features:
-- AlertCreate, AlertUpdate, AlertResponse
-- Severity levels (LOW, MEDIUM, HIGH, CRITICAL)
-- Alert types (zone violations, etc.)
-- Metadata support
-============================================================================
 """
 
 from typing import Optional, Dict, Any, Union, List, Tuple

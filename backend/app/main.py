@@ -29,7 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from backend.services.camera_sync import initialize_vision_system_from_db
+from backend.runtime.orchestration.camera_sync import initialize_vision_system_from_db
 # ----------------------------------------------------------------------------
 # PATH & LOGGING
 # ----------------------------------------------------------------------------
@@ -45,8 +45,8 @@ logger = logging.getLogger("uvicorn")
 # ----------------------------------------------------------------------------
 # LOCAL IMPORTS
 # ----------------------------------------------------------------------------
-from backend.config import settings
-from backend import database
+from backend.core.config.config import settings
+from backend.adapters.storage import database
 from backend.dependencies import limiter
 from slowapi.errors import RateLimitExceeded
 
@@ -115,7 +115,7 @@ async def lifespan(app: FastAPI):
             logger.error(f"⚠️ VisionSystem init failed: {e}")
 
         # ✅ v3.9: Inicia background task de sync de metadata
-        from backend.services.camera_sync import sync_zone_metadata_to_db
+        from backend.runtime.orchestration.camera_sync import sync_zone_metadata_to_db
         
         async def metadata_sync_loop():
             """Loop de sincronização de metadata de zonas."""
@@ -152,8 +152,6 @@ async def lifespan(app: FastAPI):
     
     await database.close_db_pool()
     logger.info("✅ Database closed")
-
-
 
 
 # ----------------------------------------------------------------------------

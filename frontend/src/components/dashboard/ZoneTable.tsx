@@ -1,175 +1,269 @@
+// frontend/src/components/dashboard/ZoneTable.tsx
+
 /**
- * ZoneTable.tsx v5.3 - COM ANIMAÇÃO DE ALERTA SUAVE
- * ✅ Agrupamento por modo com seções colapsáveis
- * ✅ Filtro por câmera
- * ✅ Colunas dinâmicas por regra de negócio
- * ✅ Bordas e espaçamento visual entre grupos
- * ✅ NOVO: Animação de pulsação em alertas
+ * ZoneTable.tsx v5.4
+ * - Agrupamento por modo com seções colapsáveis
+ * - Filtro por câmera
+ * - Colunas dinâmicas por regra de negócio
+ * - Animação de pulsação em alertas
+ * - Modo Fila usando todos os KPIs (comprimento, tempos e abandonos)
  */
 
-import { useState } from 'react';
-import { ZoneMode, ZONE_MODE_LABELS, ZONE_MODE_COLORS } from '../../types/zones.types';
-import { AlertCircle, TrendingUp, ShieldAlert, Users, Eye, UserPlus, ChevronDown, ChevronUp, Camera, RefreshCw } from 'lucide-react';
-import { useCameras } from '../../hooks/useCameras';
+import React, { useState } from "react";
+import {
+    ZoneMode,
+    ZONE_MODE_LABELS,
+    ZONE_MODE_COLORS,
+} from "../../types/zones.types";
 
-// ============================================================================
+import {
+    AlertCircle,
+    TrendingUp,
+    ShieldAlert,
+    Users,
+    Eye,
+    UserPlus,
+    ChevronDown,
+    ChevronUp,
+    Camera as CameraIcon,
+    RefreshCw,
+} from "lucide-react";
+
+import useCameras from "../../hooks/useCameras";
+import type { Camera } from "../../types/cameras.types";
+
+// ============================================
 // CSS PARA ANIMAÇÃO DE ALERTA SUAVE
-// ============================================================================
+// ============================================
 
 const alertAnimationStyles = `
 @keyframes alertPulse {
-    0%, 100% {
-        background-color: rgba(239, 68, 68, 0.05);
-        border-color: rgba(239, 68, 68, 0.2);
-    }
-    50% {
-        background-color: rgba(239, 68, 68, 0.15);
-        border-color: rgba(239, 68, 68, 0.4);
-    }
+  0%, 100% {
+    background-color: rgba(239, 68, 68, 0.05);
+    border-color: rgba(239, 68, 68, 0.2);
+  }
+  50% {
+    background-color: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+  }
 }
 
 .alert-pulse {
-    animation: alertPulse 2s ease-in-out infinite;
+  animation: alertPulse 2s ease-in-out infinite;
 }
 `;
 
-// Injetar estilos no document
-if (typeof document !== 'undefined') {
-    const styleId = 'zone-alert-animation';
+// Injetar estilos no document (apenas no browser)
+if (typeof document !== "undefined") {
+    const styleId = "zone-alert-animation";
     if (!document.getElementById(styleId)) {
-        const style = document.createElement('style');
+        const style = document.createElement("style");
         style.id = styleId;
         style.textContent = alertAnimationStyles;
         document.head.appendChild(style);
     }
 }
 
-// ============================================================================
+// ============================================
 // TYPES
-// ============================================================================
+// ============================================
 
-interface ZoneTableItem {
-    zone_id: number;
-    zone_name: string;
+type ZoneState =
+    | "empty"
+    | "normal"
+    | "warning"
+    | "alert"
+    | "critical"
+    | "pending"
+    | "emptypending"
+    | "fullpending";
+
+type CountDirection = "in" | "out" | "both";
+type ResetInterval = "none" | "hourly" | "daily" | "weekly" | "monthly";
+
+export interface ZoneTableItem {
+    zoneid: number;
+    zonename: string;
     mode: ZoneMode;
-    current_count: number;
-    time_empty: number;
-    time_full: number;
-    state: 'empty' | 'normal' | 'warning' | 'alert' | 'critical' | 'pending' | 'empty_pending' | 'full_pending';  
-    max_capacity?: number;
-    camera_id?: number | null;
-    full_timeout?: number;
-    count_in?: number;
-    count_out?: number;
-    count_direction?: 'in' | 'out' | 'both';
+
+    currentcount: number;
+    timeempty: number;
+    timefull: number;
+
+    state: ZoneState;
+
+    // Capacity
+    maxcapacity?: number;
+    fulltimeout?: number;
+
+    // Counting
+    countin?: number;
+    countout?: number;
+    countdirection?: CountDirection;
+
+    // Alert / metadata
     alert?: boolean;
-    alert_message?: string | null;
-    reset_interval?: 'none' | 'hourly' | 'daily' | 'weekly' | 'monthly';
-    last_reset?: string | null;
+    alertmessage?: string | null;
+    resetinterval?: ResetInterval;
+    lastreset?: string | null;
+
+    // Relacionamento com câmera
+    cameraid?: number | null;
+
+    // Queue KPIs (modo fila)
+    queue_length?: number;
+    avg_wait_time?: number;
+    max_wait_time?: number;
+    abandon_count?: number;
+    abandon_avg_wait?: number;
+    last_abandon_wait?: number;
 }
 
 interface ZoneTableProps {
     zones: ZoneTableItem[];
 }
 
-// ============================================================================
+// ============================================
 // VISUAL CONFIG
-// ============================================================================
+// ============================================
 
-const modeIcons: Record<ZoneMode, any> = {
+type LucideIcon = React.ComponentType<React.SVGProps<SVGSVGElement>>;
+
+const modeIcons: Record<ZoneMode, LucideIcon> = {
     [ZoneMode.OCCUPANCY]: Users,
     [ZoneMode.COUNTING]: TrendingUp,
     [ZoneMode.ALERT]: ShieldAlert,
     [ZoneMode.TRACKING]: Eye,
     [ZoneMode.CAPACITY]: UserPlus,
+    [ZoneMode.QUEUE]: Users,
     [ZoneMode.GENERIC]: AlertCircle,
     [ZoneMode.EMPTY]: AlertCircle,
     [ZoneMode.FULL]: AlertCircle,
 };
 
-const stateColors: Record<ZoneTableItem['state'], string> = {
-    empty: 'bg-gray-100 text-gray-700',
-    normal: 'bg-green-100 text-green-700',
-    warning: 'bg-yellow-100 text-yellow-700',
-    alert: 'bg-orange-100 text-orange-700',
-    critical: 'bg-red-100 text-red-700',
-    pending: 'bg-blue-100 text-blue-700',
-    empty_pending: 'bg-gray-200 text-gray-600',
-    full_pending: 'bg-yellow-200 text-yellow-600',
+const stateColors: Record<ZoneState, string> = {
+    empty: "bg-gray-100 text-gray-700",
+    normal: "bg-green-100 text-green-700",
+    warning: "bg-yellow-100 text-yellow-700",
+    alert: "bg-orange-100 text-orange-700",
+    critical: "bg-red-100 text-red-700",
+    pending: "bg-blue-100 text-blue-700",
+    emptypending: "bg-gray-200 text-gray-600",
+    fullpending: "bg-yellow-200 text-yellow-600",
 };
 
-const stateLabels: Record<ZoneTableItem['state'], string> = {
-    empty: 'Vazia',
-    normal: 'Normal',
-    warning: 'Aviso',
-    alert: 'Alerta',
-    critical: 'Crítico',
-    pending: 'Pendente',
-    empty_pending: 'Vazia (Aguardando)',
-    full_pending: 'Cheia (Aguardando)',
+const stateLabels: Record<ZoneState, string> = {
+    empty: "Vazia",
+    normal: "Normal",
+    warning: "Aviso",
+    alert: "Alerta",
+    critical: "Crítico",
+    pending: "Pendente",
+    emptypending: "Vazia aguardando",
+    fullpending: "Cheia aguardando",
 };
 
-// ============================================================================
+// ============================================
 // HELPER FUNCTIONS
-// ============================================================================
+// ============================================
 
-const formatTime = (seconds: number): string => {
-    if (seconds < 60) return `${seconds.toFixed(0)}s`;
+// Governança única de label de estado
+function getStateLabel(zone: ZoneTableItem): string {
+    // Tracking tem texto especial
+    if (zone.mode === ZoneMode.TRACKING) {
+        const count = zone.currentcount;
+        if (count === 0) return "Rastreando vazia";
+        if (count === 1) return "1 objeto rastreado";
+        return `${count} objetos rastreados`;
+    }
+
+    return stateLabels[zone.state] ?? "Normal";
+}
+
+function formatTime(seconds: number): string {
+    if (!Number.isFinite(seconds) || seconds < 0) {
+        return "--";
+    }
+
+    if (seconds < 60) {
+        return `${seconds.toFixed(0)}s`;
+    }
+
     const minutes = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${minutes}m ${secs}s`;
-};
+}
 
-const getOccupancyPercent = (count: number, maxCapacity: number = 50): number => {
-    if (maxCapacity === 0) return 0;
-    return Math.round((count / maxCapacity) * 100);
-};
+function getOccupancyPercent(
+    count: number,
+    maxCapacity: number | undefined
+): number {
+    const cap = maxCapacity ?? 50;
+    if (cap <= 0) return 0;
+    return Math.round((count / cap) * 100);
+}
 
-const getProgressColor = (percent: number): string => {
-    if (percent >= 100) return 'bg-red-500';
-    if (percent >= 90) return 'bg-yellow-500';
-    return 'bg-green-500';
-};
+function getProgressColor(percent: number): string {
+    if (percent >= 100) return "bg-red-500";
+    if (percent >= 90) return "bg-yellow-500";
+    return "bg-green-500";
+}
 
-const getModeColorClasses = (mode: ZoneMode): string => {
+function getModeColorClasses(mode: ZoneMode): string {
     const colorMap: Record<ZoneMode, string> = {
-        [ZoneMode.OCCUPANCY]: 'text-blue-600 bg-blue-50 border-blue-200',
-        [ZoneMode.COUNTING]: 'text-green-600 bg-green-50 border-green-200',
-        [ZoneMode.ALERT]: 'text-red-600 bg-red-50 border-red-200',
-        [ZoneMode.TRACKING]: 'text-purple-600 bg-purple-50 border-purple-200',
-        [ZoneMode.CAPACITY]: 'text-amber-600 bg-amber-50 border-amber-200',
-        [ZoneMode.GENERIC]: 'text-gray-600 bg-gray-50 border-gray-200',
-        [ZoneMode.EMPTY]: 'text-teal-600 bg-teal-50 border-teal-200',
-        [ZoneMode.FULL]: 'text-orange-600 bg-orange-50 border-orange-200',
+        [ZoneMode.OCCUPANCY]: "text-blue-600 bg-blue-50 border-blue-200",
+        [ZoneMode.COUNTING]: "text-green-600 bg-green-50 border-green-200",
+        [ZoneMode.ALERT]: "text-red-600 bg-red-50 border-red-200",
+        [ZoneMode.TRACKING]: "text-purple-600 bg-purple-50 border-purple-200",
+        [ZoneMode.CAPACITY]: "text-amber-600 bg-amber-50 border-amber-200",
+        [ZoneMode.QUEUE]: "text-indigo-600 bg-indigo-50 border-indigo-200",
+        [ZoneMode.GENERIC]: "text-gray-600 bg-gray-50 border-gray-200",
+        [ZoneMode.EMPTY]: "text-teal-600 bg-teal-50 border-teal-200",
+        [ZoneMode.FULL]: "text-orange-600 bg-orange-50 border-orange-200",
     };
-    return colorMap[mode] || 'text-gray-600 bg-gray-50 border-gray-200';
-};
 
-// ============================================================================
+    return (
+        colorMap[mode] || "text-gray-600 bg-gray-50 border-gray-200"
+    );
+}
+
+// ============================================
 // COMPONENT
-// ============================================================================
+// ============================================
 
-export default function ZoneTable({ zones }: ZoneTableProps) {
-
+const ZoneTable: React.FC<ZoneTableProps> = ({ zones }) => {
+    // Hook de câmeras – desestrutura o array corretamente
     const { cameras } = useCameras();
-    const [selectedCameraId, setSelectedCameraId] = useState<number | 'all'>('all');
+    const [selectedCameraId, setSelectedCameraId] = useState<"all" | number>(
+        "all"
+    );
     const [expandedModes, setExpandedModes] = useState<Set<ZoneMode>>(
-        new Set(Object.values(ZoneMode))
+        () => new Set(Object.values(ZoneMode))
     );
 
-    const filteredZones = zones.filter(zone => {
-        if (selectedCameraId === 'all') return true;
-        return zone.camera_id === selectedCameraId;
+    // Filtro por câmera
+    const filteredZones = zones.filter((zone) => {
+        if (selectedCameraId === "all") return true;
+        return zone.cameraid === selectedCameraId;
     });
 
-    const groupedByMode = filteredZones.reduce((acc, zone) => {
-        if (!acc[zone.mode]) acc[zone.mode] = [];
-        acc[zone.mode].push(zone);
-        return acc;
-    }, {} as Record<ZoneMode, ZoneTableItem[]>);
+    // Agrupamento por modo
+    const groupedByMode = filteredZones.reduce<
+        Record<ZoneMode, ZoneTableItem[]>
+    >(
+        (acc, zone) => {
+            const mode = zone.mode;
+            if (!acc[mode]) {
+                acc[mode] = [];
+            }
+            acc[mode].push(zone);
+            return acc;
+        },
+        {} as Record<ZoneMode, ZoneTableItem[]>
+    );
 
     const toggleModeExpansion = (mode: ZoneMode) => {
-        setExpandedModes(prev => {
+        setExpandedModes((prev) => {
             const newSet = new Set(prev);
             if (newSet.has(mode)) {
                 newSet.delete(mode);
@@ -180,18 +274,25 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
         });
     };
 
+    // Cabeçalhos dinâmicos por MODOS
     const renderHeadersForMode = (mode: ZoneMode) => {
         switch (mode) {
             case ZoneMode.CAPACITY:
                 return (
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider" colSpan={3}>
+                    <th
+                        className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider"
+                        colSpan={3}
+                    >
                         Ocupação
                     </th>
                 );
 
             case ZoneMode.COUNTING:
                 return (
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider" colSpan={3}>
+                    <th
+                        className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider"
+                        colSpan={3}
+                    >
                         Contagem
                     </th>
                 );
@@ -203,22 +304,49 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                             Contagem
                         </th>
                         <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                            --
-                        </th>
-                        <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                            Tempo em Alerta
+                            Tempo em alerta
                         </th>
                     </>
                 );
 
             case ZoneMode.TRACKING:
                 return (
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider" colSpan={3}>
+                    <th
+                        className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider"
+                        colSpan={3}
+                    >
                         Rastreamento
                     </th>
                 );
 
+            case ZoneMode.QUEUE:
+                return (
+                    <>
+                        <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            Tamanho fila
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            Espera média
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            Espera máxima
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            Qtde que saiu
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            Espera média (quem saiu)
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            Espera do último
+                        </th>
+                    </>
+                );
+
             case ZoneMode.OCCUPANCY:
+            case ZoneMode.GENERIC:
+            case ZoneMode.EMPTY:
+            case ZoneMode.FULL:
             default:
                 return (
                     <>
@@ -226,32 +354,34 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                             Contagem
                         </th>
                         <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                            Tempo Vazia
+                            Tempo vazia
                         </th>
                         <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                            Tempo Cheia
+                            Tempo cheia
                         </th>
                     </>
                 );
         }
     };
 
-
+    // Célula de métricas por modo
     const renderMetricsCell = (zone: ZoneTableItem) => {
         switch (zone.mode) {
-            
-            
-            case ZoneMode.CAPACITY:
-                const maxCap = zone.max_capacity ?? 50;
-                const percent = getOccupancyPercent(zone.current_count, maxCap);
+            case ZoneMode.CAPACITY: {
+                const maxCap = zone.maxcapacity ?? 50;
+                const percent = getOccupancyPercent(zone.currentcount, maxCap);
 
-                // ✅ Busca o timeout real da zona
-                const capacityTimeout = zone.full_timeout ?? 10;
-                const timeElapsed = zone.time_full;
+                const capacityTimeout = zone.fulltimeout ?? 10;
+                const timeElapsed = zone.timefull;
                 const timeRemaining = Math.max(0, capacityTimeout - timeElapsed);
 
-                // ✅ Verifica estados de pendência corretamente
-                const isInPending = percent >= 100 && timeRemaining > 0 && (zone.state === 'pending' || zone.state === 'full_pending');
+                const isInPending =
+                    percent >= 100 &&
+                    timeRemaining > 0 &&
+                    (zone.state === "pending" || zone.state === "fullpending");
+
+                const showCritical =
+                    percent >= 100 && !isInPending && zone.state === "critical";
 
                 return (
                     <td className="px-6 py-4 whitespace-nowrap text-center" colSpan={3}>
@@ -261,41 +391,46 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                                     {percent}%
                                 </span>
                             </div>
+
                             <div className="w-full bg-gray-200 rounded-full h-2">
                                 <div
-                                    className={`h-2 rounded-full transition-all ${getProgressColor(percent)}`}
+                                    className={`h-2 rounded-full transition-all ${getProgressColor(
+                                        percent
+                                    )}`}
                                     style={{ width: `${Math.min(percent, 100)}%` }}
                                 />
                             </div>
+
                             <div className="text-xs text-gray-500 text-center">
-                                {zone.current_count}/{maxCap} detecções
+                                {zone.currentcount}/{maxCap} detecções
                             </div>
 
-                            {/* ✅ Contador decrescente */}
                             {isInPending && (
                                 <div className="text-xs font-semibold text-amber-600 text-center animate-pulse">
-                                    ⏳ Alerta em {Math.ceil(timeRemaining)}s
+                                    Alerta em {Math.ceil(timeRemaining)}s
                                 </div>
                             )}
 
-                            {/* ✅ CORRIGIDO: Só mostra se o estado for 'critical' (confirmado) */}
-                            {percent >= 100 && !isInPending && zone.state === 'critical' && (
+                            {showCritical && (
                                 <div className="text-xs font-bold text-red-600 text-center">
-                                    🚨 LOTAÇÃO MÁXIMA!
+                                    LOTAÇÃO MÁXIMA!
                                 </div>
                             )}
                         </div>
                     </td>
                 );
-
+            }
 
             case ZoneMode.OCCUPANCY:
+            case ZoneMode.GENERIC:
+            case ZoneMode.EMPTY:
+            case ZoneMode.FULL: {
                 return (
                     <>
                         <td className="px-6 py-4 whitespace-nowrap text-center">
                             <div className="text-center">
                                 <div className="text-2xl font-bold text-gray-900">
-                                    {zone.current_count}
+                                    {zone.currentcount}
                                 </div>
                                 <div className="text-xs text-gray-500">objetos</div>
                             </div>
@@ -303,7 +438,7 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                         <td className="px-6 py-4 whitespace-nowrap text-center">
                             <div className="text-center">
                                 <div className="text-sm font-medium text-gray-900">
-                                    {formatTime(zone.time_empty)}
+                                    {formatTime(zone.timeempty)}
                                 </div>
                                 <div className="text-xs text-gray-500">vazia</div>
                             </div>
@@ -311,36 +446,34 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                         <td className="px-6 py-4 whitespace-nowrap text-center">
                             <div className="text-center">
                                 <div className="text-sm font-medium text-gray-900">
-                                    {formatTime(zone.time_full)}
+                                    {formatTime(zone.timefull)}
                                 </div>
                                 <div className="text-xs text-gray-500">cheia</div>
                             </div>
                         </td>
                     </>
                 );
-
+            }
 
             case ZoneMode.COUNTING: {
-                const countIn = zone.count_in ?? 0;
-                const countOut = zone.count_out ?? 0;
+                const countIn = zone.countin ?? 0;
+                const countOut = zone.countout ?? 0;
                 const balance = countIn - countOut;
-                const direction = zone.count_direction || 'both';
+                const direction: CountDirection = zone.countdirection ?? "both";
 
-                // 👇 novos campos (vêm da API)
                 const hasAlert = zone.alert === true;
-                const alertMessage = zone.alert_message || null;
+                const alertMessage = zone.alertmessage ?? null;
 
-                const resetLabelMap: Record<string, string> = {
-                    none: 'Sem reset automático',
-                    hourly: 'Reset horário',
-                    daily: 'Reset diário',
-                    weekly: 'Reset semanal',
-                    monthly: 'Reset mensal',
+                const resetLabelMap: Record<ResetInterval, string> = {
+                    none: "Sem reset automático",
+                    hourly: "Reset horário",
+                    daily: "Reset diário",
+                    weekly: "Reset semanal",
+                    monthly: "Reset mensal",
                 };
                 const resetLabel =
-                    zone.reset_interval
-                        ? resetLabelMap[zone.reset_interval] || 'Reset customizado'
-                        : 'Reset padrão';
+                    (zone.resetinterval && resetLabelMap[zone.resetinterval]) ||
+                    "Reset padrão";
 
                 return (
                     <td className="px-6 py-4 whitespace-nowrap text-center" colSpan={3}>
@@ -348,13 +481,25 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                             {/* Grid de contadores */}
                             <div className="grid grid-cols-3 gap-4">
                                 {/* Entradas */}
-                                {(direction === 'in' || direction === 'both') && (
+                                {(direction === "in" || direction === "both") && (
                                     <div className="text-center">
                                         <div className="flex items-center justify-center gap-1 mb-1">
-                                            <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                                            <svg
+                                                className="w-4 h-4 text-green-600"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                            >
+                                                <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    strokeWidth={2}
+                                                    d="M17 8l4 4m0 0l-4 4m4-4H3"
+                                                />
                                             </svg>
-                                            <span className="text-xs font-semibold text-gray-600 uppercase">IN</span>
+                                            <span className="text-xs font-semibold text-gray-600 uppercase">
+                                                IN
+                                            </span>
                                         </div>
                                         <div className="text-2xl font-bold text-green-600">
                                             {countIn}
@@ -363,13 +508,25 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                                 )}
 
                                 {/* Saídas */}
-                                {(direction === 'out' || direction === 'both') && (
+                                {(direction === "out" || direction === "both") && (
                                     <div className="text-center">
                                         <div className="flex items-center justify-center gap-1 mb-1">
-                                            <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16l-4-4m0 0l4-4m-4 4h18" />
+                                            <svg
+                                                className="w-4 h-4 text-red-600"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                            >
+                                                <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    strokeWidth={2}
+                                                    d="M7 16l-4-4m0 0l4-4m-4 4h18"
+                                                />
                                             </svg>
-                                            <span className="text-xs font-semibold text-gray-600 uppercase">OUT</span>
+                                            <span className="text-xs font-semibold text-gray-600 uppercase">
+                                                OUT
+                                            </span>
                                         </div>
                                         <div className="text-2xl font-bold text-red-600">
                                             {countOut}
@@ -377,70 +534,83 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                                     </div>
                                 )}
 
-                                {/* Saldo (apenas se direção = both) */}
-                                {direction === 'both' && (
+                                {/* Saldo (apenas both) */}
+                                {direction === "both" && (
                                     <div className="text-center">
                                         <div className="flex items-center justify-center gap-1 mb-1">
-                                            <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                            <svg
+                                                className="w-4 h-4 text-blue-600"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                            >
+                                                <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    strokeWidth={2}
+                                                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                                                />
                                             </svg>
-                                            <span className="text-xs font-semibold text-gray-600 uppercase">Saldo</span>
+                                            <span className="text-xs font-semibold text-gray-600 uppercase">
+                                                Saldo
+                                            </span>
                                         </div>
                                         <div
                                             className={`text-2xl font-bold ${balance > 0
-                                                    ? 'text-blue-600'
+                                                    ? "text-blue-600"
                                                     : balance < 0
-                                                        ? 'text-orange-600'
-                                                        : 'text-gray-600'
+                                                        ? "text-orange-600"
+                                                        : "text-gray-600"
                                                 }`}
                                         >
-                                            {balance > 0 ? '+' : ''}
                                             {balance}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Modo "in" apenas - centraliza e ocupa mais espaço */}
-                                {direction === 'in' && (
-                                    <div className="col-span-2 flex items-center justify-center">
-                                        <div className="text-center">
-                                            <div className="text-xs text-gray-500 mb-1">
-                                                Modo: <span className="font-semibold">Apenas Entradas</span>
-                                            </div>
-                                            <div className="text-sm text-gray-400">
-                                                Saídas não são contabilizadas
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Modo "out" apenas - centraliza e ocupa mais espaço */}
-                                {direction === 'out' && (
-                                    <div className="col-span-2 flex items-center justify-center">
-                                        <div className="text-center">
-                                            <div className="text-xs text-gray-500 mb-1">
-                                                Modo: <span className="font-semibold">Apenas Saídas</span>
-                                            </div>
-                                            <div className="text-sm text-gray-400">
-                                                Entradas não são contabilizadas
-                                            </div>
                                         </div>
                                     </div>
                                 )}
                             </div>
 
-                            {/* Linha divisória sutil */}
-                            {direction === 'both' && (
-                                <div className="pt-2 border-t border-gray-100">
-                                    <div className="text-xs text-gray-500 text-center">
-                                        {balance > 0 && `${balance} objeto(s) dentro da zona`}
-                                        {balance === 0 && 'Entradas e saídas equilibradas'}
-                                        {balance < 0 && 'Mais saídas que entradas'}
+                            {/* Modo in/out only – texto auxiliar */}
+                            {direction === "in" && (
+                                <div className="col-span-2 flex items-center justify-center">
+                                    <div className="text-center">
+                                        <div className="text-xs text-gray-500 mb-1">
+                                            Modo <span className="font-semibold">Apenas Entradas</span>
+                                        </div>
+                                        <div className="text-sm text-gray-400">
+                                            Saídas não são contabilizadas.
+                                        </div>
                                     </div>
                                 </div>
                             )}
 
-                            {/* NOVO: Status de alerta + reset */}
+                            {direction === "out" && (
+                                <div className="col-span-2 flex items-center justify-center">
+                                    <div className="text-center">
+                                        <div className="text-xs text-gray-500 mb-1">
+                                            Modo <span className="font-semibold">Apenas Saídas</span>
+                                        </div>
+                                        <div className="text-sm text-gray-400">
+                                            Entradas não são contabilizadas.
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Linha divisória e texto do saldo */}
+                            {direction === "both" && (
+                                <div className="pt-2 border-t border-gray-100">
+                                    <div className="text-xs text-gray-500 text-center">
+                                        {balance > 0 &&
+                                            `${balance} objetos dentro da zona (mais entradas que saídas).`}
+                                        {balance === 0 &&
+                                            "Entradas e saídas equilibradas (zona zerada)."}
+                                        {balance < 0 &&
+                                            "Mais saídas que entradas (pode indicar reset ou erro)."}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Status de alerta & reset */}
                             <div className="pt-2 border-t border-gray-100">
                                 {hasAlert && alertMessage ? (
                                     <div className="flex items-center justify-center gap-2 text-xs font-semibold text-red-600">
@@ -449,16 +619,17 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                                     </div>
                                 ) : (
                                     <div className="text-xs text-gray-500 text-center">
-                                        Nenhum alerta ativo
+                                        Nenhum alerta ativo.
                                     </div>
                                 )}
 
                                 <div className="mt-1 text-[11px] text-gray-400 text-center">
                                     {resetLabel}
-                                    {zone.last_reset && (
+                                    {zone.lastreset && (
                                         <>
-                                            {' · Último: '}
-                                            {new Date(zone.last_reset).toLocaleString()}
+                                            {" · "}
+                                            Último:{" "}
+                                            {new Date(zone.lastreset).toLocaleString("pt-BR")}
                                         </>
                                     )}
                                 </div>
@@ -467,181 +638,301 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                     </td>
                 );
             }
-                  
 
-
-            case ZoneMode.ALERT:
+            case ZoneMode.ALERT: {
                 return (
                     <>
                         <td className="px-6 py-4 whitespace-nowrap text-center">
                             <div className="text-center">
-                                {zone.current_count > 0 ? (
-                                    <>
-                                        <div className="text-2xl font-bold text-red-600">
-                                            ⚠ {zone.current_count}
-                                        </div>
-                                        <div className="text-xs text-gray-500">em alerta</div>
-                                    </>
-                                ) : (
-                                    <div className="text-sm text-gray-400">--</div>
-                                )}
+                                <div className="text-2xl font-bold text-red-600">
+                                    {zone.currentcount}
+                                </div>
+                                <div className="text-xs text-gray-500">em alerta</div>
                             </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center">
-                            <div className="text-sm text-gray-400 text-center">--</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
                             <div className="text-center">
-                                {zone.current_count > 0 ? (
-                                    <>
-                                        <div className="text-sm font-medium text-red-600">
-                                            {formatTime(zone.time_full)}
-                                        </div>
-                                        <div className="text-xs text-gray-500">em alerta</div>
-                                    </>
-                                ) : (
-                                    <div className="text-sm text-gray-400">--</div>
-                                )}
+                                <div className="text-sm font-medium text-red-600">
+                                    {formatTime(zone.timefull)}
+                                </div>
+                                <div className="text-xs text-gray-500">tempo em alerta</div>
                             </div>
                         </td>
                     </>
                 );
+            }
 
-            case ZoneMode.TRACKING:
+            case ZoneMode.TRACKING: {
                 return (
                     <td className="px-6 py-4 whitespace-nowrap text-center" colSpan={3}>
                         <div className="text-center">
                             <div className="text-lg font-semibold text-purple-600">
-                                {zone.current_count}
+                                {zone.currentcount}
                             </div>
                             <div className="text-xs text-gray-500">
-                                {zone.current_count === 1 ? 'objeto rastreado' : 'objetos rastreados'}
+                                {zone.currentcount === 1
+                                    ? "objeto rastreado"
+                                    : "objetos rastreados"}
                             </div>
                         </div>
                     </td>
                 );
+            }
+
+            case ZoneMode.QUEUE: {
+                // Usa todos os KPIs de fila enviados pelo backend
+                const queueLength =
+                    zone.queue_length ??
+                    zone.currentcount ?? // JSON: current_count
+                    (zone as any).currentCount ?? // fallback se o tipo for camelCase
+                    0;
+
+                const avgWait = zone.avg_wait_time;
+                const maxWait = zone.max_wait_time;
+                const abandonCount = zone.abandon_count ?? 0;
+                const abandonAvg = zone.abandon_avg_wait;
+                const lastAbandon = zone.last_abandon_wait;
+
+                const hasQueue = queueLength > 0;
+                const hasAbandon = abandonCount > 0;
+
+                return (
+                    <>
+                        {/* Tamanho da fila */}
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-gray-900">
+                                    {queueLength}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                    Objetos na fila
+                                </div>
+                            </div>
+                        </td>
+
+                        {/* Espera média da fila atual */}
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-center">
+                                <div className="text-sm font-medium text-gray-900">
+                                    {formatTime(hasQueue ? avgWait ?? NaN : NaN)}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                    Espera média
+                                </div>
+                            </div>
+                        </td>
+
+                        {/* Espera máxima da fila atual */}
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-center">
+                                <div className="text-sm font-medium text-gray-900">
+                                    {formatTime(hasQueue ? maxWait ?? NaN : NaN)}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                    Espera máxima
+                                </div>
+                            </div>
+                        </td>
+
+                        {/* Quantidade que saiu da fila */}
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-center">
+                                <div className="text-xl font-bold text-gray-900">
+                                    {abandonCount}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                    Saíram da fila
+                                </div>
+                            </div>
+                        </td>
+
+                        {/* Espera média de quem saiu */}
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-center">
+                                <div className="text-sm font-medium text-gray-900">
+                                    {formatTime(
+                                        hasAbandon ? abandonAvg ?? NaN : NaN
+                                    )}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                    Espera média (saída)
+                                </div>
+                            </div>
+                        </td>
+
+                        {/* Espera do último que saiu */}
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="text-center">
+                                <div className="text-sm font-medium text-gray-900">
+                                    {formatTime(
+                                        hasAbandon ? lastAbandon ?? NaN : NaN
+                                    )}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                    Último que saiu
+                                </div>
+                            </div>
+                        </td>
+                    </>
+                );
+            }
+    
+    
 
             default:
                 return (
                     <>
                         <td className="px-6 py-4 whitespace-nowrap text-center">
-                            <div className="text-center">
-                                <div className="text-2xl font-bold text-gray-900">
-                                    {zone.current_count}
-                                </div>
-                                <div className="text-xs text-gray-500">objetos</div>
-                            </div>
+                            {zone.currentcount}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center">
-                            <div className="text-sm text-gray-600 text-center">
-                                {formatTime(zone.time_empty)}
-                            </div>
+                            {formatTime(zone.timeempty)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center">
-                            <div className="text-sm text-gray-600 text-center">
-                                {formatTime(zone.time_full)}
-                            </div>
+                            {formatTime(zone.timefull)}
                         </td>
                     </>
                 );
         }
     };
 
+    // ============================================
+    // RENDER
+    // ============================================
+
+    const totalObjects = filteredZones.reduce(
+        (sum, zone) => sum + zone.currentcount,
+        0
+    );
+
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            {/* Filtro de Câmera */}
+            {/* Filtro de câmera */}
             <div className="px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
                 <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 flex-1">
-                        <Camera className="w-5 h-5 text-gray-600 flex-shrink-0" />
+                        <CameraIcon className="w-5 h-5 text-gray-600 flex-shrink-0" />
                         <select
                             value={selectedCameraId}
-                            onChange={(e) => setSelectedCameraId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                            onChange={(e) =>
+                                setSelectedCameraId(
+                                    e.target.value === "all"
+                                        ? "all"
+                                        : Number(e.target.value)
+                                )
+                            }
                             className="flex-1 max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white font-medium text-gray-700"
                         >
-                            <option value="all">📷 Todas as Zonas</option>
-                            {cameras.map(camera => (
+                            <option value="all">Todas as zonas</option>
+                            {cameras.map((camera: Camera) => (
                                 <option key={camera.id} value={camera.id}>
-                                    📹 {camera.name}
+                                    {camera.name}
                                 </option>
                             ))}
                         </select>
                     </div>
+
                     <div className="flex items-center gap-4 text-sm text-gray-600">
                         <span>
-                            <span className="font-semibold text-gray-900">{filteredZones.length}</span> zonas
+                            <span className="font-semibold text-gray-900">
+                                {filteredZones.length}
+                            </span>{" "}
+                            zonas
                         </span>
                         <span className="text-gray-400">|</span>
                         <span>
-                            <span className="font-semibold text-gray-900">{Object.keys(groupedByMode).length}</span> modos
+                            <span className="font-semibold text-gray-900">
+                                {Object.keys(groupedByMode).length}
+                            </span>{" "}
+                            modos
                         </span>
                     </div>
                 </div>
             </div>
 
-            {/* Empty State */}
+            {/* Empty state */}
             {filteredZones.length === 0 ? (
                 <div className="p-12 text-center">
                     <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-500 font-medium mb-2">
-                        {selectedCameraId === 'all' ? 'Nenhuma zona definida' : 'Nenhuma zona para esta câmera'}
+                        {selectedCameraId === "all"
+                            ? "Nenhuma zona definida."
+                            : "Nenhuma zona para esta câmera."}
                     </p>
                     <p className="text-sm text-gray-400">
-                        {selectedCameraId === 'all'
-                            ? 'Configure zonas para começar o monitoramento'
-                            : 'Selecione outra câmera ou configure zonas para esta'
-                        }
+                        {selectedCameraId === "all"
+                            ? "Configure zonas para começar o monitoramento."
+                            : "Selecione outra câmera ou configure zonas para esta."}
                     </p>
                 </div>
             ) : (
                 <div className="p-4 space-y-4">
-                    {Object.entries(groupedByMode).map(([mode, zonesInMode]) => {
-                        const Icon = modeIcons[mode as ZoneMode] || AlertCircle;
-                        const modeColor = ZONE_MODE_COLORS[mode as ZoneMode];
-                        const isExpanded = expandedModes.has(mode as ZoneMode);
+                    {Object.entries(groupedByMode).map(([modeKey, zonesInMode]) => {
+                        const mode = modeKey as ZoneMode;
+                        const Icon = modeIcons[mode] ?? AlertCircle;
+                        const modeColor = `#${ZONE_MODE_COLORS[mode] ?? "6B7280"}`;
+                        const isExpanded = expandedModes.has(mode);
 
-                        // Verifica se alguma zona do grupo está em alerta
-                        const hasAlert = zonesInMode.some(z => z.state === 'alert' || z.state === 'critical');
+                        const hasAlert = zonesInMode.some(
+                            (z) => z.state === "alert" || z.state === "critical"
+                        );
 
                         return (
                             <div
-                                key={mode}
-                                className={`
-                                    overflow-hidden rounded-lg border-2 shadow-sm hover:shadow-md transition-shadow
-                                    ${hasAlert ? 'alert-pulse border-red-300' : 'border-gray-200'}
-                                `}
-                                style={{ borderLeftWidth: '4px', borderLeftColor: modeColor }}
+                                key={modeKey}
+                                className={`overflow-hidden rounded-lg border-2 shadow-sm hover:shadow-md transition-shadow ${hasAlert ? "alert-pulse border-red-300" : "border-gray-200"
+                                    }`}
+                                style={{
+                                    borderLeftWidth: 4,
+                                    borderLeftColor: modeColor,
+                                }}
                             >
+                                {/* Header do grupo */}
                                 <button
-                                    onClick={() => toggleModeExpansion(mode as ZoneMode)}
+                                    type="button"
+                                    onClick={() => toggleModeExpansion(mode)}
                                     className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
                                     style={{
-                                        backgroundColor: isExpanded ? `${modeColor}08` : 'transparent',
+                                        backgroundColor: isExpanded ? `${modeColor}08` : "transparent",
                                     }}
                                 >
                                     <div className="flex items-center gap-3">
                                         <div
                                             className="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm"
-                                            style={{ backgroundColor: `${modeColor}15` }}
+                                            style={{ backgroundColor: `${modeColor}26` }}
                                         >
-                                            <Icon className="w-5 h-5" style={{ color: modeColor }} />
+                                            <Icon
+                                                className="w-5 h-5"
+                                                style={{ color: modeColor }}
+                                            />
                                         </div>
                                         <div className="text-left">
                                             <h3 className="text-lg font-bold text-gray-900">
-                                                {ZONE_MODE_LABELS[mode as ZoneMode]}
+                                                {ZONE_MODE_LABELS[mode]}
                                             </h3>
                                             <p className="text-sm text-gray-600">
-                                                {zonesInMode.length} {zonesInMode.length === 1 ? 'zona' : 'zonas'}
+                                                {zonesInMode.length}{" "}
+                                                {zonesInMode.length === 1 ? "zona" : "zonas"}
                                             </p>
                                         </div>
                                     </div>
-                                    {isExpanded ? (
-                                        <ChevronUp className="w-5 h-5 text-gray-400" />
-                                    ) : (
-                                        <ChevronDown className="w-5 h-5 text-gray-400" />
-                                    )}
+
+                                    <div className="flex items-center gap-3">
+                                        {hasAlert && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-600 border border-red-200">
+                                                <AlertCircle className="w-3 h-3" />
+                                                <span>Alerta ativo</span>
+                                            </span>
+                                        )}
+                                        {isExpanded ? (
+                                            <ChevronUp className="w-5 h-5 text-gray-400" />
+                                        ) : (
+                                            <ChevronDown className="w-5 h-5 text-gray-400" />
+                                        )}
+                                    </div>
                                 </button>
 
+                                {/* Tabela do grupo */}
                                 {isExpanded && (
                                     <div className="border-t-2 border-gray-200">
                                         <div className="overflow-x-auto">
@@ -654,7 +945,7 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                                                         <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                                             Modo
                                                         </th>
-                                                        {renderHeadersForMode(mode as ZoneMode)}
+                                                        {renderHeadersForMode(mode)}
                                                         <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                                             Estado
                                                         </th>
@@ -662,43 +953,60 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-200 bg-white">
                                                     {zonesInMode.map((zone) => {
-                                                        const ZoneIcon = modeIcons[zone.mode] || AlertCircle;
+                                                        const ZoneIcon = modeIcons[zone.mode] ?? AlertCircle;
 
                                                         return (
                                                             <tr
-                                                                key={zone.zone_id}
-                                                                className={`
-                                                                    hover:bg-gray-50 transition-colors
-                                                                    ${(zone.state === 'alert' || zone.state === 'critical') ? 'alert-pulse' : ''}
-                                                                `}
+                                                                key={zone.zoneid}
+                                                                className={`hover:bg-gray-50 transition-colors ${zone.state === "alert" ||
+                                                                        zone.state === "critical"
+                                                                        ? "alert-pulse"
+                                                                        : ""
+                                                                    }`}
                                                             >
+                                                                {/* Zona */}
                                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                                     <div className="flex items-center gap-3">
                                                                         <div
                                                                             className="w-3 h-3 rounded-full flex-shrink-0 border-2 border-white shadow-sm"
                                                                             style={{ backgroundColor: modeColor }}
                                                                         />
-                                                                        <span className="font-medium text-gray-900">
-                                                                            {zone.zone_name}
-                                                                        </span>
+                                                                        <div>
+                                                                            <span className="font-medium text-gray-900">
+                                                                                {zone.zonename}
+                                                                            </span>
+                                                                        </div>
                                                                     </div>
                                                                 </td>
+
+                                                                {/* Modo */}
                                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getModeColorClasses(zone.mode)}`}>
+                                                                    <div
+                                                                        className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getModeColorClasses(
+                                                                            zone.mode
+                                                                        )}`}
+                                                                    >
                                                                         <ZoneIcon className="w-4 h-4" />
                                                                         <span className="text-sm font-medium">
                                                                             {ZONE_MODE_LABELS[zone.mode]}
                                                                         </span>
                                                                     </div>
                                                                 </td>
+
+                                                                {/* Métricas */}
                                                                 {renderMetricsCell(zone)}
+
+                                                                {/* Estado */}
                                                                 <td className="px-6 py-4 whitespace-nowrap text-center">
-                                                                    <span className={`
-                                                                        inline-flex px-3 py-1 rounded-full text-sm font-medium 
-                                                                        ${stateColors[zone.state]}
-                                                                        ${(zone.state === 'alert' || zone.state === 'critical') ? 'animate-pulse' : ''}
-                                                                    `}>
-                                                                        {stateLabels[zone.state]}
+                                                                    <span
+                                                                        className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${stateColors[zone.state]
+                                                                            } ${zone.state === "alert" ||
+                                                                                zone.state === "critical"
+                                                                                ? "animate-pulse"
+                                                                                : ""
+                                                                            }`}
+                                                                    >
+                                                                        {getStateLabel(zone)}
                                                                     </span>
                                                                 </td>
                                                             </tr>
@@ -715,32 +1023,35 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
                 </div>
             )}
 
-            {/* Footer Summary */}
+            {/* Footer summary */}
             {filteredZones.length > 0 && (
                 <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
                     <div className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-6">
                             <div>
-                                <span className="text-gray-600">Total de zonas:</span>
+                                <span className="text-gray-600">Total de zonas</span>
                                 <span className="font-semibold text-gray-900 ml-2">
                                     {filteredZones.length}
                                 </span>
                             </div>
                             <div>
-                                <span className="text-gray-600">Objetos detectados:</span>
+                                <span className="text-gray-600">Objetos detectados</span>
                                 <span className="font-semibold text-gray-900 ml-2">
-                                    {filteredZones.reduce((sum, zone) => sum + zone.current_count, 0)}
+                                    {totalObjects}
                                 </span>
                             </div>
-                            {selectedCameraId !== 'all' && (
+                            {selectedCameraId !== "all" && (
                                 <div>
-                                    <span className="text-gray-600">Câmera:</span>
+                                    <span className="text-gray-600">Câmera</span>
                                     <span className="font-semibold text-blue-600 ml-2">
-                                        {cameras.find(c => c.id === selectedCameraId)?.name || 'N/A'}
+                                        {cameras.find(
+                                            (c: Camera) => c.id === selectedCameraId
+                                        )?.name ?? "N/A"}
                                     </span>
                                 </div>
                             )}
                         </div>
+
                         <div className="flex items-center gap-2 text-xs text-gray-500">
                             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                             <RefreshCw className="w-3.5 h-3.5 animate-spin text-green-600" />
@@ -751,4 +1062,6 @@ export default function ZoneTable({ zones }: ZoneTableProps) {
             )}
         </div>
     );
-}
+};
+
+export default ZoneTable;

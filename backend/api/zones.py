@@ -3,48 +3,6 @@
 backend/api/zones.py - COMPLETE v3.0
 Zone Management Routes (Enhanced Detection Zones)
 ============================================================================
-✨ Features v3.0:
-- Complete CRUD operations
-- Zone search and filtering
-- Bulk operations
-- Zone statistics
-- Export/Import zones
-- Zone templates
-- Polygon validation
-- Zone cloning
-- Activity tracking
-- Performance metrics
-- Zone preview
-- Advanced analytics
-
-Endpoints v2.0 (5 endpoints):
-- POST   /zones/          - Criar nova zona
-- GET    /zones/          - Listar todas zonas
-- GET    /zones/{id}      - Obter zona específica
-- PUT    /zones/{id}      - Atualizar zona
-- DELETE /zones/{id}      - Deletar zona (soft delete)
-
-NEW v3.0 (10 endpoints):
-- POST   /zones/search    - Busca avançada
-- POST   /zones/bulk/create - Cria múltiplas zonas
-- DELETE /zones/bulk/delete - Deleta múltiplas
-- POST   /zones/{id}/clone - Clona zona
-- POST   /zones/validate  - Valida polígono
-- GET    /zones/statistics - Estatísticas gerais
-- GET    /zones/export    - Exporta zonas
-- POST   /zones/import    - Importa zonas
-- GET    /zones/templates - Lista templates
-- POST   /zones/templates/{name} - Cria zona de template
-
-Architecture:
-- PostgreSQL (psycopg3 async) + JSON fallback
-- Soft delete (deleted_at)
-- Real-time sync with yolo.py
-- RAG-ready (vector support)
-
-✅ v2.0 compatibility: 100%
-🔒 ADMIN-ONLY: All endpoints require admin privileges
-============================================================================
 """
 
 # ============================================================================
@@ -54,9 +12,12 @@ Architecture:
 import sys
 import base64
 import uuid
-
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from backend.application.zone.zone_metadata_service import normalize_metadata_for_mode
+from backend.core.domain.entities.zones import ZoneMode
 
 import json
 import logging
@@ -69,9 +30,9 @@ from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from pydantic import BaseModel, Field, validator
 from psycopg_pool import AsyncConnectionPool
 
-from database import get_db_pool, sync_zones_to_settings
+from backend.adapters.storage.database import get_db_pool, sync_zones_to_settings
 from models.zones import ZoneCreate, ZoneUpdate, ZoneResponse
-from config import settings
+from backend.core.config.config import settings
 from dependencies import get_current_admin_user, limiter
 
 # ============================================================================
@@ -89,15 +50,6 @@ DATA_DIR.mkdir(exist_ok=True)
 # ============================================================================
 # ENUMS & CONSTANTS
 # ============================================================================
-
-class ZoneMode(str, Enum):
-    """Zone detection modes"""
-    OCCUPANCY = "occupancy"
-    COUNTING = "counting"
-    ALERT = "alert"
-    TRACKING = "tracking",
-    CAPACITY = "capacity"
-
 
 class ZoneStatus(str, Enum):
     """Zone operational status"""
@@ -164,124 +116,6 @@ ZONE_TEMPLATES = {
         "description": "Template para controle de capacidade máxima (eventos, elevadores, lojas)"
     }
 }
-
-
-
-# ============================================================================
-# ✅ v3.9: METADATA DEFAULTS POR MODO
-# ============================================================================
-
-MODE_METADATA_DEFAULTS = {
-    # v3.0 modes - sem metadata específico
-    "occupancy": {},
-    "alert": {},
-    "tracking": {},
-    
-    # Counting - direção, reset e alertas
-    "counting": {
-        "count_in": 0,
-        "count_out": 0,
-        # ✅ v3.9: Campos de configuração NÃO têm defaults obrigatórios
-        # São aplicados apenas se o campo não existir no metadata
-    },
-    
-    # Capacity: lotação máxima
-    "capacity": {
-        "max_capacity": 50,
-        "alert_percentage": 90,
-    },
-    
-    # Futuro
-    "queue": {
-        # Quando implementar: max_wait_seconds, min_people, etc.
-    },
-    
-    # v2.0 legacy - sem metadata
-    "GENERIC": {},
-    "EMPTY": {},
-    "FULL": {},
-}
-
-
-
-def normalize_metadata_for_mode(mode: str, metadata: dict | None) -> dict:
-    """
-    ✅ v3.9: Normaliza metadata baseado no modo da zona
-    
-    PRESERVA valores existentes - só aplica defaults para campos None/ausentes.
-    
-    Comportamento:
-    - COUNTING: Preserva TODOS os campos (ex: detection_classes) + adiciona defaults
-    - CAPACITY: Preserva TODOS os campos + garante max_capacity e alert_percentage
-    - OUTROS: Preserva TODOS os campos + adiciona defaults do MODE_METADATA_DEFAULTS
-    
-    Args:
-        mode: Modo da zona (ex: 'capacity', 'tracking', 'counting')
-        metadata: Metadata atual ou None
-    
-    Returns:
-        Dict normalizado preservando campos existentes
-    """
-    # Começa com metadata existente ou vazio
-    base = dict(metadata or {})
-    
-    # Pega defaults do modo (ou {} se modo não tem metadata)
-    defaults = MODE_METADATA_DEFAULTS.get(mode, {})
-    
-    # ========================================================================
-    # ✅ MODO COUNTING: Preserva TUDO que veio + adiciona defaults
-    # ========================================================================
-    if mode == ZoneMode.COUNTING:
-        # Inicia com todos os campos que vieram do frontend/banco
-        cleaned = dict(base)
-        
-        # Garante campos obrigatórios com defaults se não existirem
-        if "count_in" not in cleaned:
-            cleaned["count_in"] = 0
-        if "count_out" not in cleaned:
-            cleaned["count_out"] = 0
-        if "count_direction" not in cleaned:
-            cleaned["count_direction"] = "both"
-        if "reset_interval" not in cleaned:
-            cleaned["reset_interval"] = "never"
-        if "alert_enabled" not in cleaned:
-            cleaned["alert_enabled"] = False
-         # Interseção para zonas de contagem
-        if ("intersection_threshold" not in cleaned or cleaned["intersection_threshold"] is None):
-            cleaned["intersection_threshold"] = 0.7
-
-        return cleaned
-    
-
-
-    
-    # ========================================================================
-    # ✅ MODO CAPACITY: Garante estrutura + preserva outros campos
-    # ========================================================================
-    if mode == ZoneMode.CAPACITY:
-        cleaned = dict(base)  # Preserva tudo que veio
-        
-        # Garante campos obrigatórios
-        if "max_capacity" not in cleaned or cleaned["max_capacity"] is None:
-            cleaned["max_capacity"] = 50
-        if "alert_percentage" not in cleaned or cleaned["alert_percentage"] is None:
-            cleaned["alert_percentage"] = 90
-        
-        return cleaned
-    
-    # ========================================================================
-    # ✅ OUTROS MODOS: Comportamento padrão (preserva + adiciona defaults)
-    # ========================================================================
-    cleaned = dict(base)  # Preserva tudo
-    
-    # Adiciona defaults apenas para campos faltantes
-    for key, default_value in defaults.items():
-        if key not in cleaned or cleaned[key] is None:
-            cleaned[key] = default_value
-
-    return cleaned
-
-
 
 
 # ============================================================================
@@ -648,61 +482,6 @@ async def create_zone(
     ✅ v4.0 ENTERPRISE: Cria uma nova zona de detecção com validação completa
     
     **Requer:** Token JWT de ADMIN (is_superuser=True)
-    
-    **Campos obrigatórios:**
-    - name: Nome único da zona
-    - points: Polígono [[x,y], ...] (mínimo 3 pontos, normalizado 0-1)
-    - mode: Modo de operação (occupancy, counting, alert, tracking, capacity)
-    
-    **Campos opcionais:**
-    - camera_id: ID da câmera vinculada
-    - detection_classes: Classes COCO para filtrar (default: [0] - person)
-    - empty_timeout, full_timeout: Timeouts em segundos
-    - empty_threshold, full_threshold: Contadores de threshold
-    - max_out_time: Tempo máximo de saída (segundos)
-    - email_cooldown: Cooldown entre alertas (segundos)
-    - enabled, active: Status da zona
-    - description: Descrição textual
-    - color: Cor em hex (ex: #3B82F6)
-    - tags: Array de tags para categorização
-    - snapshot_base64: Imagem de referência em base64
-    - metadata: Objeto JSON com configurações específicas do modo
-    
-    **Novidades v4.0:**
-    - ✅ Normalização automática de metadata por modo
-    - ✅ Garantia de detection_classes (default: [0] - person)
-    - ✅ Validação em camadas (Pydantic + Business Rules)
-    - ✅ Auditoria completa com logs estruturados
-    - ✅ Tratamento robusto de erros
-    - ✅ Idempotência e atomicidade
-    
-    **Exemplos de uso:**
-    
-    1. Zona de contagem básica:
-    ```json
-    {
-      "name": "Entrada Principal",
-      "mode": "counting",
-      "camera_id": 1,
-      "points": [[0.2,0.2],[0.8,0.2],[0.8,0.8],[0.2,0.8]],
-      "detection_classes": 
-    }
-    ```
-    
-    2. Zona de capacidade com filtro:
-    ```json
-    {
-      "name": "Sala de Reunião",
-      "mode": "capacity",
-      "camera_id": 2,
-      "points": [[0.1,0.1],[0.9,0.1],[0.9,0.9],[0.1,0.9]],
-      "detection_classes": ,
-      "metadata": {
-        "max_capacity": 10,
-        "alert_percentage": 80
-      }
-    }
-    ```
     """
     
     # ========================================================================
@@ -818,6 +597,82 @@ async def create_zone(
                 # normalize_metadata_for_mode() aplica defaults específicos do modo
                 normalized_metadata = normalize_metadata_for_mode(zone.mode, base_metadata)
                 logger.debug(f"   After normalize_metadata_for_mode: {normalized_metadata}")
+
+                # PASSO 2.1: Governança de tracker_override (opcional)
+                tracker_override = normalized_metadata.get("tracker_override")
+
+                if tracker_override is not None:
+                    if not isinstance(tracker_override, str):
+                        logger.error(
+                            "   ❌ tracker_override must be a string, got: %s (%s)",
+                            tracker_override,
+                            type(tracker_override),
+                        )
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=(
+                                "tracker_override must be a string "
+                                "(ex: 'inherit', 'camera_default', 'detection_only', "
+                                "'bytetrack', 'strongsort')"
+                            ),
+                        )
+
+                    tracker_override_clean = tracker_override.strip()
+                    if not tracker_override_clean:
+                        # String vazia -> remove campo para herdar da câmera
+                        normalized_metadata.pop("tracker_override", None)
+                        logger.info(
+                            "   ⚠️ tracker_override vazio - removendo campo (herdará da câmera)"
+                        )
+                    else:
+                        normalized_metadata["tracker_override"] = tracker_override_clean
+                        logger.info(
+                            "   ✅ tracker_override definido: %s",
+                            tracker_override_clean,
+                        )
+
+                # PASSO 2.2: Governança de reid_required (flag de ReID por zona)
+                def _coerce_bool(value) -> bool:
+                    if isinstance(value, bool):
+                        return value
+                    if isinstance(value, (int, float)):
+                        return bool(value)
+                    if isinstance(value, str):
+                        return value.strip().lower() in ("1", "true", "yes", "on")
+                    return False
+
+                raw_reid = normalized_metadata.get("reid_required", None)
+
+                if raw_reid is None:
+                    # Default por modo: tracking / queue tendem a precisar mais de ReID
+                    if zone.mode in ("tracking", "queue"):
+                        normalized_metadata["reid_required"] = True
+                    else:
+                        normalized_metadata["reid_required"] = False
+                    logger.info(
+                        "   ✅ reid_required default para modo '%s': %s",
+                        zone.mode,
+                        normalized_metadata["reid_required"],
+                    )
+                else:
+                    try:
+                        normalized_metadata["reid_required"] = _coerce_bool(raw_reid)
+                        logger.info(
+                            "   ✅ reid_required recebido do payload: %s -> %s",
+                            raw_reid,
+                            normalized_metadata["reid_required"],
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "   ❌ Invalid reid_required value: %r (%s)", raw_reid, e
+                        )
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=(
+                                "reid_required must be a boolean or truthy/falsy value "
+                                "(true/false, 1/0, yes/no)"
+                            ),
+                        )
                 
                 # PASSO 3: GARANTIR detection_classes SEMPRE existe (★ GOVERNANÇA ★)
                 # Este é um campo CRÍTICO que nunca pode estar ausente
@@ -867,7 +722,6 @@ async def create_zone(
                 # ================================================================
                 # 6. APLICAR DEFAULTS POR MODO (Campo-nível)
                 # ================================================================
-                # Alguns campos de threshold/timeout variam por modo
                 MODE_DEFAULTS = {
                     "occupancy": {
                         "empty_threshold": 0,
@@ -901,7 +755,6 @@ async def create_zone(
                     },
                 }
                 
-                # Aplicar defaults apenas se campo não foi fornecido
                 mode_defaults = MODE_DEFAULTS.get(zone.mode, {})
                 for field, default_value in mode_defaults.items():
                     if not hasattr(zone, field) or getattr(zone, field) is None:
@@ -958,17 +811,13 @@ async def create_zone(
                     logger.error(f"❌ DATABASE ERROR during INSERT: {sql_error}")
                     logger.error(f"   Error type: {type(sql_error).__name__}")
                     
-                    # Log detalhado para erros PostgreSQL
                     if hasattr(sql_error, 'pgcode'):
                         logger.error(f"   PostgreSQL code: {sql_error.pgcode}")
                     if hasattr(sql_error, 'pgerror'):
                         logger.error(f"   PostgreSQL message: {sql_error.pgerror}")
                     
-                    # Traceback completo
                     import traceback
                     logger.error(f"   Traceback:\n{traceback.format_exc()}")
-                    
-                    # Re-raise para tratamento externo
                     raise
                 
                 # ================================================================
@@ -985,53 +834,32 @@ async def create_zone(
                     f"User: {current_user.get('username')} [ADMIN]"
                 )
                 
-                # Log resumo do metadata salvo
                 saved_metadata = json.loads(row['metadata']) if isinstance(row['metadata'], str) else row['metadata']
                 logger.info(
                     f"   Metadata saved: detection_classes={saved_metadata.get('detection_classes')}, "
                     f"fields={list(saved_metadata.keys())}"
                 )
                 
-                # ================================================================
-                # 9. CONVERSÃO PARA RESPONSE MODEL
-                # ================================================================
                 zone_dict = await zone_to_dict(row)
             
-            # ====================================================================
-            # 10. SINCRONIZAÇÃO COM SISTEMAS EXTERNOS
-            # ====================================================================
             logger.info(f"🔄 Syncing zone '{row['name']}' to external systems...")
             
             try:
-                # Sync para arquivo JSON (backend/data/zones.json)
                 await sync_zones_to_json()
                 logger.debug("   ✅ Synced to zones.json")
-                
-                # Sync para settings (se aplicável)
                 await sync_zones_to_settings()
                 logger.debug("   ✅ Synced to settings")
-            
             except Exception as sync_error:
-                # Não falha a operação por erro de sync
                 logger.error(f"   ⚠️ Sync error (non-critical): {sync_error}")
             
-            # ====================================================================
-            # 11. RETORNO DA RESPOSTA
-            # ====================================================================
             logger.info(f"✅ Zone creation completed: '{row['name']}' (ID: {row['id']})")
-            
             return ZoneResponse(**zone_dict)
         
-        # ========================================================================
-        # EXCEPTION HANDLING (Camada de Negócio)
-        # ========================================================================
         except HTTPException as http_exc:
-            # HTTPException já tem status code e detail corretos - apenas propagar
             logger.warning(f"⚠️ Business rule validation failed: {http_exc.detail}")
             raise
         
         except Exception as e:
-            # Erros inesperados - log completo e retorno genérico
             import traceback
             error_detail = traceback.format_exc()
             
@@ -1039,7 +867,6 @@ async def create_zone(
             logger.error(f"   Error type: {type(e).__name__}")
             logger.error(f"   Traceback:\n{error_detail}")
             
-            # Retornar erro 500 com mensagem sanitizada
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Erro interno ao criar zona: {str(e)}"
@@ -1243,53 +1070,6 @@ async def update_zone(
     **Requer:** Token JWT de ADMIN (is_superuser=True)
     
     **Todos os campos são opcionais** - apenas os fornecidos serão atualizados.
-    
-    **Campos atualizáveis:**
-    - name: Nome da zona (validado para unicidade)
-    - mode: Modo (occupancy, counting, alert, tracking, capacity)
-    - points: Polígono (validado)
-    - camera_id: ID da câmera vinculada
-    - detection_classes: Classes COCO para filtrar
-    - empty_timeout, full_timeout: Timeouts
-    - empty_threshold, full_threshold: Thresholds
-    - max_out_time, email_cooldown: Temporizadores
-    - enabled, active: Status
-    - description, color, tags: Metadados
-    - metadata: Configurações específicas do modo
-    
-    **Novidades v4.0:**
-    - ✅ Merge inteligente de metadata (preserva detection_classes)
-    - ✅ Limpeza de campos ao mudar modo
-    - ✅ Validação em camadas
-    - ✅ Auditoria completa
-    - ✅ Normalização pós-merge
-    - ✅ 5 camadas de proteção para campos críticos
-    
-    **Comportamento de merge:**
-    - Metadata existente no banco é preservado
-    - Novos campos do payload são adicionados/atualizados
-    - Campos críticos (detection_classes) NUNCA são perdidos
-    - Ao mudar modo, campos do modo antigo são removidos
-    
-    **Exemplos:**
-    
-    1. Mudar apenas o modo (preserva detection_classes):
-    ```json
-    PUT /zones/14
-    {"mode": "capacity"}
-    ```
-    
-    2. Atualizar metadata parcialmente:
-    ```json
-    PUT /zones/14
-    {"metadata": {"max_capacity": 100}}
-    ```
-    
-    3. Mudar nome e cor:
-    ```json
-    PUT /zones/14
-    {"name": "Entrada VIP", "color": "#FF5733"}
-    ```
     """
     
     # ========================================================================
@@ -1443,7 +1223,6 @@ async def update_zone(
                         "tracking": []
                     }
                     
-                    # Remover campos do modo antigo
                     if current_mode in mode_specific_fields:
                         removed_count = 0
                         for field in mode_specific_fields[current_mode]:
@@ -1477,6 +1256,79 @@ async def update_zone(
                 logger.debug(f"   Step 6 - Normalizing for mode '{effective_mode}'...")
                 final_metadata = normalize_metadata_for_mode(effective_mode, merged_metadata)
                 logger.debug(f"   After normalization: {final_metadata}")
+
+                # PASSO 6.1: Governança de tracker_override (opcional)
+                tracker_override = final_metadata.get("tracker_override")
+
+                if tracker_override is not None:
+                    if not isinstance(tracker_override, str):
+                        logger.error(
+                            "   ❌ tracker_override must be a string, got: %s (%s)",
+                            tracker_override,
+                            type(tracker_override),
+                        )
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=(
+                                "tracker_override must be a string "
+                                "(ex: 'inherit', 'camera_default', 'detection_only', "
+                                "'bytetrack', 'strongsort')"
+                            ),
+                        )
+
+                    tracker_override_clean = tracker_override.strip()
+                    if not tracker_override_clean:
+                        final_metadata.pop("tracker_override", None)
+                        logger.info(
+                            "   ⚠️ tracker_override vazio - removendo campo (herdará da câmera)"
+                        )
+                    else:
+                        final_metadata["tracker_override"] = tracker_override_clean
+                        logger.info(
+                            "   ✅ tracker_override definido: %s", tracker_override_clean
+                        )
+
+                # PASSO 6.2: Governança de reid_required (flag de ReID por zona)
+                def _coerce_bool(value) -> bool:
+                    if isinstance(value, bool):
+                        return value
+                    if isinstance(value, (int, float)):
+                        return bool(value)
+                    if isinstance(value, str):
+                        return value.strip().lower() in ("1", "true", "yes", "on")
+                    return False
+
+                raw_reid = final_metadata.get("reid_required", None)
+
+                if raw_reid is None:
+                    if effective_mode in ("tracking", "queue"):
+                        final_metadata["reid_required"] = True
+                    else:
+                        final_metadata["reid_required"] = False
+                    logger.info(
+                        "   ✅ reid_required default para modo '%s': %s",
+                        effective_mode,
+                        final_metadata["reid_required"],
+                    )
+                else:
+                    try:
+                        final_metadata["reid_required"] = _coerce_bool(raw_reid)
+                        logger.info(
+                            "   ✅ reid_required recebido do payload/DB: %s -> %s",
+                            raw_reid,
+                            final_metadata["reid_required"],
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "   ❌ Invalid reid_required value: %r (%s)", raw_reid, e
+                        )
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=(
+                                "reid_required must be a boolean or truthy/falsy value "
+                                "(true/false, 1/0, yes/no)"
+                            ),
+                        )
                 
                 # PASSO 7: GARANTIA FINAL - detection_classes NUNCA pode sumir
                 if 'detection_classes' not in final_metadata or not final_metadata['detection_classes']:
@@ -1505,21 +1357,21 @@ async def update_zone(
                         "full_timeout": 10.0,
                     },
                     "counting": {
-                        "empty_threshold": 0,      
+                        "empty_threshold": 0,       
                         "full_threshold": 5,
-                        "empty_timeout": 0.0,      
+                        "empty_timeout": 0.0,       
                         "full_timeout": 10.0,
                     },
                     "alert": {
-                        "empty_threshold": 0,      
+                        "empty_threshold": 0,       
                         "full_threshold": 1,
-                        "empty_timeout": 0.0,      
+                        "empty_timeout": 0.0,       
                         "full_timeout": 5.0,
                     },
                     "capacity": {
-                        "empty_threshold": 0,      
-                        "full_threshold": 1,       
-                        "empty_timeout": 0.0,      
+                        "empty_threshold": 0,       
+                        "full_threshold": 1,        
+                        "empty_timeout": 0.0,       
                         "full_timeout": 10.0,
                     },
                     "tracking": {
@@ -1531,7 +1383,6 @@ async def update_zone(
                     },
                 }
                 
-                # Se modo foi alterado, aplicar defaults (mas não sobrescrever se já veio no payload)
                 if zone_update.mode:
                     mode_defaults = MODE_DEFAULTS.get(zone_update.mode, {})
                     for field, default_value in mode_defaults.items():
@@ -1639,13 +1490,11 @@ async def update_zone(
                     f"User: {current_user.get('username')} [ADMIN]"
                 )
                 
-                # Log mudanças importantes
                 if mode_changed:
                     logger.info(f"   ✓ Mode changed: {current_mode} → {row['mode']}")
                 if zone_update.name and zone_update.name != existing_zone['name']:
                     logger.info(f"   ✓ Name changed: '{existing_zone['name']}' → '{row['name']}'")
                 
-                # Log metadata salvo
                 saved_metadata = json.loads(row['metadata']) if isinstance(row['metadata'], str) else row['metadata']
                 logger.info(
                     f"   ✓ Metadata saved: detection_classes={saved_metadata.get('detection_classes')}"
@@ -1700,9 +1549,7 @@ async def update_zone(
                 detail=f"Erro ao atualizar zona: {str(e)}"
             )
 
-
-
-
+        
 
 @router.delete("/{zone_id}", status_code=status.HTTP_204_NO_CONTENT, summary="🗑️ Deletar zona")
 @limiter.limit("100/minute")

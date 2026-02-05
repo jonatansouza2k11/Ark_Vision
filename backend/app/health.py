@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from backend.database import get_pool
+from backend.adapters.storage.database import get_pool
 
 
 def register_healthcheck(app: FastAPI) -> None:

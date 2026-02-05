@@ -14,7 +14,6 @@ import {
     Activity,
     Eye,
     Layers,
-    TrendingUp,
     AlertCircle,
     RefreshCw
 } from 'lucide-react';

@@ -17,6 +17,7 @@ import type {
 // ============================================
 
 interface UseCamerasReturn {
+    length: number;
     // State
     cameras: Camera[];
     loading: boolean;

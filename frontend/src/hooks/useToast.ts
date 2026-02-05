@@ -1,6 +1,6 @@
 // frontend/src/hooks/useToast.ts
 import { useContext } from 'react';
-import { ToastContext, ToastContextType, ToastNotification } from '../contexts/ToastContext';
+import { ToastContext, ToastNotification } from '../contexts/ToastContext';
 
 /**
  * Interface de retorno do hook useToast

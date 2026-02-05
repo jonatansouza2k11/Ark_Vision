@@ -6,8 +6,8 @@ from ultralytics import YOLO
 import torch
 
 # Configuração
-MODEL_PT = "yolo_models/yolo26x.pt"             # Modelo PyTorch original
-MODEL_ENGINE = "yolo_models/yolo26x.engine"     # Saída TensorRT
+MODEL_PT = "yolo_models/yolo11x.pt"             # Modelo PyTorch original
+MODEL_ENGINE = "yolo_models/yolo11x.engine"     # Saída TensorRT
 
 IMGSZ = 640  # Tamanho de entrada (deve bater com inferência)
 DEVICE = 0  # GPU ID (0 para primeira GPU)

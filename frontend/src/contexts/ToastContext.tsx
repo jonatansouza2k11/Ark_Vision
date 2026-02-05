@@ -1,13 +1,7 @@
-// frontend/src/contexts/ToastContext.tsx
+// ToastContext.tsx
+
 import { createContext, useState, useCallback, ReactNode } from 'react';
 
-// ============================================
-// 📦 TYPES
-// ============================================
-
-/**
- * Interface para uma notificação toast individual
- */
 export interface ToastNotification {
     id: string;
     type: 'success' | 'error' | 'warning' | 'info';
@@ -15,62 +9,42 @@ export interface ToastNotification {
     duration?: number;
 }
 
-/**
- * Interface do contexto de Toast
- */
 export interface ToastContextType {
     toasts: ToastNotification[];
-    showToast: (message: string, type?: ToastNotification['type'], duration?: number) => void;
+    showToast: (
+        message: string,
+        type?: ToastNotification['type'],
+        duration?: number
+    ) => void;
     removeToast: (id: string) => void;
 }
 
-// ============================================
-// 🎯 CONTEXT
-// ============================================
-
-export const ToastContext = createContext<ToastContextType | undefined>(undefined);
+// contexto tipado + undefined inicial
+export const ToastContext = createContext<ToastContextType | undefined>(
+    undefined
+);
 
 export interface ToastProviderProps {
     children: ReactNode;
 }
 
-// ============================================
-// 🚀 PROVIDER
-// ============================================
-
-/**
- * Provider do contexto de Toast
- * Gerencia o estado global das notificações toast
- * 
- * @example
- * <ToastProvider>
- *   <App />
- * </ToastProvider>
- */
 export function ToastProvider({ children }: ToastProviderProps) {
     const [toasts, setToasts] = useState<ToastNotification[]>([]);
 
-    /**
-     * Remove um toast específico pelo ID
-     */
     const removeToast = useCallback((id: string) => {
-        setToasts((prev) => prev.filter((toast) => toast.id !== id));
+        setToasts(prev => prev.filter(toast => toast.id !== id));
     }, []);
 
-    /**
-     * Exibe um novo toast
-     * @param message - Mensagem a ser exibida
-     * @param type - Tipo do toast (success, error, warning, info)
-     * @param duration - Duração em ms (0 = sem auto-close)
-     */
     const showToast = useCallback(
-        (message: string, type: ToastNotification['type'] = 'info', duration = 3000) => {
+        (
+            message: string,
+            type: ToastNotification['type'] = 'info',
+            duration = 3000
+        ) => {
             const id = `toast-${Date.now()}-${Math.random()}`;
             const newToast: ToastNotification = { id, message, type, duration };
+            setToasts(prev => [...prev, newToast]);
 
-            setToasts((prev) => [...prev, newToast]);
-
-            // Auto-remove após a duração especificada
             if (duration > 0) {
                 setTimeout(() => {
                     removeToast(id);
@@ -86,5 +60,10 @@ export function ToastProvider({ children }: ToastProviderProps) {
         removeToast,
     };
 
-    return <ToastContext.Provider value={value}>{children}</ToastContext.Provider>;
+    // aqui precisa retornar o Provider, não {children}
+    return (
+        <ToastContext.Provider value={value}>
+            {children}
+        </ToastContext.Provider>
+    );
 }

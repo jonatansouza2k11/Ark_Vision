@@ -46,8 +46,8 @@ from dependencies import (
     get_current_active_user,
     limiter
 )
-import database
-from config import settings
+import backend.adapters.storage.database as database
+from backend.core.config.config import settings
 
 # ➕ NEW v3.0 imports
 from models.auth import (

@@ -26,14 +26,14 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel
 
-from backend.config import settings
+from backend.core.config.config import settings
 from backend.dependencies import (
     get_current_user,
     get_current_admin_user,
     get_current_active_user,
 )
-from backend.services.vision_system import VisionSystem
-from backend.services.camera_sync import sync_vision_system_from_db
+from backend.runtime.orchestration.vision_system import VisionSystem
+from backend.runtime.orchestration.camera_sync import sync_vision_system_from_db
 from backend.dependencies import get_current_active_user
 
 

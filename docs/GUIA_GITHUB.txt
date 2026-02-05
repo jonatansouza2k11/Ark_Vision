@@ -47,7 +47,7 @@ OPCAO 3: Manual (Qualquer OS)
       git add .env.example
 
 3. Faça commit:
-   git commit -m "Processos de zonas implementados: Ocupação e Capacidade Máxima"
+   git commit -m "Modo de Contagem, Ocupação e Capacidade Max finalizados"
 
 4. Faça push:
    git push -u origin main

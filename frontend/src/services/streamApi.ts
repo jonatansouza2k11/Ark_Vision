@@ -1,35 +1,35 @@
 /**
- * streamApi.ts - Stream API Client v2.1
+ * streamApi.ts - Stream API Client v2.2
  * Multi-camera streaming API client for ARK Vision
  * Matches backend endpoints: /api/v1/stream/
  *
  * Suporta:
  * - /video_feed/{camera_id}
- * - /status            (global)
+ * - /status (global)
  * - /status/{camera_id}
  * - /cameras
  * - /snapshot/{camera_id}
  * - /start /pause /stop /reload_cameras /connections
  */
 
-import axios, { type AxiosResponse } from 'axios';
+import axios, { type AxiosResponse } from "axios";
 
 // ============================================================================
 // 🔧 AXIOS INSTANCE
 // ============================================================================
 
 const streamApi = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+    baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000",
     timeout: 30000,
     headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
     },
 });
 
 // Interceptor para adicionar token
 streamApi.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem('access_token');
+        const token = localStorage.getItem("access_token");
         if (token) {
             config.headers = config.headers ?? {};
             config.headers.Authorization = `Bearer ${token}`;
@@ -50,17 +50,26 @@ streamApi.interceptors.request.use(
 export interface CameraStreamStatus {
     camera_id: number;
     camera_name: string;
+
     fps_current: number;
     fps_avg: number;
+
     inzone: number;
     outzone: number;
     detected_count: number;
-    system_status: 'running' | 'stopped' | 'paused' | 'error';
+
+    system_status: "running" | "stopped" | "paused" | "error";
     paused: boolean;
     stream_active: boolean;
+
     active_connections: number;
     zones_loaded: number;
     active_tracks: number;
+
+    // 🔥 NOVO: campos de tracking/ReID
+    tracker_type?: string;
+    required_tracker_types?: string[];
+    reid_profile?: string; // "edge" | "default" | "high"
 }
 
 /**
@@ -87,7 +96,7 @@ export interface YOLOStats {
     inzone: number;
     outzone: number;
     detected_count: number;
-    system_status: 'running' | 'paused' | 'stopped';
+    system_status: "running" | "paused" | "stopped";
     paused: boolean;
     stream_active: boolean;
     preset: string;
@@ -96,16 +105,16 @@ export interface YOLOStats {
 
 export interface Alert {
     id?: number;
-    type: 'intrusion' | 'warning' | 'info';
+    type: "intrusion" | "warning" | "info";
     message: string;
     timestamp: string;
-    severity?: 'low' | 'medium' | 'high' | 'critical';
+    severity?: "low" | "medium" | "high" | "critical";
 }
 
 /**
  * Generic API response wrapper (não muito usado aqui, mas mantido)
  */
-export interface APIResponse<T = any> {
+export interface APIResponse<T> {
     success: boolean;
     data?: T;
     message?: string;
@@ -114,7 +123,7 @@ export interface APIResponse<T = any> {
 
 export interface StreamControlResponse {
     message?: string;
-    status: 'running' | 'paused' | 'stopped';
+    status: "running" | "paused" | "stopped";
     paused?: boolean;
     cameras?: number[];
 }
@@ -150,7 +159,7 @@ export interface StreamConnectionsInfo {
 }
 
 // ============================================================================
-// 🎯 STREAM API METHODS v2.1
+// 🎯 STREAM API METHODS v2.2
 // ============================================================================
 
 export const streamAPI = {
@@ -169,7 +178,7 @@ export const streamAPI = {
      * const streamUrl = streamAPI.getStreamUrl(1);
      */
     getStreamUrl: (cameraId: number): string => {
-        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
         return `${baseUrl}/api/v1/stream/video_feed/${cameraId}`;
     },
 
@@ -178,9 +187,9 @@ export const streamAPI = {
      * Maintained for backward compatibility - returns URL for camera ID 1
      */
     getStreamUrlLegacy: (): string => {
-        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
         console.warn(
-            '⚠️ getStreamUrlLegacy is deprecated. Use getStreamUrl(cameraId) instead.',
+            "⚠️ getStreamUrlLegacy is deprecated. Use getStreamUrl(cameraId) instead.",
         );
         return `${baseUrl}/api/v1/stream/video_feed/1`;
     },
@@ -198,14 +207,24 @@ export const streamAPI = {
     getStatus: (
         cameraId: number,
     ): Promise<AxiosResponse<CameraStreamStatus>> =>
-        streamApi.get<CameraStreamStatus>(`/api/v1/stream/status/${cameraId}`),
+        streamApi.get<CameraStreamStatus>(
+            `/api/v1/stream/status/${cameraId}`,
+        ),
+
+    /**
+     * Helper para retornar só o objeto de status (sem AxiosResponse)
+     */
+    getCameraStatus: async (cameraId: number): Promise<CameraStreamStatus> => {
+        const res = await streamAPI.getStatus(cameraId);
+        return res.data;
+    },
 
     /**
      * Get list of all cameras with runtime status
      * Returns cameras loaded in VisionSystem with FPS, detections, etc.
      */
     getCameras: (): Promise<AxiosResponse<CameraRuntimeStatus[]>> =>
-        streamApi.get<CameraRuntimeStatus[]>('/api/v1/stream/cameras'),
+        streamApi.get<CameraRuntimeStatus[]>("/api/v1/stream/cameras"),
 
     /**
      * Get active streaming connections (ADMIN only)
@@ -213,7 +232,7 @@ export const streamAPI = {
      * @returns Connection statistics and memory status
      */
     getConnections: (): Promise<AxiosResponse<StreamConnectionsInfo>> =>
-        streamApi.get<StreamConnectionsInfo>('/api/v1/stream/connections'),
+        streamApi.get<StreamConnectionsInfo>("/api/v1/stream/connections"),
 
     // ========================================================================
     // 📸 SNAPSHOT
@@ -226,9 +245,12 @@ export const streamAPI = {
      * @returns Blob containing JPEG image
      */
     getSnapshot: async (cameraId: number): Promise<Blob> => {
-        const response = await streamApi.get(`/api/v1/stream/snapshot/${cameraId}`, {
-            responseType: 'blob',
-        });
+        const response = await streamApi.get(
+            `/api/v1/stream/snapshot/${cameraId}`,
+            {
+                responseType: "blob",
+            },
+        );
         return response.data as Blob;
     },
 
@@ -244,11 +266,9 @@ export const streamAPI = {
     ): Promise<void> => {
         const blob = await streamAPI.getSnapshot(cameraId);
         const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-
+        const link = document.createElement("a");
         link.href = url;
         link.download = filename || `camera-${cameraId}-${Date.now()}.jpg`;
-
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -264,21 +284,21 @@ export const streamAPI = {
      * Initializes VisionSystem and begins capture/inference
      */
     start: (): Promise<AxiosResponse<StreamControlResponse>> =>
-        streamApi.post<StreamControlResponse>('/api/v1/stream/start'),
+        streamApi.post<StreamControlResponse>("/api/v1/stream/start"),
 
     /**
      * Pause/Resume YOLO stream (toggle)
      * Pauses processing while maintaining capture
      */
     pause: (): Promise<AxiosResponse<StreamControlResponse>> =>
-        streamApi.post<StreamControlResponse>('/api/v1/stream/pause'),
+        streamApi.post<StreamControlResponse>("/api/v1/stream/pause"),
 
     /**
      * Stop all cameras
      * Stops VisionSystem and releases resources
      */
     stop: (): Promise<AxiosResponse<StreamControlResponse>> =>
-        streamApi.post<StreamControlResponse>('/api/v1/stream/stop'),
+        streamApi.post<StreamControlResponse>("/api/v1/stream/stop"),
 
     /**
      * Reload cameras from database
@@ -287,7 +307,7 @@ export const streamAPI = {
      * @returns Updated camera list (ids)
      */
     reloadCameras: (): Promise<AxiosResponse<ReloadCamerasResponse>> =>
-        streamApi.post<ReloadCamerasResponse>('/api/v1/stream/reload_cameras'),
+        streamApi.post<ReloadCamerasResponse>("/api/v1/stream/reload_cameras"),
 
     // ========================================================================
     // 🔧 HELPER METHODS
@@ -304,7 +324,7 @@ export const streamAPI = {
             const response = await streamAPI.getStatus(cameraId);
             return (
                 response.data.stream_active &&
-                response.data.system_status === 'running'
+                response.data.system_status === "running"
             );
         } catch {
             return false;
@@ -326,14 +346,12 @@ export const streamAPI = {
         intervalMs: number = 500,
     ): Promise<boolean> => {
         const startTime = Date.now();
-
         while (Date.now() - startTime < timeoutMs) {
             if (await streamAPI.isCameraStreaming(cameraId)) {
                 return true;
             }
             await new Promise((resolve) => setTimeout(resolve, intervalMs));
         }
-
         return false;
     },
 
@@ -364,7 +382,7 @@ export const streamAPI = {
             }
         };
 
-        poll();
+        void poll();
 
         return () => {
             active = false;
@@ -372,4 +390,5 @@ export const streamAPI = {
     },
 };
 
-export default streamApi;
+// Default export: objeto de métodos (compatível com `import streamAPI from ...`)
+export default streamAPI;

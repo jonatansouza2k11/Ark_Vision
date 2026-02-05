@@ -254,13 +254,13 @@ const COCO_CLASSES: CocoClass[] = [
     // { id: 72, name: "refrigerator", nameEn: "refrigerator", namePtBr: "Geladeira", category: "appliance" },
 
     // INDOOR (comentados)
-    // { id: 73, name: "book", nameEn: "book", namePtBr: "Livro", category: "indoor" },
-    // { id: 74, name: "clock", nameEn: "clock", namePtBr: "Relógio", category: "indoor" },
-    // { id: 75, name: "vase", nameEn: "vase", namePtBr: "Vaso", category: "indoor" },
-    // { id: 76, name: "scissors", nameEn: "scissors", namePtBr: "Tesoura", category: "indoor" },
-    // { id: 77, name: "teddy bear", nameEn: "teddy bear", namePtBr: "Ursinho de Pelúcia", category: "indoor" },
-    // { id: 78, name: "hair drier", nameEn: "hair drier", namePtBr: "Secador de Cabelo", category: "indoor" },
-    // { id: 79, name: "toothbrush", nameEn: "toothbrush", namePtBr: "Escova de Dentes", category: "indoor" },
+     { id: 73, name: "book", nameEn: "book", namePtBr: "Livro", category: "indoor" },
+     { id: 74, name: "clock", nameEn: "clock", namePtBr: "Relógio", category: "indoor" },
+     { id: 75, name: "vase", nameEn: "vase", namePtBr: "Vaso", category: "indoor" },
+     { id: 76, name: "scissors", nameEn: "scissors", namePtBr: "Tesoura", category: "indoor" },
+     { id: 77, name: "teddy bear", nameEn: "teddy bear", namePtBr: "Ursinho de Pelúcia", category: "indoor" },
+     { id: 78, name: "hair drier", nameEn: "hair drier", namePtBr: "Secador de Cabelo", category: "indoor" },
+     { id: 79, name: "toothbrush", nameEn: "toothbrush", namePtBr: "Escova de Dentes", category: "indoor" },
 ];
 
 // ============================================================================

@@ -3,53 +3,6 @@
 backend/api/alerts.py - ULTRA OPTIMIZED v3.0
 Alerts API - FastAPI Router (Enhanced)
 ============================================================================
-NEW Features in v3.0:
-- Bulk operations (resolve multiple alerts)
-- Alert acknowledgment workflow
-- Alert comments/notes
-- Alert export (CSV/JSON)
-- Advanced search with text search
-- Alert templates
-- Alert history timeline
-- Notification management
-- Alert metrics dashboard
-- Auto-resolution rules
-- Alert priority management
-- SLA tracking
-
-Previous Features (v2.2):
-- CRUD operations (Create, Read, Update, Delete)
-- List with filters and pagination
-- Statistics summary
-- Severity and type filtering
-- Date range filtering
-- Resolution status tracking
-
-Endpoints v2.2 (Compatible):
-- POST   /alerts/              - Criar novo alerta
-- GET    /alerts/              - Listar alertas (com filtros)
-- GET    /alerts/{id}          - Buscar alerta por ID
-- PUT    /alerts/{id}          - Atualizar alerta
-- DELETE /alerts/{id}          - Deletar alerta
-- GET    /alerts/stats/summary - Estatísticas
-
-NEW Endpoints v3.0:
-- POST   /alerts/bulk/resolve    - Resolver múltiplos alertas
-- POST   /alerts/{id}/acknowledge - Reconhecer alerta
-- POST   /alerts/{id}/comments   - Adicionar comentário
-- GET    /alerts/{id}/comments   - Listar comentários
-- GET    /alerts/{id}/history    - Histórico de mudanças
-- GET    /alerts/export          - Exportar alertas
-- GET    /alerts/search          - Busca avançada
-- GET    /alerts/stats/dashboard - Métricas para dashboard
-- POST   /alerts/bulk/delete     - Deletar múltiplos
-
-Autenticação: JWT Bearer Token (todos os endpoints)
-Rate Limit: 100 requests/minute
-
-✅ v2.2: Corrigido para usar resolved_at
-✅ v3.0: Enhanced with 9 new endpoints + features
-============================================================================
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
@@ -64,7 +17,7 @@ import csv
 import io
 
 # Imports locais
-from database import get_db_pool
+from backend.adapters.storage.database import get_db_pool
 from models.alerts import AlertCreate, AlertUpdate, AlertResponse
 from dependencies import get_current_user, limiter
 from fastapi import Request

@@ -3,43 +3,6 @@
 backend/api/settings.py - COMPLETE v3.0
 System Settings Routes (Enhanced Unified + YOLO Config)
 ============================================================================
-✨ Features v3.0:
-- Settings CRUD genérico
-- Configuração YOLO completa (compatível com Flask)
-- Configuração de Email
-- Configuração de API
-- Reset para defaults
-- Categories grouping
-- Validation framework
-- Export/Import (JSON/YAML)
-- Settings comparison
-- Bulk operations
-- Audit logging
-
-Endpoints v2.0 (12 endpoints):
-- GET    /settings              - Lista todas configurações
-- GET    /settings/list         - Lista detalhada
-- GET    /settings/{key}        - Obtém configuração específica
-- PUT    /settings              - Atualiza múltiplas
-- PUT    /settings/{key}        - Atualiza específica
-- GET    /settings/yolo/config  - Config YOLO completa
-- PUT    /settings/yolo/config  - Atualiza config YOLO
-- GET    /settings/email/config - Config de email
-- PUT    /settings/email/config - Atualiza email
-- GET    /settings/api/config   - Config de API
-- PUT    /settings/api/config   - Atualiza API
-- POST   /settings/reset        - Reset para defaults
-
-NEW v3.0 (6 endpoints):
-- GET    /settings/categories   - Lista por categorias
-- POST   /settings/validate     - Valida configurações
-- GET    /settings/compare      - Compara atual vs default
-- GET    /settings/export       - Exporta settings
-- POST   /settings/import       - Importa settings
-- POST   /settings/bulk/update  - Update em lote
-
-✅ v2.0 compatibility: 100%
-============================================================================
 """
 
 # ============================================================================
@@ -47,6 +10,7 @@ NEW v3.0 (6 endpoints):
 # ============================================================================
 
 # ✅ FIX: Path para imports
+import asyncio
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -55,6 +19,7 @@ from fastapi import APIRouter, Depends, Request, HTTPException, status, Query, U
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
+import time
 from datetime import datetime
 from enum import Enum
 import logging
@@ -62,11 +27,19 @@ import json
 import io
 
 from dependencies import get_current_admin_user, get_current_active_user
-import database
+import backend.adapters.storage.database as database
 
 logger = logging.getLogger("uvicorn")
 router = APIRouter(prefix="/api/v1/settings", tags=["Settings"])
 
+_models_cache_lock = asyncio.Lock()
+
+# ======================================================================
+# 🔥 CACHE: Evita rescan de modelos a cada request
+# ======================================================================
+_models_cache = None
+_models_cache_time = 0
+MODELS_CACHE_TTL = 60  # Cache válido por 60 segundos
 
 # ============================================================================
 # ENUMS & CONSTANTS
@@ -372,7 +345,7 @@ async def validate_setting_value(key: str, value: Any) -> List[SettingValidation
 
 async def get_default_settings() -> Dict[str, Any]:
     """Get default settings from config"""
-    from config import settings as app_config
+    from backend.core.config.config import settings as app_config
     
     return {
         # YOLO
@@ -510,57 +483,74 @@ class AvailableModelsResponse(BaseModel):
 # ✅ v3.2: ATUALIZADO - Available YOLO Models (.pt + .engine)
 # ⚠️ DEVE ESTAR ANTES DA ROTA GENÉRICA /{key}
 # ============================================
-@router.get("/available-models", response_model=AvailableModelsResponse, summary="🤖 Lista modelos YOLO disponíveis")
+@router.get("/available-models", response_model=AvailableModelsResponse, summary="Lista modelos YOLO disponíveis")
 async def get_available_yolo_models(
     current_user: dict = Depends(get_current_active_user)
 ):
     """
-    ✅ v3.2: Lista todos os modelos YOLO (.pt e .engine) disponíveis na pasta yolo_models/
+    v3.2: Lista todos os modelos YOLO (.pt e .engine) disponíveis na pasta yolo_models
     
-    **Retorna:**
-    - `models`: Lista de modelos com detalhes (filename, path, type, variant, size_mb)
-    - `current`: Nome do modelo atualmente configurado
-    - `total`: Número total de modelos disponíveis
+    **COM CACHE DE 60 SEGUNDOS** para evitar rescan em requests paralelas.
     
-    **Requer:** Token JWT válido
+    Retorna:
+    - models: Lista de modelos com detalhes (filename, path, type, variant, size_mb)
+    - current: Nome do modelo atualmente configurado
+    - total: Número total de modelos disponíveis
+    
+    Requer: Token JWT válido
     """
+    global _models_cache, _models_cache_time
+    
     try:
         from pathlib import Path
-        from config import settings as app_config
+        from backend.core.config.config import settings as app_config
         
-        # 📁 Caminho da pasta de modelos
+        # ✅ Retorna cache se ainda válido
+        async with _models_cache_lock:
+            now = time.time()
+            if _models_cache is not None and (now - _models_cache_time) < MODELS_CACHE_TTL:
+                logger.info(f"📦 Returning cached models list ({len(_models_cache.models)} models)")
+                return _models_cache
+        
+        # ✅ Scan real (cache expirado ou vazio)
         models_dir = app_config.BASE_DIR / "yolo_models"
         
-        # 🔍 Verifica se o diretório existe
         if not models_dir.exists():
-            logger.warning(f"⚠️ Models directory not found: {models_dir}")
-            return AvailableModelsResponse(
+            logger.warning(f"Models directory not found: {models_dir}")
+            result = AvailableModelsResponse(
                 models=[],
                 current="none",
                 total=0,
-                message="📂 Models directory not found. Create backend/yolo_models/"
+                message="Models directory not found. Create 'backend/yolo_models'"
             )
+            async with _models_cache_lock:
+                _models_cache = result
+                _models_cache_time = time.time()
+            return result
         
-        # 🔎 Lista arquivos .pt E .engine
+        # Lista arquivos .pt E .engine
         model_files = list(models_dir.glob("*.pt")) + list(models_dir.glob("*.engine"))
         
         if not model_files:
-            logger.warning(f"⚠️ No model files found in {models_dir}")
-            return AvailableModelsResponse(
+            logger.warning(f"No model files found in {models_dir}")
+            result = AvailableModelsResponse(
                 models=[],
                 current="none",
                 total=0,
-                message="📭 No models found. Place YOLO models (.pt or .engine) in backend/yolo_models/"
+                message="No models found. Place YOLO models (.pt or .engine) in 'backend/yolo_models'"
             )
+            async with _models_cache_lock:
+                _models_cache = result
+                _models_cache_time = time.time()
+            return result
         
-        # 📊 Processa cada modelo encontrado
         models = []
         for model_file in sorted(model_files):
-            model_name = model_file.name  # Ex: yolo11n.pt ou yolo11n.engine
-            model_size = model_file.stat().st_size / (1024 * 1024)  # Converte para MB
+            model_name = model_file.name
+            model_size = model_file.stat().st_size / (1024 * 1024)  # MB
             name_lower = model_name.lower()
             
-            # 🏷️ Determina o TIPO do modelo
+            # Determina TIPO
             if "yolo11" in name_lower or "yolov11" in name_lower:
                 model_type = "YOLO v11"
             elif "yolo10" in name_lower or "yolov10" in name_lower:
@@ -572,7 +562,7 @@ async def get_available_yolo_models(
             else:
                 model_type = "YOLO"
             
-            # 🎯 Determina a VARIANTE (considerando .pt e .engine)
+            # Determina VARIANTE
             variant = "Unknown"
             if "n.pt" in name_lower or "n.engine" in name_lower:
                 variant = "Nano (fastest)"
@@ -585,13 +575,12 @@ async def get_available_yolo_models(
             elif "x.pt" in name_lower or "x.engine" in name_lower:
                 variant = "XLarge (most accurate)"
             
-            # 🔧 Adiciona badge de formato
+            # Badge de formato
             if name_lower.endswith(".engine"):
                 variant += " [TensorRT]"
             elif name_lower.endswith(".pt"):
                 variant += " [PyTorch]"
             
-            # ➕ Adiciona modelo à lista
             models.append(YOLOModelInfo(
                 filename=model_name,
                 path=f"yolo_models/{model_name}",
@@ -600,30 +589,54 @@ async def get_available_yolo_models(
                 size_mb=round(model_size, 2)
             ))
         
-        # 🎯 Busca o modelo atualmente configurado
-        current_model = await database.get_setting("model_path", app_config.YOLO_MODEL_PATH)
-        
-        # 🔧 Extrai apenas o nome do arquivo
+        # Busca modelo atualmente configurado
+        current_model = await database.get_setting("modelpath", app_config.YOLO_MODEL_PATH)
         if current_model and "/" in current_model:
             current_model = current_model.split("/")[-1]
         
         logger.info(f"✅ Found {len(models)} YOLO model(s): {[m.filename for m in models]}")
         
-        return AvailableModelsResponse(
+        result = AvailableModelsResponse(
             models=models,
             current=current_model or "none",
             total=len(models)
         )
         
+        # ✅ Atualiza cache
+        async with _models_cache_lock:
+            _models_cache = result
+            _models_cache_time = time.time()
+        
+        return result
+        
     except Exception as e:
-        logger.error(f"❌ Error listing YOLO models: {e}", exc_info=True)
+        logger.error(f"Error listing YOLO models: {e}", exc_info=True)
         return AvailableModelsResponse(
             models=[],
             current="none",
             total=0,
-            message=f"❌ Error: {str(e)}"
+            message=f"Error: {str(e)}"
         )
 
+
+@router.post("/refresh-models", summary="Invalida cache de modelos")
+async def refresh_models_cache(
+    current_user: dict = Depends(get_current_admin_user)
+):
+    """
+    v3.2: Invalida o cache de modelos YOLO.
+    Útil após adicionar/remover modelos manualmente.
+    
+    Requer: Token JWT de admin
+    """
+    global _models_cache, _models_cache_time
+    
+    async with _models_cache_lock:
+        _models_cache = None
+        _models_cache_time = 0
+    
+    logger.info("🔄 Models cache invalidated by admin")
+    return {"message": "Models cache cleared. Next request will rescan."}
 
 
 # ============================================
@@ -766,7 +779,7 @@ async def get_yolo_config(
     **Requer:** Token JWT válido
     """
     try:
-        from config import settings as app_config
+        from backend.core.config.config import settings as app_config
         
         config = {
             "conf_thresh": float(await database.get_setting("conf_thresh", str(app_config.YOLO_CONF_THRESHOLD))),
@@ -883,7 +896,7 @@ async def get_email_config(
     **Requer:** Token JWT válido
     """
     try:
-        from config import settings as app_config
+        from backend.core.config.config import settings as app_config
         
         config = EmailConfigResponse(
             email_smtp_server=await database.get_setting("email_smtp_server", app_config.SMTP_SERVER),

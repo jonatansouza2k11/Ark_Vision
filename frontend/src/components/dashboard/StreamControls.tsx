@@ -57,7 +57,7 @@ export default function StreamControls() {
     return (
         <div className="space-y-3">
             <h3 className="text-sm font-semibold text-gray-800">
-                Controles de Stream
+                Controle Stream
             </h3>
 
             <div className="flex flex-col gap-2">

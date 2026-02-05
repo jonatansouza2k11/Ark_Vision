@@ -22,8 +22,8 @@ from slowapi.util import get_remote_address
 import logging
 
 
-from backend.config import settings
-from backend import database
+from backend.core.config.config import settings
+from backend.adapters.storage import database
 
 
 logger = logging.getLogger("uvicorn")

@@ -65,7 +65,7 @@ import csv
 import io
 
 from dependencies import get_current_admin_user
-import database
+import backend.adapters.storage.database as database
 
 logger = logging.getLogger("uvicorn")
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin"])

@@ -42,6 +42,7 @@ class ZoneMode(str, Enum):
     ALERT = "alert"             # Alerta de intrusão
     TRACKING = "tracking"       # Rastreamento de movimento
     CAPACITY = "capacity"       # Controle de lotação máxima
+    QUEUE  = "queue"            # Controle de Fila
 
     # 🔙 Backward compatibility v2.0 (uppercase)
     GENERIC = "GENERIC"

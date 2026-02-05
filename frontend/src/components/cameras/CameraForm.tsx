@@ -7,6 +7,8 @@ import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Camera, CameraFormData } from '../../types/cameras.types';
+import { TRACKER_OPTIONS, type TrackerType } from '../../types/trackers.types';
+
 import { DEFAULT_CAMERA_FORM, validateCameraForm } from '../../types/cameras.types';
 
 // ============================================
@@ -219,6 +221,45 @@ export function CameraForm({ camera, onSubmit, onCancel, isOpen }: CameraFormPro
                             disabled={submitting}
                             autoComplete="new-password"
                         />
+                    </div>
+
+                    {/* Default tracker */}
+                    <div className="space-y-1">
+                        <label className="block text-sm font-medium text-gray-700">
+                            Tracker padrão
+                        </label>
+
+                        <select
+                            value={(formData.metadata.default_tracker ?? '') as string}
+                            onChange={e => {
+                                const value = e.target.value as TrackerType | '';
+                                setFormData(prev => ({
+                                    ...prev,
+                                    metadata: {
+                                        ...(prev.metadata || {}),
+                                        default_tracker: value === '' ? undefined : value,
+                                    },
+                                }));
+                            }}
+                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="">
+                                Automático (padrão do sistema)
+                            </option>
+                            {TRACKER_OPTIONS.map(opt => (
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </option>
+                            ))}
+                        </select>
+
+                        <p className="text-xs text-gray-500">
+                            {formData.metadata.default_tracker
+                                ? TRACKER_OPTIONS.find(
+                                    o => o.value === formData.metadata.default_tracker
+                                )?.description
+                                : 'Se não escolher, será usado o tracker padrão global (ex. ByteTrack YOLO).'}
+                        </p>
                     </div>
 
                     {/* Enabled */}
